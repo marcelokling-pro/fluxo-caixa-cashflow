@@ -266,6 +266,17 @@ const parseBankCSV = (text) => {
 
   const sep = detectSep(rawLines[0]);
 
+  // [v1.3] Extract conta from file metadata header (Itaú format: "Conta:;0099512-8;;;;")
+  let contaFromHeader = "";
+  for (let i = 0; i < Math.min(15, rawLines.length); i++) {
+    const cols = rawLines[i].split(sep).map(c=>c.replace(/"/g,"").trim());
+    const rawLabel = (cols[0]||"").toUpperCase().trim();
+    if (rawLabel === "CONTA:" || rawLabel === "CONTA") {
+      contaFromHeader = (cols[1]||"").trim();
+      break;
+    }
+  }
+
   // Find header line: must have date column AND (description OR value) column
   let headerIdx = -1;
   for (let i = 0; i < Math.min(20, rawLines.length); i++) {
@@ -330,7 +341,8 @@ const parseBankCSV = (text) => {
       val = -val;
     }
 
-    const conta = getConta !== -1 ? (cols[getConta]||"") : "";
+    const contaCol = getConta !== -1 ? (cols[getConta]||"") : "";
+    const conta = contaCol || contaFromHeader;
     result.push({ date, description: desc, value: val, conta });
   }
   return result;
