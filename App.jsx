@@ -774,6 +774,12 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
+    const handleEsc = (e) => { if(e.key==="Escape") setShowDiaFilter(false); };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  },[]);
+
+  useEffect(()=>{
     if(!user) return;
     loadAll();
     // FIX #5: realtime still useful for multi-user sync
@@ -1055,7 +1061,18 @@ export default function App() {
     await supabase.from("transactions").update({status:t.status==="pendente"?"confirmado":"pendente",needs_review:false}).eq("id",t.id);
   };
   const deleteT = (id) => setConfirmDelete(id);
-  const doDelete = async () => { await supabase.from("transactions").delete().eq("id",confirmDelete); setConfirmDelete(null); };
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    if (String(confirmDelete).startsWith("agenda_")) {
+      const agendaId = String(confirmDelete).replace("agenda_","");
+      await supabase.from("agenda_ocorrencias").delete().eq("agenda_id",agendaId);
+      await supabase.from("agenda").delete().eq("id",agendaId);
+      await loadAgenda();
+    } else {
+      await supabase.from("transactions").delete().eq("id",confirmDelete);
+    }
+    setConfirmDelete(null);
+  };
   const clearAll = async () => {
     await supabase.from("transactions").delete().neq("id","00000000-0000-0000-0000-000000000000");
     await supabase.from("settings").upsert({key:"saldo_inicial",value:"0"});
@@ -1622,14 +1639,19 @@ export default function App() {
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",position:"relative"}}
                       onClick={()=>{
                         if(!k) return;
-                        if(k==="dia_vencimento"){setShowDiaFilter(f=>!f);return;}
+                        if(k==="dia_vencimento"){
+                          if(agendaSortCol===k) setAgendaSortDir(d=>d==="asc"?"desc":"asc");
+                          else{setAgendaSortCol(k);setAgendaSortDir("asc");}
+                          setShowDiaFilter(f=>!f);
+                          return;
+                        }
                         if(agendaSortCol===k) setAgendaSortDir(d=>d==="asc"?"desc":"asc");
                         else{setAgendaSortCol(k);setAgendaSortDir("asc");}
                       }}>
                       {l}{k&&k!=="dia_vencimento"&&agendaSortCol===k?(agendaSortDir==="asc"?" ↑":" ↓"):""}
                       {k==="dia_vencimento"&&(
                         <span style={{marginLeft:4,fontSize:10,color:"#00C9A7"}}>
-                          {agendaDiaFilter.length>0?`(${agendaDiaFilter.length})`:""} ▾
+                          {agendaSortCol==="dia_vencimento"?(agendaSortDir==="asc"?"↑ ":"↓ "):""}{agendaDiaFilter.length>0?`(${agendaDiaFilter.length})`:""} ▾
                         </span>
                       )}
                       {k==="dia_vencimento"&&showDiaFilter&&(
@@ -1690,6 +1712,8 @@ export default function App() {
                           <div style={{display:"flex",gap:4}}>
                             <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}}
                               onClick={()=>{setEditingAgenda(item.id);setAgendaForm({nome:item.nome,tipo:item.tipo||"",dia_vencimento:String(item.dia_vencimento),keywords:(item.keywords||[]).join(", "),rd:item.rd||"DESPESAS FIXAS",classificacao:item.classificacao||""});setShowAgendaModal(true);}}>✏</button>
+                            <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}}
+                              onClick={()=>setConfirmDelete("agenda_"+item.id)}>✕</button>
                             {status==="pendente"&&oc&&(
                               <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
                                 onClick={()=>setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno})}>🔗</button>
