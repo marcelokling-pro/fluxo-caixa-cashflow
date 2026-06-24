@@ -754,6 +754,10 @@ export default function App() {
   const [reclassifyList,setReclassifyList]   = useState(null);
   const [reclassifySelected,setReclassifySelected] = useState([]);
   const [associating,setAssociating]     = useState(null);
+  const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
+  const [agendaSortDir,setAgendaSortDir] = useState("asc");
+  const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
+  const [showDiaFilter,setShowDiaFilter] = useState(false);
   const [fluxoMonth,setFluxoMonth] = useState("todos");
   const [importedHashes,setImportedHashes] = useState(new Set());
 
@@ -1613,9 +1617,58 @@ export default function App() {
             })()}
             <div style={s.card}>
               <table style={s.table}>
-                <thead><tr>{["Compromisso","Tipo","Vence dia","Palavras-chave","Status","Valor Pago","Ação"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <thead><tr>
+                  {[{l:"Compromisso",k:"nome"},{l:"Tipo",k:"tipo"},{l:"Vence dia",k:"dia_vencimento"},{l:"Palavras-chave",k:""},{l:"Status",k:"status"},{l:"Valor Pago",k:"valor"},{l:"Ação",k:""}].map(({l,k})=>(
+                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",position:"relative"}}
+                      onClick={()=>{
+                        if(!k) return;
+                        if(k==="dia_vencimento"){setShowDiaFilter(f=>!f);return;}
+                        if(agendaSortCol===k) setAgendaSortDir(d=>d==="asc"?"desc":"asc");
+                        else{setAgendaSortCol(k);setAgendaSortDir("asc");}
+                      }}>
+                      {l}{k&&k!=="dia_vencimento"&&agendaSortCol===k?(agendaSortDir==="asc"?" ↑":" ↓"):""}
+                      {k==="dia_vencimento"&&(
+                        <span style={{marginLeft:4,fontSize:10,color:"#00C9A7"}}>
+                          {agendaDiaFilter.length>0?`(${agendaDiaFilter.length})`:""} ▾
+                        </span>
+                      )}
+                      {k==="dia_vencimento"&&showDiaFilter&&(
+                        <div style={{position:"absolute",top:"100%",left:0,background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:10,zIndex:200,minWidth:180,boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}
+                          onClick={e=>e.stopPropagation()}>
+                          <div style={{fontSize:11,color:"#6B8299",marginBottom:8,fontWeight:600}}>FILTRAR POR DIA</div>
+                          {[...new Set(agenda.filter(a=>a.ativo).map(a=>a.dia_vencimento))].sort((a,b)=>a-b).map(dia=>(
+                            <label key={dia} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",cursor:"pointer",fontSize:12}}>
+                              <input type="checkbox" checked={agendaDiaFilter.includes(dia)}
+                                onChange={e=>setAgendaDiaFilter(prev=>e.target.checked?[...prev,dia]:prev.filter(d=>d!==dia))}/>
+                              dia {dia}
+                            </label>
+                          ))}
+                          {agendaDiaFilter.length>0&&(
+                            <button style={{...s.btn("ghost"),fontSize:11,padding:"4px 8px",marginTop:8,width:"100%"}}
+                              onClick={()=>setAgendaDiaFilter([])}>Limpar filtro</button>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                  ))}
+                </tr></thead>
                 <tbody>
-                  {agenda.filter(a=>a.ativo).sort((a,b)=>a.dia_vencimento-b.dia_vencimento).map(item=>{
+                  {agenda.filter(a=>a.ativo).filter(a=>agendaDiaFilter.length===0||agendaDiaFilter.includes(a.dia_vencimento)).sort((a,b)=>{
+                    const dir=agendaSortDir==="asc"?1:-1;
+                    if(agendaSortCol==="nome") return a.nome.localeCompare(b.nome)*dir;
+                    if(agendaSortCol==="tipo") return (a.tipo||"").localeCompare(b.tipo||"")*dir;
+                    if(agendaSortCol==="status"){
+                      const oa=agendaOcorrencias.find(o=>o.agenda_id===a.id&&o.mes===agendaMes&&o.ano===agendaAno);
+                      const ob=agendaOcorrencias.find(o=>o.agenda_id===b.id&&o.mes===agendaMes&&o.ano===agendaAno);
+                      return ((oa?.status||"z").localeCompare(ob?.status||"z"))*dir;
+                    }
+                    if(agendaSortCol==="valor"){
+                      const oa=agendaOcorrencias.find(o=>o.agenda_id===a.id&&o.mes===agendaMes&&o.ano===agendaAno);
+                      const ob=agendaOcorrencias.find(o=>o.agenda_id===b.id&&o.mes===agendaMes&&o.ano===agendaAno);
+                      return ((oa?.valor_pago||0)-(ob?.valor_pago||0))*dir;
+                    }
+                    return (a.dia_vencimento-b.dia_vencimento)*dir;
+                  }).map(item=>{
                     const oc=getOcorrencia(item.id,agendaMes,agendaAno);
                     const status=oc?.status||"sem registro";
                     const statusColor=status==="pago"?"#2ECC71":status==="pendente"?"#F5A623":"#6B8299";
