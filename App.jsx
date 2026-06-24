@@ -336,6 +336,39 @@ const parseBankCSV = (text) => {
   return result;
 };
 
+// ── Excel Itaú parser (col0=data, col2=desc, col10=valor, header row 26, data from row 27) ──
+const parseExcelItau = (workbook) => {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = window.XLSX.utils.sheet_to_json(sheet, {header:1, defval:""});
+  const result = [];
+  // Data starts at index 26 (row 27, 0-indexed)
+  for (let i = 26; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 11) continue;
+    const rawDate = row[0];
+    const rawDesc = String(row[2]||"").trim();
+    const rawVal  = row[10];
+    if (!rawDate || !rawDesc) continue;
+    // Parse date: Excel serial or string DD/MM/YYYY
+    let date = "";
+    if (typeof rawDate === "number") {
+      // Excel serial date
+      const d = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+      const dd = String(d.getUTCDate()).padStart(2,"0");
+      const mm = String(d.getUTCMonth()+1).padStart(2,"0");
+      const yy = d.getUTCFullYear();
+      date = `${dd}/${mm}/${yy}`;
+    } else {
+      date = parseDate(String(rawDate));
+    }
+    if (!date || !/^\d{2}\/\d{2}\/\d{4}$/.test(date)) continue;
+    const val = parseValue(rawVal);
+    if (isNaN(val) || val === 0) continue;
+    result.push({ date, description: rawDesc, value: val });
+  }
+  return result;
+};
+
 // ── Forecast ──────────────────────────────────────────────────────────────────
 const generateForecast = (transactions) => {
   const months = {};
@@ -626,7 +659,48 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
           <div style={{fontSize:21,fontWeight:700}}>Classificações</div>
           <div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{filtered.length} de {allRows.length} · {customCats.length} personalizadas</div>
         </div>
-        <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
+        <div style={{display:"flex",gap:8}}>
+          <button style={{...s.btn("ghost"),padding:"9px 14px",fontSize:12}} title="Upload Excel/CSV com classificações" onClick={()=>document.getElementById("classUploadInput").click()}>⬆ Importar</button>
+          <input id="classUploadInput" type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={async e=>{
+            const file = e.target.files[0]; if(!file) return; e.target.value="";
+            try {
+              let rows = [];
+              if(file.name.endsWith(".csv")||file.name.endsWith(".txt")){
+                const text = await file.text();
+                const lines = text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(l=>l.trim());
+                const sep = lines[0].includes(";") ? ";" : ",";
+                lines.slice(1).forEach(l=>{
+                  const cols = l.split(sep).map(c=>c.replace(/"/g,"").trim());
+                  if(cols[0]&&cols[1]&&cols[2]) rows.push({detalhe:cols[0],rd:cols[1],classificacao:cols[2]});
+                });
+              } else {
+                if(!window.XLSX){ await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);}); }
+                const buf = await file.arrayBuffer();
+                const wb = window.XLSX.read(buf,{type:"array"});
+                const data = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+                data.slice(1).forEach(r=>{ if(r[0]&&r[1]&&r[2]) rows.push({detalhe:String(r[0]).trim(),rd:String(r[1]).trim(),classificacao:String(r[2]).trim()}); });
+              }
+              if(!rows.length){ showToast("Nenhuma classificação encontrada.","error"); return; }
+              for(let i=0;i<rows.length;i+=50){
+                await supabase.from("categories").upsert(rows.slice(i,i+50).map(r=>({name:r.detalhe.toUpperCase(),rd:r.rd,classificacao:r.classificacao,keywords:[r.detalhe.toLowerCase()]})),{onConflict:"name"});
+              }
+              await loadCustomCats();
+              showToast(`${rows.length} classificações importadas!`);
+            } catch(err){ showToast("Erro: "+err.message,"error"); }
+          }}/>
+          <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
+            if(!window.confirm("Reclassificar TODOS os lançamentos com base nas classificações atuais?")) return;
+            const {data:trans} = await supabase.from("transactions").select("id,description");
+            if(!trans) return;
+            let count=0;
+            for(const t of trans){
+              const local = localClassify(t.description, customCats);
+              if(local){ await supabase.from("transactions").update({rd:local.r,classificacao:local.c,needs_review:false}).eq("id",t.id); count++; }
+            }
+            showToast(`${count} lançamentos reclassificados!`);
+          }}>🔄 Reclassificar</button>
+          <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
+        </div>
       </div>
 
       {showAdd&&(
@@ -760,6 +834,13 @@ export default function App() {
   const [showDiaFilter,setShowDiaFilter] = useState(false);
   const [fluxoMonth,setFluxoMonth] = useState("todos");
   const [importedHashes,setImportedHashes] = useState(new Set());
+  // v3.0 — Transaction details
+  const [detailModal,setDetailModal]       = useState(null); // {transaction}
+  const [detailItems,setDetailItems]       = useState([]); // items for current detail modal
+  const [detailLoading,setDetailLoading]   = useState(false);
+  const [detailSaving,setDetailSaving]     = useState(false);
+  const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
+  const [transDetailsMap,setTransDetailsMap] = useState({}); // {transaction_id: count}
 
   const s = mkS(sidebarOpen);
   const showToast = (msg,kind="success") => { setToast({msg,kind}); setTimeout(()=>setToast(null),3500); };
@@ -787,7 +868,7 @@ export default function App() {
     return ()=>supabase.removeChannel(ch);
   },[user]);
 
-  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); };
+  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); };
 
   const loadTransactions = async () => {
     // FIX #5: order by created_at (reliable) instead of text date field
@@ -916,6 +997,87 @@ export default function App() {
     if (ag) setAgenda(ag);
     const {data:oc} = await supabase.from("agenda_ocorrencias").select("*");
     if (oc) setAgendaOcorrencias(oc);
+  };
+
+  // v3.0 — load details count map (which transactions have details)
+  const loadDetailsMap = async () => {
+    const {data} = await supabase.from("transaction_details").select("transaction_id");
+    if (data) {
+      const map = {};
+      data.forEach(d => { map[d.transaction_id] = (map[d.transaction_id]||0)+1; });
+      setTransDetailsMap(map);
+    }
+  };
+
+  const openDetailModal = async (t) => {
+    setDetailModal(t);
+    setDetailLoading(true);
+    const {data} = await supabase.from("transaction_details").select("*").eq("transaction_id",t.id).order("date");
+    setDetailItems(data||[]);
+    setDetailLoading(false);
+  };
+
+  const handleDetailFile = async (file, transaction) => {
+    // Primeiro pergunta se é fatura de cartão antes de processar
+    setDetailPendingFile(file);
+  };
+
+  const processDetailFile = async (file, transaction, isCartao) => {
+    setDetailPendingFile(null);
+    setDetailLoading(true);
+    try {
+      if (!window.XLSX) {
+        await new Promise((res,rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      const buffer = await file.arrayBuffer();
+      const wb = window.XLSX.read(buffer, {type:"array"});
+      const parsed = parseExcelItau(wb);
+      if (!parsed.length) { showToast("Nenhum item encontrado no Excel.","error"); setDetailLoading(false); return; }
+      const items = parsed.map(row => {
+        // Se é fatura de cartão, valores positivos viram negativos (são despesas)
+        const value = isCartao ? -Math.abs(row.value) : row.value;
+        const local = localClassify(row.description, customCats);
+        return {
+          transaction_id: transaction.id,
+          date: row.date,
+          description: row.description,
+          value,
+          rd: local?.r||"",
+          classificacao: local?.c||"",
+          ai_classified: false,
+          needs_review: !local,
+        };
+      });
+      setDetailItems(items);
+    } catch(e) {
+      showToast("Erro ao ler Excel: "+e.message,"error");
+    }
+    setDetailLoading(false);
+  };
+
+  const saveDetailItems = async () => {
+    if (!detailModal) return;
+    setDetailSaving(true);
+    // Delete existing and re-insert
+    await supabase.from("transaction_details").delete().eq("transaction_id",detailModal.id);
+    const toInsert = detailItems.map(({transaction_id,date,description,value,rd,classificacao,ai_classified,needs_review})=>
+      ({transaction_id,date,description,value,rd,classificacao,ai_classified,needs_review}));
+    for(let i=0;i<toInsert.length;i+=50){
+      await supabase.from("transaction_details").insert(toInsert.slice(i,i+50));
+    }
+    await loadDetailsMap();
+    showToast(`${toInsert.length} itens salvos!`);
+    setDetailSaving(false);
+    setDetailModal(null);
+  };
+
+  const updateDetailItem = (idx, field, val) => {
+    setDetailItems(prev => prev.map((item,i) => i===idx ? {...item,[field]:val,needs_review:false} : item));
   };
 
   const getOcorrencia = (agendaId, mes, ano) =>
@@ -1132,8 +1294,8 @@ export default function App() {
               <button style={{...s.btn("danger"),fontSize:11,padding:"5px 10px"}} onClick={()=>setShowConfirmClear(true)}>🗑</button>
             </div>
             <div style={{fontSize:10,color:"#6B8299",marginTop:8}}>☁ Tempo real</div>
-            <div style={{fontSize:9,color:"#00C9A7",marginTop:4,opacity:0.5}}>v FluxoCaixa180626</div>
-            <div style={{fontSize:9,color:"#1E4D3D",marginTop:4,background:"rgba(0,201,167,0.08)",padding:"3px 6px",borderRadius:4}}>v FluxoCaixa180626</div>
+            <div style={{fontSize:9,color:"#00C9A7",marginTop:4,opacity:0.5}}>v FluxoCaixa180626_v3.1</div>
+            <div style={{fontSize:9,color:"#1E4D3D",marginTop:4,background:"rgba(0,201,167,0.08)",padding:"3px 6px",borderRadius:4}}>v3.1 — Detalhe Classificação</div>
           </div>
         )}
       </div>
@@ -1241,7 +1403,7 @@ export default function App() {
             <div style={s.card}>
               <table style={s.table}>
                 <thead><tr>
-                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Detalhe Class.",k:"detalhe_class"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
@@ -1252,14 +1414,30 @@ export default function App() {
                   {filtered.map(t=>(
                     <tr key={t.id} style={t.needs_review?{background:"rgba(245,166,35,0.04)"}:{}}>
                       <td style={s.td}>{t.date}</td>
-                      <td style={{...s.td,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                      <td style={{...s.td,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {transDetailsMap[t.id]>0&&(
+                          <span title={`${transDetailsMap[t.id]} itens de detalhe`}
+                            style={{cursor:"pointer",marginRight:4,fontSize:10,background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 5px",fontWeight:700}}
+                            onClick={()=>openDetailModal(t)}>
+                            📎{transDetailsMap[t.id]}
+                          </span>
+                        )}
+                        {t.description}
+                      </td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.detalhe_class||"—"}</td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.conta||"—"}</td>
-                      <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
+                      <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
+                        {transDetailsMap[t.id]>0
+                          ? <button style={{background:"none",border:"none",cursor:"pointer",fontWeight:600,fontSize:12,color:Number(t.value)>=0?"#2ECC71":"#E8445A",padding:0,textDecoration:"underline dotted",textUnderlineOffset:3}} title="Ver detalhamento" onClick={()=>openDetailModal(t)}>{fmt(Number(t.value))} ↗</button>
+                          : fmt(Number(t.value))
+                        }
+                      </td>
                       <td style={s.td}><span style={{fontSize:11,color:t.needs_review?"#F5A623":t.status==="confirmado"?"#2ECC71":"#6B8299"}}>{t.needs_review?"⚠ revisar":t.status}</span></td>
                       <td style={s.td}>
                         <div style={{display:"flex",gap:4}}>
+                          <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} title="Detalhamento" onClick={()=>openDetailModal(t)}>📎</button>
                           <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} onClick={()=>startEdit(t)}>✏</button>
                           <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} onClick={()=>toggleStatus(t)}>{t.status==="pendente"||t.needs_review?"✓":"⏳"}</button>
                           <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}} onClick={()=>deleteT(t.id)}>✕</button>
@@ -1735,9 +1913,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#00C9A7",opacity:0.4,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626</div>
-      {/* Version indicator */}
-      <div style={{position:"fixed",bottom:4,right:8,fontSize:9,color:"#1E2D3D",zIndex:50}}>FluxoCaixa180626</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -1909,6 +2085,151 @@ export default function App() {
       {/* Review modal */}
       {reviewItems&&(
         <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes}/>
+      )}
+
+      {/* Detail Modal — v3.0 */}
+      {detailModal&&(
+        <div style={{...s.modal,zIndex:250}} onClick={()=>setDetailModal(null)}>
+          <div style={{background:"#162130",borderRadius:16,padding:28,width:"100%",maxWidth:900,border:"1px solid #1E2D3D",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:17,fontWeight:700}}>📎 Detalhamento de Lançamento</div>
+                <div style={{fontSize:12,color:"#6B8299",marginTop:4}}>{detailModal.date} · {detailModal.description}</div>
+                <div style={{fontSize:13,fontWeight:700,color:Number(detailModal.value)>=0?"#2ECC71":"#E8445A",marginTop:2}}>{fmt(Number(detailModal.value))}</div>
+              </div>
+              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>setDetailModal(null)}>✕</button>
+            </div>
+
+            {/* Upload area (shown when no items) */}
+            {!detailLoading&&detailItems.length===0&&(
+              <div style={{border:"2px dashed #1E2D3D",borderRadius:12,padding:40,textAlign:"center",marginBottom:16,cursor:"pointer"}}
+                onClick={()=>document.getElementById("detailFileInput").click()}
+                onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#00C9A7"}}
+                onDragLeave={e=>{e.currentTarget.style.borderColor="#1E2D3D"}}
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#1E2D3D";const f=e.dataTransfer.files[0];if(f) handleDetailFile(f,detailModal);}}>
+                <div style={{fontSize:32,marginBottom:8}}>📊</div>
+                <div style={{fontSize:15,fontWeight:600,marginBottom:6}}>Upload da Fatura do Cartão (Excel .xlsx)</div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Itaú · col0=data · col2=descrição · col10=valor · dados a partir da linha 27</div>
+              </div>
+            )}
+            <input id="detailFileInput" type="file" accept=".xlsx,.xls" style={{display:"none"}}
+              onChange={e=>{const f=e.target.files[0];if(f){handleDetailFile(f,detailModal);e.target.value="";}}}/>
+
+            {detailLoading&&(
+              <div style={{textAlign:"center",padding:32,color:"#00C9A7"}}>⏳ Processando...</div>
+            )}
+
+            {/* Confirmação: fatura de cartão? */}
+            {detailPendingFile&&!detailLoading&&(
+              <div style={{background:"#0F1923",borderRadius:12,padding:24,border:"1px solid #F5A623",textAlign:"center",marginBottom:16}}>
+                <div style={{fontSize:22,marginBottom:10}}>💳</div>
+                <div style={{fontSize:15,fontWeight:700,marginBottom:8}}>Este arquivo é uma fatura de cartão?</div>
+                <div style={{fontSize:12,color:"#6B8299",marginBottom:20}}>Faturas de cartão têm valores positivos que são despesas — eles serão invertidos automaticamente.</div>
+                <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                  <button style={{...s.btn("ghost"),minWidth:120}} onClick={()=>processDetailFile(detailPendingFile,detailModal,false)}>Não, é extrato</button>
+                  <button style={{...s.btn(),minWidth:120}} onClick={()=>processDetailFile(detailPendingFile,detailModal,true)}>Sim, é fatura 💳</button>
+                </div>
+              </div>
+            )}
+
+            {/* Items loaded */}
+            {!detailLoading&&detailItems.length>0&&(()=>{
+              const totalItems = detailItems.reduce((s,d)=>s+Number(d.value),0);
+              const parent = Number(detailModal.value);
+              const diff = totalItems - parent;
+              const match = Math.abs(diff) < 0.02;
+              return (
+                <>
+                  {/* Totals summary */}
+                  <div style={{display:"flex",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+                    <div style={{flex:1,background:"#0F1923",borderRadius:8,padding:"10px 14px",border:"1px solid #1E2D3D"}}>
+                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Lançamento Pai</div>
+                      <div style={{fontSize:15,fontWeight:700,color:parent>=0?"#2ECC71":"#E8445A"}}>{fmt(parent)}</div>
+                    </div>
+                    <div style={{flex:1,background:"#0F1923",borderRadius:8,padding:"10px 14px",border:"1px solid #1E2D3D"}}>
+                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Total Itens</div>
+                      <div style={{fontSize:15,fontWeight:700,color:totalItems>=0?"#2ECC71":"#E8445A"}}>{fmt(totalItems)}</div>
+                    </div>
+                    <div style={{flex:1,background:"#0F1923",borderRadius:8,padding:"10px 14px",border:`1px solid ${match?"#00C9A7":"#F5A623"}`}}>
+                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Diferença</div>
+                      <div style={{fontSize:15,fontWeight:700,color:match?"#00C9A7":"#F5A623"}}>{match?"✓ Confere":fmt(diff)}</div>
+                    </div>
+                    <div style={{flex:1,background:"#0F1923",borderRadius:8,padding:"10px 14px",border:"1px solid #1E2D3D"}}>
+                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Itens</div>
+                      <div style={{fontSize:15,fontWeight:700}}>
+                        {detailItems.filter(d=>d.needs_review).length>0
+                          ?<span style={{color:"#F5A623"}}>⚠ {detailItems.filter(d=>d.needs_review).length} p/ revisar</span>
+                          :<span style={{color:"#00C9A7"}}>✓ {detailItems.length} ok</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Upload another */}
+                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+                    <button style={{...s.btn("ghost"),fontSize:12,padding:"6px 12px"}} onClick={()=>document.getElementById("detailFileInput").click()}>↑ Trocar arquivo</button>
+                  </div>
+
+                  {/* Items table */}
+                  <div style={{maxHeight:340,overflowY:"auto",marginBottom:14}}>
+                    <table style={s.table}>
+                      <thead>
+                        <tr>
+                          <th style={s.th}>Data</th>
+                          <th style={s.th}>Descrição</th>
+                          <th style={{...s.th,textAlign:"right"}}>Valor</th>
+                          <th style={s.th}>R/D</th>
+                          <th style={s.th}>Classificação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailItems.map((item,idx)=>(
+                          <tr key={idx} style={item.needs_review?{background:"rgba(245,166,35,0.06)"}:{}}>
+                            <td style={{...s.td,whiteSpace:"nowrap"}}>{item.date}</td>
+                            <td style={{...s.td,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={item.description}>
+                              {item.needs_review&&<span style={{color:"#F5A623",marginRight:4}}>⚠</span>}
+                              {item.description}
+                            </td>
+                            <td style={{...s.td,textAlign:"right",fontWeight:600,color:Number(item.value)>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(Number(item.value))}</td>
+                            <td style={s.td}>
+                              <select style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
+                                value={item.rd||""} onChange={e=>updateDetailItem(idx,"rd",e.target.value)}>
+                                <option value="">—</option>
+                                {RD_TYPES.map(r=><option key={r}>{r}</option>)}
+                              </select>
+                            </td>
+                            <td style={s.td}>
+                              <select style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
+                                value={item.classificacao||""} onChange={e=>updateDetailItem(idx,"classificacao",e.target.value)}>
+                                <option value="">—</option>
+                                {allClassificacoes.map(c=><option key={c}>{c}</option>)}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Footer buttons */}
+                  <div style={{display:"flex",gap:10}}>
+                    <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setDetailModal(null)}>Cancelar</button>
+                    <button style={{...s.btn(),flex:2}} onClick={saveDetailItems} disabled={detailSaving}>
+                      {detailSaving?"Salvando...":"💾 Salvar Detalhamento"}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+
+            {/* No items yet and not loading — show only upload */}
+            {!detailLoading&&detailItems.length===0&&(
+              <div style={{display:"flex",gap:10,marginTop:8}}>
+                <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setDetailModal(null)}>Fechar</button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <input id="fileInput" type="file" accept=".csv,.txt" style={{display:"none"}}
