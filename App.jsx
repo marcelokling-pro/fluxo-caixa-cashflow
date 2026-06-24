@@ -266,17 +266,6 @@ const parseBankCSV = (text) => {
 
   const sep = detectSep(rawLines[0]);
 
-  // [v1.3] Extract conta from file metadata header (Itaú format: "Conta:;0099512-8;;;;")
-  let contaFromHeader = "";
-  for (let i = 0; i < Math.min(15, rawLines.length); i++) {
-    const cols = rawLines[i].split(sep).map(c=>c.replace(/"/g,"").trim());
-    const rawLabel = (cols[0]||"").toUpperCase().trim();
-    if (rawLabel === "CONTA:" || rawLabel === "CONTA") {
-      contaFromHeader = (cols[1]||"").trim();
-      break;
-    }
-  }
-
   // Find header line: must have date column AND (description OR value) column
   let headerIdx = -1;
   for (let i = 0; i < Math.min(20, rawLines.length); i++) {
@@ -341,8 +330,7 @@ const parseBankCSV = (text) => {
       val = -val;
     }
 
-    const contaCol = getConta !== -1 ? (cols[getConta]||"") : "";
-    const conta = contaCol || contaFromHeader;
+    const conta = getConta !== -1 ? (cols[getConta]||"") : "";
     result.push({ date, description: desc, value: val, conta });
   }
   return result;
@@ -753,6 +741,16 @@ export default function App() {
   const [saving,setSaving]     = useState(false);
   const [showConfirmClear,setShowConfirmClear] = useState(false);
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
+  const [agenda,setAgenda]               = useState([]);
+  const [agendaOcorrencias,setAgendaOcorrencias] = useState([]);
+  const [agendaMes,setAgendaMes]         = useState(new Date().getMonth()+1);
+  const [agendaAno,setAgendaAno]         = useState(new Date().getFullYear());
+  const [showAgendaModal,setShowAgendaModal] = useState(false);
+  const [editingAgenda,setEditingAgenda] = useState(null);
+  const [agendaForm,setAgendaForm]       = useState({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
+  const [reclassifyList,setReclassifyList]   = useState(null);
+  const [reclassifySelected,setReclassifySelected] = useState([]);
+  const [associating,setAssociating]     = useState(null);
   const [fluxoMonth,setFluxoMonth] = useState("todos");
   const [importedHashes,setImportedHashes] = useState(new Set());
 
@@ -776,7 +774,7 @@ export default function App() {
     return ()=>supabase.removeChannel(ch);
   },[user]);
 
-  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); };
+  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); };
 
   const loadTransactions = async () => {
     // FIX #5: order by created_at (reliable) instead of text date field
@@ -878,6 +876,91 @@ export default function App() {
     }
   };
 
+  // ── Agenda functions ─────────────────────────────────────────────────────
+  const loadAgenda = async () => {
+    const {data:ag} = await supabase.from("agenda").select("*").order("dia_vencimento");
+    if (ag) setAgenda(ag);
+    const {data:oc} = await supabase.from("agenda_ocorrencias").select("*");
+    if (oc) setAgendaOcorrencias(oc);
+  };
+
+  const getOcorrencia = (agendaId, mes, ano) =>
+    agendaOcorrencias.find(o=>o.agenda_id===agendaId&&o.mes===mes&&o.ano===ano);
+
+  const reconcileAgenda = async (mes, ano) => {
+    for (const item of agenda) {
+      if (!item.ativo) continue;
+      const oc = getOcorrencia(item.id, mes, ano);
+      if (oc?.status==="pago") continue;
+      const keywords = item.keywords||[];
+      const match = transactions.find(t=>{
+        const p=t.date?.split("/");
+        if(!p||p.length<3) return false;
+        if(parseInt(p[1])!==mes||parseInt(p[2])!==ano) return false;
+        return keywords.some(k=>t.description?.toUpperCase().includes(k.toUpperCase()));
+      });
+      await supabase.from("agenda_ocorrencias").upsert({
+        agenda_id:item.id, mes, ano,
+        status: match?"pago":"pendente",
+        transaction_id: match?.id||null,
+        data_pagamento: match?.date||null,
+        valor_pago: match?Math.abs(Number(match.value)):null,
+      },{onConflict:"agenda_id,mes,ano"});
+    }
+    await loadAgenda();
+    showToast("Reconciliação concluída!");
+  };
+
+  const saveAgendaItem = async () => {
+    if (!agendaForm.nome.trim()||!agendaForm.dia_vencimento) {
+      showToast("Nome e dia obrigatórios.","error"); return;
+    }
+    const keywords = agendaForm.keywords.split(",").map(k=>k.trim()).filter(Boolean);
+    const payload = {
+      nome:agendaForm.nome.trim(), tipo:agendaForm.tipo.trim(),
+      dia_vencimento:parseInt(agendaForm.dia_vencimento),
+      keywords, rd:agendaForm.rd, classificacao:agendaForm.classificacao, ativo:true,
+    };
+    if (editingAgenda) {
+      await supabase.from("agenda").update(payload).eq("id",editingAgenda);
+      const affected = transactions.filter(t=>
+        keywords.some(k=>t.description?.toUpperCase().includes(k.toUpperCase()))
+      );
+      if (affected.length>0) {
+        setReclassifyList({items:affected,rd:agendaForm.rd,classificacao:agendaForm.classificacao});
+        setReclassifySelected(affected.map(t=>t.id));
+      } else showToast("Compromisso atualizado!");
+    } else {
+      await supabase.from("agenda").insert(payload);
+      showToast("Compromisso adicionado!");
+    }
+    await loadAgenda();
+    setShowAgendaModal(false); setEditingAgenda(null);
+    setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
+  };
+
+  const applyReclassify = async () => {
+    for (const id of reclassifySelected) {
+      await supabase.from("transactions").update({
+        rd:reclassifyList.rd, classificacao:reclassifyList.classificacao,
+      }).eq("id",id);
+    }
+    showToast(reclassifySelected.length+" lançamento(s) reclassificado(s)!");
+    setReclassifyList(null); setReclassifySelected([]);
+    await loadTransactions();
+  };
+
+  const associateTransaction = async (ocId, transactionId) => {
+    const t = transactions.find(x=>x.id===transactionId);
+    if (!t) return;
+    await supabase.from("agenda_ocorrencias").update({
+      status:"pago", transaction_id:transactionId,
+      data_pagamento:t.date, valor_pago:Math.abs(Number(t.value)),
+    }).eq("id",ocId);
+    await loadAgenda(); setAssociating(null);
+    showToast("Lançamento associado!");
+  };
+
   // ── Manual entry — FIX #3: operator precedence ────────────────────────────
   const saveManual = async () => {
     if(!form.date||!form.description||!form.value){ showToast("Preencha todos os campos.","error"); return; }
@@ -963,6 +1046,7 @@ export default function App() {
     {id:"forecast",     icon:"∿", label:"Forecast"},
     {id:"projecao",     icon:"↗", label:"Projeção"},
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
+    {id:"agenda",icon:"📅",label:"Agenda"},
   ];
 
   const rdColor={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#00C9A7","DESPESA FINANCEIRA":"#F5A623","SALDO INICIAL":"#6B8299"};
@@ -1019,21 +1103,22 @@ export default function App() {
                 <div key={m.l} style={s.card}><div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:22,fontWeight:700,color:m.c}}>{m.v}</div></div>
               ))}
             </div>
-            <div style={{marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
+              <div style={s.card}>
+                <div style={{fontSize:11,color:"#6B8299",marginBottom:14,textTransform:"uppercase"}}>Forecast 6 Meses</div>
+                <div style={{display:"flex",gap:14,marginBottom:10}}><span style={{fontSize:12,color:"#00C9A7"}}>■ Receitas</span><span style={{fontSize:12,color:"#E8445A"}}>■ Despesas</span></div>
+                <BarMini data={forecast}/>
+              </div>
               <div style={s.card}>
                 <div style={{fontSize:11,color:"#6B8299",marginBottom:14,textTransform:"uppercase"}}>Por R/D</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {RD_TYPES.map(rd=>{
-                    const total=transactions.filter(t=>t.rd===rd).reduce((s,t)=>s+Number(t.value),0);
-                    if(total===0) return null;
-                    return (
-                      <div key={rd} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:"1px solid #1E2D3D"}}>
-                        <span style={{fontSize:12,color:rdColor[rd]||"#6B8299",fontWeight:500}}>{rd}</span>
-                        <span style={{fontSize:13,fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {RD_TYPES.map(rd=>{
+                  const total=transactions.filter(t=>t.rd===rd).reduce((s,t)=>s+Number(t.value),0);
+                  if(total===0) return null;
+                  return (<div key={rd} style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                    <span style={{fontSize:12,color:rdColor[rd]||"#6B8299"}}>{rd}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</span>
+                  </div>);
+                })}
               </div>
             </div>
             <div style={s.card}>
@@ -1446,6 +1531,84 @@ export default function App() {
           </>
         )}
 
+        {/* AGENDA */}
+        {tab==="agenda"&&(
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:21,fontWeight:700}}>Agenda de Pagamentos</div>
+                <div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{agenda.filter(a=>a.ativo).length} compromissos ativos</div>
+              </div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <select style={s.sel} value={agendaMes} onChange={e=>setAgendaMes(Number(e.target.value))}>
+                  {MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
+                </select>
+                <select style={s.sel} value={agendaAno} onChange={e=>setAgendaAno(Number(e.target.value))}>
+                  {[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}
+                </select>
+                <button style={s.btn("ghost")} onClick={()=>reconcileAgenda(agendaMes,agendaAno)}>🔄 Reconciliar</button>
+                <button style={s.btn()} onClick={()=>{setEditingAgenda(null);setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});setShowAgendaModal(true);}}>+ Novo</button>
+              </div>
+            </div>
+            {(()=>{
+              const ocs=agendaOcorrencias.filter(o=>o.mes===agendaMes&&o.ano===agendaAno);
+              const pagos=ocs.filter(o=>o.status==="pago").length;
+              const pendentes=ocs.filter(o=>o.status==="pendente").length;
+              const totalPago=ocs.filter(o=>o.status==="pago").reduce((s,o)=>s+(o.valor_pago||0),0);
+              const agAtivos=agenda.filter(a=>a.ativo);
+              const semOc=agAtivos.filter(a=>!ocs.find(o=>o.agenda_id===a.id)).length;
+              return (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
+                  {[{l:"Compromissos",v:agAtivos.length,c:"#6B8299"},{l:"Pagos",v:pagos,c:"#2ECC71"},{l:"Pendentes",v:pendentes+semOc,c:"#F5A623"},{l:"Total Pago",v:fmt(totalPago),c:"#00C9A7"}].map(m=>(
+                    <div key={m.l} style={s.card}>
+                      <div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div>
+                      <div style={{fontSize:m.l==="Total Pago"?16:22,fontWeight:700,color:m.c}}>{m.v}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div style={s.card}>
+              <table style={s.table}>
+                <thead><tr>{["Compromisso","Tipo","Vence dia","Palavras-chave","Status","Valor Pago","Ação"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {agenda.filter(a=>a.ativo).sort((a,b)=>a.dia_vencimento-b.dia_vencimento).map(item=>{
+                    const oc=getOcorrencia(item.id,agendaMes,agendaAno);
+                    const status=oc?.status||"sem registro";
+                    const statusColor=status==="pago"?"#2ECC71":status==="pendente"?"#F5A623":"#6B8299";
+                    const statusLabel=status==="pago"?"✓ Pago":status==="pendente"?"⏳ Pendente":"— Não verificado";
+                    return (
+                      <tr key={item.id} style={status==="pendente"?{background:"rgba(245,166,35,0.04)"}:{}}>
+                        <td style={{...s.td,fontWeight:600}}>{item.nome}</td>
+                        <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{item.tipo||"—"}</td>
+                        <td style={{...s.td,textAlign:"center"}}><span style={{background:"#1E2D3D",padding:"2px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>dia {item.dia_vencimento}</span></td>
+                        <td style={{...s.td,maxWidth:180}}>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                            {(item.keywords||[]).slice(0,3).map(k=><span key={k} style={{background:"#1E2D3D",color:"#6B8299",borderRadius:20,fontSize:10,padding:"1px 6px"}}>{k}</span>)}
+                            {(item.keywords||[]).length>3&&<span style={{fontSize:10,color:"#6B8299"}}>+{item.keywords.length-3}</span>}
+                          </div>
+                        </td>
+                        <td style={s.td}><span style={{fontSize:12,color:statusColor,fontWeight:600}}>{statusLabel}</span></td>
+                        <td style={{...s.td,fontWeight:600,color:"#E8445A"}}>{oc?.valor_pago?fmt(-oc.valor_pago):"—"}</td>
+                        <td style={s.td}>
+                          <div style={{display:"flex",gap:4}}>
+                            <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}}
+                              onClick={()=>{setEditingAgenda(item.id);setAgendaForm({nome:item.nome,tipo:item.tipo||"",dia_vencimento:String(item.dia_vencimento),keywords:(item.keywords||[]).join(", "),rd:item.rd||"DESPESAS FIXAS",classificacao:item.classificacao||""});setShowAgendaModal(true);}}>✏</button>
+                            {status==="pendente"&&oc&&(
+                              <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
+                                onClick={()=>setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno})}>🔗</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {/* CLASSIFICAÇÕES */}
         {tab==="classificacoes"&&(
           <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s}/>
@@ -1516,6 +1679,100 @@ export default function App() {
         </div>
       )}
 
+      {/* Agenda Modal */}
+      {showAgendaModal&&(
+        <div style={s.modal} onClick={()=>setShowAgendaModal(false)}>
+          <div style={s.mbox} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:20}}>{editingAgenda?"Editar":"Novo"} Compromisso</div>
+            {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"},{l:"Palavras-chave (separadas por vírgula)",k:"keywords",ph:"Ex: aluguel, locação"}].map(({l,k,ph})=>(
+              <div key={k} style={{marginBottom:14}}>
+                <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>{l}</div>
+                <input style={s.input} placeholder={ph} value={agendaForm[k]} onChange={e=>setAgendaForm(f=>({...f,[k]:e.target.value}))}/>
+              </div>
+            ))}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>R/D</div>
+              <select style={{...s.input}} value={agendaForm.rd} onChange={e=>setAgendaForm(f=>({...f,rd:e.target.value}))}>
+                {RD_TYPES.map(r=><option key={r}>{r}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Classificação</div>
+              <select style={{...s.input}} value={agendaForm.classificacao} onChange={e=>setAgendaForm(f=>({...f,classificacao:e.target.value}))}>
+                <option value="">Selecione...</option>
+                {allClassificacoes.map(c=><option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{fontSize:11,color:"#6B8299",marginBottom:16,padding:"8px 12px",background:"rgba(0,201,167,0.05)",borderRadius:8}}>
+              💡 Palavras-chave usadas para correlacionar com lançamentos importados.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowAgendaModal(false)}>Cancelar</button>
+              <button style={{...s.btn(),flex:1}} onClick={saveAgendaItem}>Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reclassify Modal */}
+      {reclassifyList&&(
+        <div style={s.modal} onClick={()=>setReclassifyList(null)}>
+          <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Reclassificar Lançamentos</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:4}}>{reclassifyList.items.length} lançamento(s) batem com a nova palavra-chave.</div>
+            <div style={{fontSize:12,color:"#00C9A7",marginBottom:16}}>Nova: <strong>{reclassifyList.rd} / {reclassifyList.classificacao}</strong></div>
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <button style={{...s.btn("ghost"),fontSize:12,padding:"5px 12px"}} onClick={()=>setReclassifySelected(reclassifyList.items.map(t=>t.id))}>Selecionar todos</button>
+              <button style={{...s.btn("ghost"),fontSize:12,padding:"5px 12px"}} onClick={()=>setReclassifySelected([])}>Desmarcar todos</button>
+            </div>
+            <div style={{maxHeight:300,overflowY:"auto",marginBottom:16}}>
+              {reclassifyList.items.map(t=>(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #1E2D3D"}}>
+                  <input type="checkbox" checked={reclassifySelected.includes(t.id)}
+                    onChange={e=>setReclassifySelected(prev=>e.target.checked?[...prev,t.id]:prev.filter(x=>x!==t.id))}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{t.description}</div>
+                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {fmt(Math.abs(Number(t.value)))} · {t.rd}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setReclassifyList(null)}>Cancelar</button>
+              <button style={{...s.btn(),flex:1}} onClick={applyReclassify} disabled={reclassifySelected.length===0}>
+                Aplicar em {reclassifySelected.length} lançamento(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Associate Modal */}
+      {associating&&(
+        <div style={s.modal} onClick={()=>setAssociating(null)}>
+          <div style={{...s.mbox,maxWidth:640}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Associar Lançamento</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Selecione o lançamento que quitou: <strong style={{color:"#E8EDF2"}}>{associating.nome}</strong> em {MONTHS[associating.mes-1]}/{associating.ano}</div>
+            <div style={{maxHeight:350,overflowY:"auto"}}>
+              {transactions.filter(t=>{
+                const p=t.date?.split("/");
+                return p?.length===3&&parseInt(p[1])===associating.mes&&parseInt(p[2])===associating.ano&&Number(t.value)<0;
+              }).map(t=>(
+                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:"pointer"}}
+                  onClick={()=>associateTransaction(associating.ocId,t.id)}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{t.description}</div>
+                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}</div>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:700,color:"#E8445A"}}>{fmt(Number(t.value))}</span>
+                </div>
+              ))}
+            </div>
+            <button style={{...s.btn("ghost"),width:"100%",marginTop:14}} onClick={()=>setAssociating(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {/* Review modal */}
       {reviewItems&&(
         <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes}/>
@@ -1528,3 +1785,4 @@ export default function App() {
     </div>
   );
 }
+// VERSAO: FluxoCaixa180626 v2.0 - AGENDA
