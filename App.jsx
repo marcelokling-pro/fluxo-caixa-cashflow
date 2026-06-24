@@ -411,9 +411,9 @@ const BarMini = ({data}) => {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const mkS = (open) => ({
-  app:  {fontFamily:"'Inter','Segoe UI',sans-serif",background:"#0F1923",minHeight:"100vh",color:"#E8EDF2"},
-  sidebar:{position:"fixed",left:0,top:0,bottom:0,width:open?228:60,background:"#162130",borderRight:"1px solid #1E2D3D",display:"flex",flexDirection:"column",zIndex:100,transition:"width .2s ease",overflow:"hidden"},
-  main: {marginLeft:open?228:60,padding:"28px 28px 64px",transition:"margin-left .2s ease"},
+  app:  {fontFamily:"'Inter','Segoe UI',sans-serif",background:"#0F1923",minHeight:"100vh",color:"#E8EDF2",overflowX:"hidden"},
+  sidebar:{position:"fixed",left:0,top:0,bottom:0,width:open?228:60,background:"#162130",borderRight:"1px solid #1E2D3D",display:"flex",flexDirection:"column",zIndex:100,transition:"width .2s ease",overflow:"hidden",boxSizing:"border-box"},
+  main: {marginLeft:open?228:60,padding:"20px 16px 64px",transition:"margin-left .2s ease",minWidth:0,boxSizing:"border-box"},
   card: {background:"#162130",borderRadius:12,padding:20,border:"1px solid #1E2D3D"},
   btn:  (v="primary")=>({padding:"9px 18px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,
           background:v==="primary"?"#00C9A7":v==="danger"?"#E8445A":v==="warn"?"#F5A623":"#1E2D3D",
@@ -721,7 +721,7 @@ export default function App() {
   const [user,setUser]         = useState(null);
   const [authChecked,setAuthChecked] = useState(false);
   const [tab,setTab]           = useState("dashboard");
-  const [sidebarOpen,setSidebarOpen] = useState(true);
+  const [sidebarOpen,setSidebarOpen] = useState(window.innerWidth > 768);
   const [transactions,setTransactions] = useState([]);
   const [customCats,setCustomCats] = useState([]);
   const [saldoInicial,setSaldoInicial] = useState(0);
@@ -1053,6 +1053,30 @@ export default function App() {
 
   return (
     <div style={s.app}>
+      <style>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; overflow-x: hidden; background: #0F1923; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0F1923; }
+        ::-webkit-scrollbar-thumb { background: #1E2D3D; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2D4056; }
+        @media (max-width: 768px) {
+          th, td { padding: 6px 4px !important; font-size: 11px !important; }
+          .hide-mobile { display: none !important; }
+        }
+      `}</style>
+      <style>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 0; overflow-x: hidden; background: #0F1923; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0F1923; }
+        ::-webkit-scrollbar-thumb { background: #1E2D3D; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2D4056; }
+        @media (max-width: 768px) {
+          table { font-size: 11px !important; }
+          th, td { padding: 6px 6px !important; }
+        }
+      `}</style>
       {/* ── Sidebar ── */}
       <div style={s.sidebar}>
         <div style={{padding:sidebarOpen?"20px 24px 16px":"20px 0 16px",borderBottom:"1px solid #1E2D3D",display:"flex",alignItems:"center",justifyContent:sidebarOpen?"space-between":"center"}}>
