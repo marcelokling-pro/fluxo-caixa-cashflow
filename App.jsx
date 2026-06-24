@@ -1103,22 +1103,21 @@ export default function App() {
                 <div key={m.l} style={s.card}><div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:22,fontWeight:700,color:m.c}}>{m.v}</div></div>
               ))}
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:20}}>
-              <div style={s.card}>
-                <div style={{fontSize:11,color:"#6B8299",marginBottom:14,textTransform:"uppercase"}}>Forecast 6 Meses</div>
-                <div style={{display:"flex",gap:14,marginBottom:10}}><span style={{fontSize:12,color:"#00C9A7"}}>■ Receitas</span><span style={{fontSize:12,color:"#E8445A"}}>■ Despesas</span></div>
-                <BarMini data={forecast}/>
-              </div>
+            <div style={{marginBottom:20}}>
               <div style={s.card}>
                 <div style={{fontSize:11,color:"#6B8299",marginBottom:14,textTransform:"uppercase"}}>Por R/D</div>
-                {RD_TYPES.map(rd=>{
-                  const total=transactions.filter(t=>t.rd===rd).reduce((s,t)=>s+Number(t.value),0);
-                  if(total===0) return null;
-                  return (<div key={rd} style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                    <span style={{fontSize:12,color:rdColor[rd]||"#6B8299"}}>{rd}</span>
-                    <span style={{fontSize:12,fontWeight:600,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</span>
-                  </div>);
-                })}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  {RD_TYPES.map(rd=>{
+                    const total=transactions.filter(t=>t.rd===rd).reduce((s,t)=>s+Number(t.value),0);
+                    if(total===0) return null;
+                    return (
+                      <div key={rd} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",background:"rgba(255,255,255,0.03)",borderRadius:8,border:"1px solid #1E2D3D"}}>
+                        <span style={{fontSize:12,color:rdColor[rd]||"#6B8299",fontWeight:500}}>{rd}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div style={s.card}>
