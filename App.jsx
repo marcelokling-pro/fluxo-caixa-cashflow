@@ -411,9 +411,9 @@ const BarMini = ({data}) => {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const mkS = (open) => ({
-  app:  {fontFamily:"'Inter','Segoe UI',sans-serif",background:"#0F1923",minHeight:"100vh",color:"#E8EDF2",overflowX:"hidden"},
-  sidebar:{position:"fixed",left:0,top:0,bottom:0,width:open?228:60,background:"#162130",borderRight:"1px solid #1E2D3D",display:"flex",flexDirection:"column",zIndex:100,transition:"width .2s ease",overflow:"hidden",boxSizing:"border-box"},
-  main: {marginLeft:open?228:60,padding:"20px 16px 64px",transition:"margin-left .2s ease",minWidth:0,boxSizing:"border-box"},
+  app:  {fontFamily:"'Inter','Segoe UI',sans-serif",background:"#0F1923",minHeight:"100vh",color:"#E8EDF2"},
+  sidebar:{position:"fixed",left:0,top:0,bottom:0,width:open?228:60,background:"#162130",borderRight:"1px solid #1E2D3D",display:"flex",flexDirection:"column",zIndex:100,transition:"width .2s ease",overflow:"hidden"},
+  main: {marginLeft:open?228:60,padding:"28px 28px 64px",transition:"margin-left .2s ease"},
   card: {background:"#162130",borderRadius:12,padding:20,border:"1px solid #1E2D3D"},
   btn:  (v="primary")=>({padding:"9px 18px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,
           background:v==="primary"?"#00C9A7":v==="danger"?"#E8445A":v==="warn"?"#F5A623":"#1E2D3D",
@@ -721,12 +721,15 @@ export default function App() {
   const [user,setUser]         = useState(null);
   const [authChecked,setAuthChecked] = useState(false);
   const [tab,setTab]           = useState("dashboard");
-  const [sidebarOpen,setSidebarOpen] = useState(window.innerWidth > 768);
+  const [sidebarOpen,setSidebarOpen] = useState(true);
   const [transactions,setTransactions] = useState([]);
   const [customCats,setCustomCats] = useState([]);
   const [saldoInicial,setSaldoInicial] = useState(0);
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
   const [sortDir,setSortDir]   = useState("desc");
+  const [confirmDelete,setConfirmDelete] = useState(null);
+  const [searchText,setSearchText] = useState("");
+  const [sortCol,setSortCol] = useState("date");
   const [drillDown,setDrillDown] = useState(null); // {rd, dateFrom, dateTo, label}
   const [showModal,setShowModal] = useState(false);
   const [modalMode,setModalMode] = useState("lancamento");
@@ -820,11 +823,32 @@ export default function App() {
       if(filter.dateTo)                  list=list.filter(t=>dateToSortable(t.date)<=filter.dateTo);
     }
     list.sort((a,b)=>{
-      const da=dateToSortable(a.date)||"", db=dateToSortable(b.date)||"";
-      return sortDir==="asc"?da.localeCompare(db):db.localeCompare(da);
+      if(sortCol==="value"){
+        const va=Number(a.value), vb=Number(b.value);
+        return sortDir==="asc"?va-vb:vb-va;
+      }
+      let va="", vb="";
+      if(sortCol==="date"){va=dateToSortable(a.date)||"";vb=dateToSortable(b.date)||"";}
+      else if(sortCol==="description"){va=a.description||"";vb=b.description||"";}
+      else if(sortCol==="rd"){va=a.rd||"";vb=b.rd||"";}
+      else if(sortCol==="classificacao"){va=a.classificacao||"";vb=b.classificacao||"";}
+      else if(sortCol==="conta"){va=a.conta||"";vb=b.conta||"";}
+      else{va=dateToSortable(a.date)||"";vb=dateToSortable(b.date)||"";}
+      return sortDir==="asc"?va.localeCompare(vb):vb.localeCompare(va);
     });
+    if(searchText.trim()){
+      const q=searchText.toLowerCase();
+      list=list.filter(t=>
+        (t.description||"").toLowerCase().includes(q)||
+        (t.rd||"").toLowerCase().includes(q)||
+        (t.classificacao||"").toLowerCase().includes(q)||
+        (t.conta||"").toLowerCase().includes(q)||
+        (t.date||"").includes(q)||
+        String(Math.abs(Number(t.value))).includes(q)
+      );
+    }
     return list;
-  },[transactions,filter,sortDir,drillDown]);
+  },[transactions,filter,sortDir,sortCol,drillDown,searchText]);
 
   const fluxoData = useMemo(()=>{
     let list=transactions;
@@ -1026,7 +1050,8 @@ export default function App() {
   const toggleStatus = async (t) => {
     await supabase.from("transactions").update({status:t.status==="pendente"?"confirmado":"pendente",needs_review:false}).eq("id",t.id);
   };
-  const deleteT = async (id) => { await supabase.from("transactions").delete().eq("id",id); };
+  const deleteT = (id) => setConfirmDelete(id);
+  const doDelete = async () => { await supabase.from("transactions").delete().eq("id",confirmDelete); setConfirmDelete(null); };
   const clearAll = async () => {
     await supabase.from("transactions").delete().neq("id","00000000-0000-0000-0000-000000000000");
     await supabase.from("settings").upsert({key:"saldo_inicial",value:"0"});
@@ -1054,28 +1079,11 @@ export default function App() {
   return (
     <div style={s.app}>
       <style>{`
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; overflow-x: hidden; background: #0F1923; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { background: #0F1923; margin: 0; padding: 0; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: #0F1923; }
         ::-webkit-scrollbar-thumb { background: #1E2D3D; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #2D4056; }
-        @media (max-width: 768px) {
-          th, td { padding: 6px 4px !important; font-size: 11px !important; }
-          .hide-mobile { display: none !important; }
-        }
-      `}</style>
-      <style>{`
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; overflow-x: hidden; background: #0F1923; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0F1923; }
-        ::-webkit-scrollbar-thumb { background: #1E2D3D; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #2D4056; }
-        @media (max-width: 768px) {
-          table { font-size: 11px !important; }
-          th, td { padding: 6px 6px !important; }
-        }
       `}</style>
       {/* ── Sidebar ── */}
       <div style={s.sidebar}>
@@ -1187,6 +1195,11 @@ export default function App() {
               </div>
               <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Novo</button>
             </div>
+            <div style={{marginBottom:10,position:"relative"}}>
+              <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:16,pointerEvents:"none"}}>🔍</div>
+              <input style={{...s.input,paddingLeft:38}} placeholder="Buscar em qualquer campo — descrição, data, valor, classificação..."
+                value={searchText} onChange={e=>setSearchText(e.target.value)}/>
+            </div>
             <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
               <select style={s.sel} value={filter.rd} onChange={e=>setFilter(f=>({...f,rd:e.target.value}))}>
                 <option value="todos">Todos R/D</option>{RD_TYPES.map(r=><option key={r}>{r}</option>)}
@@ -1206,7 +1219,14 @@ export default function App() {
             </div>
             <div style={s.card}>
               <table style={s.table}>
-                <thead><tr>{["Data","Descrição","R/D","Classificação","Conta","Valor","Status",""].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <thead><tr>
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
+                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap"}}
+                      onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
+                      {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
+                    </th>
+                  ))}
+                </tr></thead>
                 <tbody>
                   {filtered.map(t=>(
                     <tr key={t.id} style={t.needs_review?{background:"rgba(245,166,35,0.04)"}:{}}>
@@ -1796,6 +1816,19 @@ export default function App() {
         </div>
       )}
 
+      {confirmDelete&&(
+        <div style={s.modal} onClick={()=>setConfirmDelete(null)}>
+          <div style={{...s.mbox,maxWidth:380}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Confirmar exclusão</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:24}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={doDelete}>Sim, excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Review modal */}
       {reviewItems&&(
         <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes}/>
@@ -1808,4 +1841,3 @@ export default function App() {
     </div>
   );
 }
-// VERSAO: FluxoCaixa180626 v2.0 - AGENDA
