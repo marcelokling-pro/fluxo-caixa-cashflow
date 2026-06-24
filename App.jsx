@@ -1426,7 +1426,15 @@ export default function App() {
                       </td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.detalhe_class||"—"}</td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>
+                        {(()=>{
+                          const d = String(t.description||"").toUpperCase().trim();
+                          const custom = [...customCats].sort((a,b)=>b.name.length-a.name.length).find(c=>d.includes(c.name.toUpperCase()));
+                          if(custom) return custom.name;
+                          const base = SORTED_CLASSIFICATIONS.find(c=>d.includes(c.d.toUpperCase().trim()));
+                          return base ? base.d : "—";
+                        })()}
+                      </td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.conta||"—"}</td>
                       <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
                         {transDetailsMap[t.id]>0
