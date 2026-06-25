@@ -1200,8 +1200,17 @@ export default function App() {
       const autoDesc = guessCol(["ESTABELECIMENTO","HISTORICO","DESCRICAO","DESCRIPTION","LANCAMENTO","COMPLEMENTO"]);
       const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"]);
       const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"]);
+      // Auto-extract conta from file header rows (before data header)
+      let autoContaValue = "";
+      for(let i=0;i<Math.min(hi,allRows.length);i++){
+        const row = allRows[i];
+        const rowText = row.map(c=>String(c||"")).join(";");
+        const m = rowText.match(/(?:conta|account|n[ºo°]\.?\s*conta|numero\s*conta|ag[eê]ncia\/conta|ag\/conta)[:\s;]+([0-9\-\/\.]+)/i);
+        if(m) { autoContaValue = m[1].trim(); break; }
+      }
       setColumnMapper({file, headers, preview, allRows, headerIdx:hi, mode, transaction,
         map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta},
+        autoContaValue,
         isCartao: mode==="detalhe",
       });
     } catch(e) {
@@ -1211,7 +1220,7 @@ export default function App() {
 
   const processColumnMapper = async () => {
     if(!columnMapper) return;
-    const {file, allRows, headerIdx, mode, transaction, map, isCartao} = columnMapper;
+    const {file, allRows, headerIdx, mode, transaction, map, isCartao, autoContaValue} = columnMapper;
     // Infer year from filename — get the last 4-digit number (avoids card numbers like 3274)
     const yearMatches = file.name.match(/\d{4}/g);
     const inferredYear = yearMatches ? yearMatches[yearMatches.length-1] : String(new Date().getFullYear());
@@ -1220,7 +1229,7 @@ export default function App() {
       const rawDate = String(cols[map.date]||"").trim();
       const rawDesc = String(cols[map.desc]||"").trim();
       const rawVal  = cols[map.val];
-      const rawConta= map.conta>=0 ? String(cols[map.conta]||"").trim() : "";
+      const rawConta= map.conta>=0 ? (String(cols[map.conta]||"").trim() || autoContaValue||"") : (autoContaValue||"");
       if(!rawDesc) return null;
       // Parse date: DD/MM, DD/MM/YYYY, or Excel serial
       let date = "";
@@ -2345,7 +2354,7 @@ export default function App() {
                   {/* Items table */}
                   <div style={{maxHeight:340,overflowY:"auto",marginBottom:14}}>
                     <table style={s.table}>
-                      <thead>
+                      <thead style={{position:"sticky",top:0,zIndex:5,background:"#162130"}}>
                         <tr>
                           <th style={s.th}>Data</th>
                           <th style={s.th}>Descrição</th>
@@ -2453,12 +2462,17 @@ export default function App() {
               ].map(({label,key,required,color})=>(
                 <div key={key} style={{background:"#0F1923",borderRadius:8,padding:"10px 14px",border:`1px solid ${color}22`}}>
                   <div style={{fontSize:11,color,marginBottom:6,fontWeight:600}}>{label} {required&&<span style={{color:"#E8445A"}}>*</span>}</div>
-                  <select style={{...s.input,padding:"6px 10px",fontSize:12}}
-                    value={columnMapper.map[key]}
-                    onChange={e=>setColumnMapper(m=>({...m,map:{...m.map,[key]:Number(e.target.value)}}))}>
-                    {!required&&<option value={-1}>— não importar —</option>}
-                    {columnMapper.headers.map((h,i)=><option key={i} value={i}>{h||`col ${i}`}</option>)}
-                  </select>
+                  {key==="conta"&&columnMapper.autoContaValue
+                    ? <div style={{background:"#162130",border:"1px solid #1E2D3D",borderRadius:6,padding:"6px 10px",fontSize:12,color:"#00C9A7"}}>
+                        ✓ Detectado automaticamente: <strong>{columnMapper.autoContaValue}</strong>
+                      </div>
+                    : <select style={{...s.input,padding:"6px 10px",fontSize:12}}
+                        value={columnMapper.map[key]}
+                        onChange={e=>setColumnMapper(m=>({...m,map:{...m.map,[key]:Number(e.target.value)}}))}>
+                        {!required&&<option value={-1}>— não importar —</option>}
+                        {columnMapper.headers.map((h,i)=><option key={i} value={i}>{h||`col ${i}`}</option>)}
+                      </select>
+                  }
                 </div>
               ))}
             </div>
