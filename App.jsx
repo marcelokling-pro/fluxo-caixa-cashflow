@@ -794,7 +794,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
 export default function App() {
   const [user,setUser]         = useState(null);
   const [authChecked,setAuthChecked] = useState(false);
-  const [tab,setTab]           = useState("dashboard");
+  const [tab,setTab]           = useState("fluxo");
   const [sidebarOpen,setSidebarOpen] = useState(true);
   const [transactions,setTransactions] = useState([]);
   const [customCats,setCustomCats] = useState([]);
@@ -1246,15 +1246,15 @@ export default function App() {
   if(!user) return <LoginScreen onLogin={setUser}/>;
 
   const navItems=[
-    {id:"dashboard",    icon:"⬡", label:"Dashboard"},
-    {id:"lancamentos",  icon:"≡", label:"Lançamentos"},
     {id:"fluxo",        icon:"⊟", label:"Fluxo de Caixa"},
+    {id:"lancamentos",  icon:"≡", label:"Lançamentos"},
     {id:"importar",     icon:"↑", label:"Importar Extrato"},
     {id:"pendencias",   icon:"◎", label:"Pendências"},
     {id:"forecast",     icon:"∿", label:"Forecast"},
     {id:"projecao",     icon:"↗", label:"Projeção"},
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
-    {id:"agenda",icon:"📅",label:"Agenda"},
+    {id:"agenda",       icon:"📅",label:"Agenda"},
+    {id:"operacional",  icon:"⚙", label:"Operacional"},
   ];
 
   const rdColor={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#00C9A7","DESPESA FINANCEIRA":"#F5A623","SALDO INICIAL":"#6B8299"};
@@ -1287,15 +1287,11 @@ export default function App() {
         </div>
         {sidebarOpen&&(
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
-            <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>{user.email}</div>
-            <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>Saldo: <span style={{color:"#00C9A7",fontWeight:600}}>{fmt(saldoInicial)}</span> <span style={{color:"#00C9A7",cursor:"pointer",marginLeft:6}} onClick={()=>supabase.auth.signOut()}>Sair</span></div>
-            <div style={{display:"flex",gap:6}}>
-              <button style={{...s.btn("ghost"),fontSize:11,padding:"5px 10px",flex:1}} onClick={()=>exportFluxoCSV(transactions)}>⬇ CSV</button>
-              <button style={{...s.btn("danger"),fontSize:11,padding:"5px 10px"}} onClick={()=>setShowConfirmClear(true)}>🗑</button>
+            <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.2 · by MKK</span>
+              <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
-            <div style={{fontSize:10,color:"#6B8299",marginTop:8}}>☁ Tempo real</div>
-            <div style={{fontSize:9,color:"#00C9A7",marginTop:4,opacity:0.5}}>v FluxoCaixa180626_v3.1</div>
-            <div style={{fontSize:9,color:"#1E4D3D",marginTop:4,background:"rgba(0,201,167,0.08)",padding:"3px 6px",borderRadius:4}}>v3.1 — Detalhe Classificação</div>
           </div>
         )}
       </div>
@@ -1338,7 +1334,7 @@ export default function App() {
             <div style={s.card}>
               <div style={{fontSize:11,color:"#6B8299",marginBottom:12,textTransform:"uppercase"}}>Últimos Lançamentos</div>
               <table style={s.table}>
-                <thead><tr>{["Data","Descrição","R/D","Classificação","Valor","Status"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{["Data","Descrição","R/D","Classificação","Conta","Valor","Status"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {transactions.slice(0,8).map(t=>(
                     <tr key={t.id}>
@@ -1346,6 +1342,7 @@ export default function App() {
                       <td style={{...s.td,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.conta||"—"}</td>
                       <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
                       <td style={s.td}><span style={{fontSize:11,color:t.needs_review?"#F5A623":t.status==="confirmado"?"#2ECC71":"#6B8299"}}>{t.needs_review?"⚠ revisar":t.status}</span></td>
                     </tr>
@@ -1400,11 +1397,12 @@ export default function App() {
               </button>
               <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""})}>Limpar filtros</button>
             </div>
-            <div style={s.card}>
+            <div style={{...s.card,padding:0,overflow:"hidden"}}>
+              <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 280px)"}}>
               <table style={s.table}>
-                <thead><tr>
+                <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
                   {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Detalhe Class.",k:"detalhe_class"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
-                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap"}}
+                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
                     </th>
@@ -1455,6 +1453,7 @@ export default function App() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </>
         )}
@@ -1464,7 +1463,10 @@ export default function App() {
           <>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div><div style={{fontSize:21,fontWeight:700}}>Fluxo de Caixa</div><div style={{fontSize:13,color:"#6B8299",marginTop:2}}>Agrupado por {fluxoGroupBy==="rd"?"R/D":fluxoGroupBy==="classificacao"?"Classificação":"Mês"}</div></div>
-              <button style={s.btn("ghost")} onClick={()=>exportFluxoCSV(transactions)}>⬇ Exportar CSV</button>
+              <div style={{display:"flex",gap:8}}>
+                <button style={s.btn("ghost")} onClick={()=>{setModalMode("saldo");setSaldoForm(String(saldoInicial));setShowModal(true)}}>Saldo Inicial</button>
+                <button style={s.btn("ghost")} onClick={()=>exportFluxoCSV(transactions)}>⬇ CSV</button>
+              </div>
             </div>
             <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
               <div style={{display:"flex",gap:4,background:"#162130",borderRadius:10,padding:4,border:"1px solid #1E2D3D"}}>
@@ -1476,13 +1478,15 @@ export default function App() {
                 <option value="todos">Todos os meses</option>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
               </select>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:20}}>
               {[
-                {l:"Total Receitas",v:transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0),c:"#2ECC71"},
-                {l:"Total Despesas",v:Math.abs(transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Number(t.value),0)),c:"#E8445A"},
-                {l:"Resultado",v:transactions.reduce((s,t)=>s+Number(t.value),0),c:transactions.reduce((s,t)=>s+Number(t.value),0)>=0?"#00C9A7":"#E8445A"}
+                {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
+                {l:"Total Receitas", v:transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0), c:"#2ECC71"},
+                {l:"Total Despesas", v:Math.abs(transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Number(t.value),0)), c:"#E8445A"},
+                {l:"Resultado",      v:transactions.reduce((s,t)=>s+Number(t.value),0), c:transactions.reduce((s,t)=>s+Number(t.value),0)>=0?"#00C9A7":"#E8445A"},
+                {l:"Saldo Atual",    v:metrics.saldo, c:metrics.saldo>=0?"#00C9A7":"#E8445A"},
               ].map(m=>(
-                <div key={m.l} style={s.card}><div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:22,fontWeight:700,color:m.c}}>{fmt(m.v)}</div></div>
+                <div key={m.l} style={s.card}><div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:20,fontWeight:700,color:m.c}}>{fmt(m.v)}</div></div>
               ))}
             </div>
             <div style={s.card}>
@@ -1918,6 +1922,96 @@ export default function App() {
         {/* CLASSIFICAÇÕES */}
         {tab==="classificacoes"&&(
           <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s}/>
+        )}
+
+        {/* OPERACIONAL */}
+        {tab==="operacional"&&(
+          <>
+            <div style={{fontSize:21,fontWeight:700,marginBottom:20}}>⚙ Operacional</div>
+
+            {/* Sistema */}
+            <div style={{...s.card,marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>FluxoCaixa180626_v3.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
+              </div>
+              <div style={{display:"flex",gap:10,marginTop:14}}>
+                <button style={{...s.btn("ghost"),fontSize:12,padding:"7px 14px"}} onClick={()=>exportFluxoCSV(transactions)}>⬇ Exportar CSV</button>
+                <button style={{...s.btn("danger"),fontSize:12,padding:"7px 14px"}} onClick={()=>setShowConfirmClear(true)}>🗑 Apagar todos os dados</button>
+              </div>
+            </div>
+
+            {/* Histórico de arquivos importados */}
+            <div style={s.card}>
+              <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Histórico de Importações</div>
+              {(()=>{
+                // Group transactions by origin and conta to infer imports
+                const extratos = {};
+                transactions.filter(t=>t.origin==="extrato").forEach(t=>{
+                  const key = t.conta||"sem conta";
+                  if(!extratos[key]) extratos[key]={conta:key,count:0,min:"",max:""};
+                  extratos[key].count++;
+                  if(!extratos[key].min||t.date<extratos[key].min) extratos[key].min=t.date;
+                  if(!extratos[key].max||t.date>extratos[key].max) extratos[key].max=t.date;
+                });
+                const rows = Object.values(extratos);
+                if(!rows.length) return <div style={{color:"#6B8299",fontSize:13}}>Nenhum extrato importado ainda.</div>;
+                return (
+                  <table style={s.table}>
+                    <thead><tr>
+                      <th style={s.th}>Conta</th>
+                      <th style={s.th}>Lançamentos</th>
+                      <th style={s.th}>Período início</th>
+                      <th style={s.th}>Período fim</th>
+                    </tr></thead>
+                    <tbody>
+                      {rows.map(r=>(
+                        <tr key={r.conta}>
+                          <td style={s.td}>{r.conta}</td>
+                          <td style={s.td}>{r.count}</td>
+                          <td style={s.td}>{r.min||"—"}</td>
+                          <td style={s.td}>{r.max||"—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            {/* Detalhamentos salvos */}
+            <div style={{...s.card,marginTop:16}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Detalhamentos Vinculados</div>
+              {Object.keys(transDetailsMap).length===0
+                ? <div style={{color:"#6B8299",fontSize:13}}>Nenhum detalhamento salvo ainda.</div>
+                : (()=>{
+                    const linked = transactions.filter(t=>transDetailsMap[t.id]>0);
+                    return (
+                      <table style={s.table}>
+                        <thead><tr>
+                          <th style={s.th}>Data</th>
+                          <th style={s.th}>Descrição</th>
+                          <th style={s.th}>Itens</th>
+                          <th style={s.th}>Valor</th>
+                        </tr></thead>
+                        <tbody>
+                          {linked.map(t=>(
+                            <tr key={t.id} style={{cursor:"pointer"}} onClick={()=>{setTab("lancamentos");setTimeout(()=>openDetailModal(t),100);}}>
+                              <td style={s.td}>{t.date}</td>
+                              <td style={{...s.td,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                              <td style={s.td}><span style={{background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>📎{transDetailsMap[t.id]}</span></td>
+                              <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    );
+                  })()
+              }
+            </div>
+          </>
         )}
 
       </div>{/* end main */}
