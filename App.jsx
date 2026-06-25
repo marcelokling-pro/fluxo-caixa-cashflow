@@ -841,6 +841,8 @@ export default function App() {
   const [detailSaving,setDetailSaving]     = useState(false);
   const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
   const [transDetailsMap,setTransDetailsMap] = useState({}); // {transaction_id: count}
+  // v3.3 — column mapper
+  const [columnMapper,setColumnMapper] = useState(null); // {file, headers, preview, mode, transaction, isCartao}
 
   const s = mkS(sidebarOpen);
   const showToast = (msg,kind="success") => { setToast({msg,kind}); setTimeout(()=>setToast(null),3500); };
@@ -1018,46 +1020,14 @@ export default function App() {
   };
 
   const handleDetailFile = async (file, transaction) => {
-    // Primeiro pergunta se é fatura de cartão antes de processar
-    setDetailPendingFile(file);
+    setDetailPendingFile(null);
+    await openColumnMapper(file, "detalhe", transaction);
   };
 
   const processDetailFile = async (file, transaction, isCartao) => {
     setDetailPendingFile(null);
-    setDetailLoading(true);
-    try {
-      if (!window.XLSX) {
-        await new Promise((res,rej) => {
-          const s = document.createElement("script");
-          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          s.onload = res; s.onerror = rej;
-          document.head.appendChild(s);
-        });
-      }
-      const buffer = await file.arrayBuffer();
-      const wb = window.XLSX.read(buffer, {type:"array"});
-      const parsed = parseExcelItau(wb);
-      if (!parsed.length) { showToast("Nenhum item encontrado no Excel.","error"); setDetailLoading(false); return; }
-      const items = parsed.map(row => {
-        // Se é fatura de cartão, valores positivos viram negativos (são despesas)
-        const value = isCartao ? -Math.abs(row.value) : row.value;
-        const local = localClassify(row.description, customCats);
-        return {
-          transaction_id: transaction.id,
-          date: row.date,
-          description: row.description,
-          value,
-          rd: local?.r||"",
-          classificacao: local?.c||"",
-          ai_classified: false,
-          needs_review: !local,
-        };
-      });
-      setDetailItems(items);
-    } catch(e) {
-      showToast("Erro ao ler Excel: "+e.message,"error");
-    }
-    setDetailLoading(false);
+    await openColumnMapper(file, "detalhe", transaction);
+    // isCartao will be set in the mapper UI
   };
 
   const saveDetailItems = async () => {
@@ -1183,19 +1153,119 @@ export default function App() {
     setEditingId(t.id); setModalMode("lancamento"); setShowModal(true);
   };
 
+  // ── Column mapper — v3.3 ─────────────────────────────────────────────────
+  const openColumnMapper = async (file, mode, transaction=null) => {
+    try {
+      let headers = [], preview = [], allRows = [];
+      const isXlsx = file.name.match(/\.(xlsx|xls)$/i);
+      if (isXlsx) {
+        if (!window.XLSX) {
+          await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+        }
+        const buf = await file.arrayBuffer();
+        const wb = window.XLSX.read(buf,{type:"array"});
+        allRows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+      } else {
+        const text = await file.text();
+        const cleaned = text.replace(/^\uFEFF/,"");
+        const lines = cleaned.split(/\r?\n/).filter(l=>l.trim());
+        const sep = lines[0].includes(";") ? ";" : ",";
+        allRows = lines.map(l=>l.split(sep).map(c=>c.replace(/"/g,"").trim()));
+      }
+      // Find best header row: prefer the row whose NEXT rows have date-like values in first non-empty col
+      let hi = 0, bestScore = 0;
+      for(let i=0;i<Math.min(30,allRows.length);i++){
+        const row = allRows[i];
+        const filled = row.filter(c=>String(c).trim()).length;
+        if(filled < 2) continue;
+        // Check if next 2 rows have date-like values
+        let dateScore = 0;
+        for(let j=i+1;j<Math.min(i+4,allRows.length);j++){
+          const nextRow = allRows[j];
+          const firstFilled = nextRow.find(c=>String(c).trim());
+          if(firstFilled && /^\d{2}\/\d{2}/.test(String(firstFilled))) dateScore+=2;
+        }
+        const textCells = row.filter(c=>isNaN(Number(String(c).replace(/[,\.]/g,"")))&&String(c).trim()&&!/^\d{2}\/\d{2}/.test(String(c))).length;
+        const score = dateScore * 3 + textCells;
+        if(score > bestScore){ bestScore = score; hi = i; }
+      }
+      headers = allRows[hi].map((c,i)=>String(c).trim()||`col ${i}`);
+      preview = allRows.slice(hi+1,hi+4).map(r=>headers.map((_,i)=>String(r[i]||"")));
+      // Auto-detect columns
+      const guessCol = (aliases) => {
+        const idx = headers.findIndex(h=>aliases.some(a=>h.toUpperCase().includes(a.toUpperCase())));
+        return idx >= 0 ? idx : 0;
+      };
+      const autoDate = guessCol(["DATA","DATE","DT","DT_MOV","DATA_MOV"]);
+      const autoDesc = guessCol(["ESTABELECIMENTO","HISTORICO","DESCRICAO","DESCRIPTION","LANCAMENTO","COMPLEMENTO"]);
+      const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"]);
+      const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"]);
+      setColumnMapper({file, headers, preview, allRows, headerIdx:hi, mode, transaction,
+        map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta},
+        isCartao: mode==="detalhe",
+      });
+    } catch(e) {
+      showToast("Erro ao ler arquivo: "+e.message,"error");
+    }
+  };
+
+  const processColumnMapper = async () => {
+    if(!columnMapper) return;
+    const {file, allRows, headerIdx, mode, transaction, map, isCartao} = columnMapper;
+    // Infer year from filename — get the last 4-digit number (avoids card numbers like 3274)
+    const yearMatches = file.name.match(/\d{4}/g);
+    const inferredYear = yearMatches ? yearMatches[yearMatches.length-1] : String(new Date().getFullYear());
+    const rawRows = allRows.slice(headerIdx+1);
+    const parsed = rawRows.map(cols=>{
+      const rawDate = String(cols[map.date]||"").trim();
+      const rawDesc = String(cols[map.desc]||"").trim();
+      const rawVal  = cols[map.val];
+      const rawConta= map.conta>=0 ? String(cols[map.conta]||"").trim() : "";
+      if(!rawDesc) return null;
+      // Parse date: DD/MM, DD/MM/YYYY, or Excel serial
+      let date = "";
+      if(/^\d{2}\/\d{2}$/.test(rawDate)) {
+        date = `${rawDate}/${inferredYear}`;
+      } else if(/^\d{2}\/\d{2}\/\d{4}$/.test(rawDate)) {
+        date = rawDate;
+      } else if(typeof rawDate==="number"||/^\d{5}$/.test(rawDate)) {
+        const d=new Date(Math.round((Number(rawDate)-25569)*86400*1000));
+        date=`${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
+      } else {
+        date = parseDate(rawDate);
+      }
+      if(!date||!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return null;
+      let val = parseValue(rawVal);
+      if(isNaN(val)||val===0) return null;
+      // Cartão: positivos viram negativos (despesas), negativos ficam positivos (estornos/créditos)
+      if(isCartao) val = -val;
+      return {date, description:rawDesc, value:val, conta:rawConta};
+    }).filter(Boolean);
+
+    setColumnMapper(null);
+
+    if(mode==="extrato"){
+      if(!parsed.length){showToast("Nenhum lançamento encontrado.","error");return;}
+      const newRows = parsed.filter(r=>!importedHashes.has(generateHash(r.date,r.description,r.value)));
+      setPendingImport({fileName:file.name,rows:parsed,newRows,dups:parsed.length-newRows.length});
+      setTab("importar");
+    } else {
+      // detalhe
+      if(!parsed.length){showToast("Nenhum item encontrado.","error");return;}
+      setDetailLoading(true);
+      const items = parsed.map(row=>{
+        const local = localClassify(row.description, customCats);
+        return {transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:local?.r||"",classificacao:local?.c||"",ai_classified:false,needs_review:!local};
+      });
+      setDetailItems(items);
+      setDetailLoading(false);
+    }
+  };
+
   // ── File import ────────────────────────────────────────────────────────────
   const handleFile = useCallback((file)=>{
     if(!file) return;
-    const reader=new FileReader();
-    reader.onload=(e)=>{
-      const parsed=parseBankCSV(e.target.result);
-      if(!parsed.length){ showToast("Nenhum lançamento encontrado no arquivo.","error"); return; }
-      const newRows=parsed.filter(r=>!importedHashes.has(generateHash(r.date,r.description,r.value)));
-      const dups=parsed.length-newRows.length;
-      setPendingImport({fileName:file.name,rows:parsed,newRows,dups});
-      setTab("importar");
-    };
-    reader.readAsText(file,"UTF-8");
+    openColumnMapper(file, "extrato");
   },[importedHashes]);
 
   // FIX #4: confirmReview redirects and cleans state properly
@@ -1670,7 +1740,7 @@ export default function App() {
                   onClick={()=>document.getElementById("fileInput").click()}>
                   <div style={{fontSize:40,marginBottom:12}}>📂</div>
                   <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Arraste o extrato ou clique para selecionar</div>
-                  <div style={{fontSize:13,color:"#6B8299"}}>CSV ou TXT — separador automático</div>
+                  <div style={{fontSize:13,color:"#6B8299"}}>CSV, TXT ou XLSX — mapeamento de colunas automático</div>
                   <div style={{fontSize:12,color:"#00C9A7",marginTop:8}}>🤖 {BASE_CLASSIFICATIONS.length} classificações locais + Gemini</div>
                   <div style={{fontSize:11,color:"#6B8299",marginTop:4}}>Duplicados ignorados automaticamente</div>
                 </div>
@@ -2334,7 +2404,90 @@ export default function App() {
         </div>
       )}
 
-      <input id="fileInput" type="file" accept=".csv,.txt" style={{display:"none"}}
+      {/* Column Mapper Modal — v3.3 */}
+      {columnMapper&&(
+        <div style={{...s.modal,zIndex:300}} onClick={()=>setColumnMapper(null)}>
+          <div style={{background:"#162130",borderRadius:16,padding:28,width:"100%",maxWidth:760,border:"1px solid #1E2D3D",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:17,fontWeight:700}}>🗂 Mapeamento de Colunas</div>
+                <div style={{fontSize:12,color:"#6B8299",marginTop:4}}>{columnMapper.file.name} · {columnMapper.headers.length} colunas detectadas</div>
+              </div>
+              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>setColumnMapper(null)}>✕</button>
+            </div>
+
+            {/* Preview table */}
+            <div style={{marginBottom:16,overflowX:"auto"}}>
+              <div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>Prévia do arquivo</div>
+              <table style={{...s.table,fontSize:11}}>
+                <thead>
+                  <tr>{columnMapper.headers.map((h,i)=>(
+                    <th key={i} style={{...s.th,background:
+                      columnMapper.map.date===i?"rgba(0,201,167,0.15)":
+                      columnMapper.map.desc===i?"rgba(46,204,113,0.1)":
+                      columnMapper.map.val===i?"rgba(232,68,90,0.1)":"transparent"
+                    }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {columnMapper.preview.map((row,ri)=>(
+                    <tr key={ri}>{row.map((cell,ci)=>(
+                      <td key={ci} style={{...s.td,background:
+                        columnMapper.map.date===ci?"rgba(0,201,167,0.07)":
+                        columnMapper.map.desc===ci?"rgba(46,204,113,0.05)":
+                        columnMapper.map.val===ci?"rgba(232,68,90,0.05)":"transparent"
+                      ,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cell}</td>
+                    ))}</tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Field mapping */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+              {[
+                {label:"📅 Data",key:"date",required:true,color:"#00C9A7"},
+                {label:"📝 Descrição",key:"desc",required:true,color:"#2ECC71"},
+                {label:"💰 Valor",key:"val",required:true,color:"#E8445A"},
+                {label:"🏦 Conta",key:"conta",required:false,color:"#6B8299"},
+              ].map(({label,key,required,color})=>(
+                <div key={key} style={{background:"#0F1923",borderRadius:8,padding:"10px 14px",border:`1px solid ${color}22`}}>
+                  <div style={{fontSize:11,color,marginBottom:6,fontWeight:600}}>{label} {required&&<span style={{color:"#E8445A"}}>*</span>}</div>
+                  <select style={{...s.input,padding:"6px 10px",fontSize:12}}
+                    value={columnMapper.map[key]}
+                    onChange={e=>setColumnMapper(m=>({...m,map:{...m.map,[key]:Number(e.target.value)}}))}>
+                    {!required&&<option value={-1}>— não importar —</option>}
+                    {columnMapper.headers.map((h,i)=><option key={i} value={i}>{h||`col ${i}`}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Tipo arquivo — só para detalhe */}
+            {columnMapper.mode==="detalhe"&&(
+              <div style={{background:"#0F1923",borderRadius:8,padding:"12px 14px",border:"1px solid #1E2D3D",marginBottom:16}}>
+                <div style={{fontSize:11,color:"#6B8299",marginBottom:8,fontWeight:600}}>Tipo de arquivo</div>
+                <div style={{display:"flex",gap:16}}>
+                  {[{v:false,l:"Extrato bancário"},{v:true,l:"💳 Fatura de cartão (inverte sinal)"}].map(({v,l})=>(
+                    <label key={String(v)} style={{fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                      <input type="radio" name="mapperTipo" checked={columnMapper.isCartao===v}
+                        onChange={()=>setColumnMapper(m=>({...m,isCartao:v}))}/>
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setColumnMapper(null)}>Cancelar</button>
+              <button style={{...s.btn(),flex:2}} onClick={processColumnMapper}>✓ Confirmar e processar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <input id="fileInput" type="file" accept=".csv,.txt,.xlsx,.xls" style={{display:"none"}}
         onChange={e=>{const f=e.target.files[0];if(f){handleFile(f);e.target.value="";}}}/>
 
       {toast&&<div style={s.toast(toast.kind)}>{toast.msg}</div>}
