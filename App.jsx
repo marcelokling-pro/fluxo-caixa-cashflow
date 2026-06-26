@@ -845,6 +845,9 @@ export default function App() {
   const [columnMapper,setColumnMapper] = useState(null);
   // v3.5 — Extras editáveis
   const [extrasFluxo, setExtrasFluxo] = useState({investimentos:{}, contasReceber:{}});
+  const [showExtrasModal, setShowExtrasModal] = useState(false);
+  const [extrasMonthly, setExtrasMonthly] = useState({investimentos:{}, contasReceber:{}});
+  const extrasMonthlyRef = React.useRef({investimentos:{}, contasReceber:{}});
 
   const s = mkS(sidebarOpen);
   const showToast = (msg,kind="success") => { setToast({msg,kind}); setTimeout(()=>setToast(null),3500); };
@@ -877,11 +880,27 @@ export default function App() {
     if(data){
       const inv = data.find(d=>d.tipo==="investimentos");
       const rec = data.find(d=>d.tipo==="contas_receber");
+      const invM = data.find(d=>d.tipo==="investimentos_mensal");
+      const recM = data.find(d=>d.tipo==="contas_receber_mensal");
       setExtrasFluxo({
-        investimentos:  {todos: inv?.valor||0},
-        contasReceber:  {todos: rec?.valor||0},
+        investimentos: {todos: inv?.valor||0},
+        contasReceber: {todos: rec?.valor||0},
       });
+      const monthly = {
+        investimentos: invM ? JSON.parse(invM.valor_json||"{}") : {},
+        contasReceber: recM ? JSON.parse(recM.valor_json||"{}") : {},
+      };
+      extrasMonthlyRef.current = monthly;
+      setExtrasMonthly(monthly);
     }
+  };
+
+  const saveExtraMonthly = async (tipo, mes, val) => {
+    const dbTipo = tipo==="investimentos" ? "investimentos_mensal" : "contas_receber_mensal";
+    const updated = {...(extrasMonthlyRef.current[tipo]||{}), [mes]: val};
+    extrasMonthlyRef.current = {...extrasMonthlyRef.current, [tipo]: updated};
+    setExtrasMonthly({...extrasMonthlyRef.current});
+    await supabase.from("extras_fluxo").upsert({tipo:dbTipo, valor:0, valor_json:JSON.stringify(updated)},{onConflict:"tipo"});
   };
 
   const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); };
@@ -1388,7 +1407,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.6 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.7 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1649,7 +1668,10 @@ export default function App() {
               if(!activeMths.length) return null;
               return (
                 <div style={{...s.card,marginTop:16,overflowX:"auto"}}>
-                  <div style={{fontSize:11,color:"#6B8299",marginBottom:14,textTransform:"uppercase"}}>Resumo Mensal por R/D</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <div style={{fontSize:11,color:"#6B8299",textTransform:"uppercase"}}>Resumo Mensal por R/D</div>
+                    <button style={{...s.btn("ghost"),fontSize:11,padding:"5px 12px"}} onClick={()=>setShowExtrasModal(true)}>+ Investimentos / Contas a Receber</button>
+                  </div>
                   <table style={s.table}>
                     <thead>
                       <tr>
@@ -1731,6 +1753,46 @@ export default function App() {
                             </td>
                           </tr>
                         );
+                      })()}
+                      {/* TOTAL INVESTIMENTOS mensal */}
+                      {(()=>{
+                        const invVals = activeMths.map(m=>((extrasMonthly.investimentos||{})[String(MONTHS.indexOf(m)+1)])||0);
+                        const recVals = activeMths.map(m=>((extrasMonthly.contasReceber||{})[String(MONTHS.indexOf(m)+1)])||0);
+                        const tots = activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m;}).reduce((s,t)=>s+Number(t.value),0));
+                        const hasInv = invVals.some(v=>v!==0);
+                        const hasRec = recVals.some(v=>v!==0);
+                        if(!hasInv&&!hasRec) return null;
+                        // Last month with value
+                        const lastInv = invVals.filter(v=>v!==0).at(-1)||0;
+                        const lastRec = recVals.filter(v=>v!==0).at(-1)||0;
+                        return (<>
+                          {hasInv&&(
+                            <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
+                              <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>TOTAL INVESTIMENTOS</td>
+                              {invVals.map((v,i)=>(
+                                <td key={i} style={{...s.td,textAlign:"right",fontWeight:600,color:"#00C9A7"}}>{v?fmt(v):"—"}</td>
+                              ))}
+                              <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#00C9A7"}}>{fmt(lastInv)}</td>
+                            </tr>
+                          )}
+                          {hasRec&&(
+                            <tr style={{background:"rgba(46,204,113,0.04)"}}>
+                              <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>TOTAL CONTAS A RECEBER</td>
+                              {recVals.map((v,i)=>(
+                                <td key={i} style={{...s.td,textAlign:"right",fontWeight:600,color:"#2ECC71"}}>{v?fmt(v):"—"}</td>
+                              ))}
+                              <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(lastRec)}</td>
+                            </tr>
+                          )}
+                          <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
+                            <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
+                            {tots.map((v,i)=>{
+                              const total = v + invVals[i] + recVals[i];
+                              return <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</td>;
+                            })}
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec)>=0?"#2ECC71":"#E8445A"}}>{fmt(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec)}</td>
+                          </tr>
+                        </>);
                       })()}
                     </tbody>
                   </table>
@@ -2141,7 +2203,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.6 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.7 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2558,6 +2620,43 @@ export default function App() {
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setColumnMapper(null)}>Cancelar</button>
               <button style={{...s.btn(),flex:2}} onClick={processColumnMapper}>✓ Confirmar e processar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Extras Mensal Modal */}
+      {showExtrasModal&&(
+        <div style={{...s.modal,zIndex:260}} onClick={()=>setShowExtrasModal(false)}>
+          <div style={{background:"#162130",borderRadius:16,padding:28,width:"100%",maxWidth:520,border:"1px solid #1E2D3D",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Investimentos / Contas a Receber</div>
+            <div style={{fontSize:12,color:"#6B8299",marginBottom:20}}>Informe os valores por mês. A coluna Total exibirá o valor do último mês registrado.</div>
+            {MONTHS.filter(m=>transactions.some(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m;})).map(m=>{
+              const mIdx = String(MONTHS.indexOf(m)+1);
+              return (
+                <div key={m} style={{marginBottom:16,background:"#0F1923",borderRadius:8,padding:"12px 14px",border:"1px solid #1E2D3D"}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"#E8EDF2",marginBottom:10}}>{m}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <div style={{fontSize:11,color:"#00C9A7",marginBottom:4}}>Investimentos (R$)</div>
+                      <input type="number" step="0.01" style={{...s.input,padding:"6px 10px",fontSize:12}}
+                        defaultValue={(extrasMonthly.investimentos||{})[mIdx]||""}
+                        onBlur={e=>saveExtraMonthly("investimentos",mIdx,parseFloat(e.target.value)||0)}
+                        placeholder="0,00"/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"#2ECC71",marginBottom:4}}>Contas a Receber (R$)</div>
+                      <input type="number" step="0.01" style={{...s.input,padding:"6px 10px",fontSize:12}}
+                        defaultValue={(extrasMonthly.contasReceber||{})[mIdx]||""}
+                        onBlur={e=>saveExtraMonthly("contasReceber",mIdx,parseFloat(e.target.value)||0)}
+                        placeholder="0,00"/>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowExtrasModal(false)}>Fechar</button>
             </div>
           </div>
         </div>
