@@ -1318,7 +1318,7 @@ export default function App() {
     const v=parseValue(saldoForm);
     if(isNaN(v)){ showToast("Valor inválido.","error"); return; }
     await supabase.from("settings").upsert({key:"saldo_inicial",value:String(v)},{onConflict:"key"});
-    setSaldoInicial(v); setSaldoForm(""); setShowModal(false); showToast("Saldo inicial atualizado!");
+    setSaldoInicial(v); setSaldoForm(""); setShowModal(false); showToast("Registro Incluído com Sucesso");
   };
 
   const toggleStatus = async (t) => {
@@ -1391,7 +1391,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.5 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.6 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2144,7 +2144,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.5 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.6 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
