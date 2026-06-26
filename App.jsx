@@ -1271,7 +1271,7 @@ export default function App() {
       const rawDate = String(cols[map.date]||"").trim();
       const rawDesc = String(cols[map.desc]||"").trim();
       const rawVal  = cols[map.val];
-      const rawConta= map.conta>=0 ? (String(cols[map.conta]||"").trim() || autoContaValue||"") : (autoContaValue||"");
+      const rawConta= columnMapper.autoContaValue || (map.conta>=0 && map.conta!==map.date && map.conta!==map.desc && map.conta!==map.val ? String(cols[map.conta]||"").trim() : "");
       if(!rawDesc) return null;
       // Parse date: DD/MM, DD/MM/YYYY, or Excel serial
       let date = "";
@@ -1410,7 +1410,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.4 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.5 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2234,7 +2234,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.4 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.5 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
