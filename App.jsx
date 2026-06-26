@@ -872,27 +872,24 @@ export default function App() {
     return ()=>supabase.removeChannel(ch);
   },[user]);
 
-  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); };
-
   const loadExtrasFluxo = async () => {
-    const {data} = await supabase.from("settings").select("*").in("key",["extras_investimentos","extras_contasreceber"]);
+    const {data} = await supabase.from("extras_fluxo").select("*");
     if(data){
-      const inv = data.find(d=>d.key==="extras_investimentos");
-      const rec = data.find(d=>d.key==="extras_contasreceber");
+      const inv = data.find(d=>d.tipo==="investimentos");
+      const rec = data.find(d=>d.tipo==="contas_receber");
       setExtrasFluxo({
-        investimentos:  inv ? JSON.parse(inv.value||"{}") : {},
-        contasReceber:  rec ? JSON.parse(rec.value||"{}") : {},
+        investimentos:  {todos: inv?.valor||0},
+        contasReceber:  {todos: rec?.valor||0},
       });
     }
   };
 
-  const saveExtraFluxo = (tipo, val) => {
-    const key = tipo==="investimentos" ? "extras_investimentos" : "extras_contasreceber";
-    setExtrasFluxo(prev=>{
-      const updated = {...prev[tipo], todos: val};
-      supabase.from("settings").upsert({key, value: JSON.stringify(updated)});
-      return {...prev, [tipo]: updated};
-    });
+  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); };
+
+  const saveExtraFluxo = async (tipo, val) => {
+    const dbTipo = tipo==="investimentos" ? "investimentos" : "contas_receber";
+    await supabase.from("extras_fluxo").update({valor:val, updated_at:new Date().toISOString()}).eq("tipo",dbTipo);
+    setExtrasFluxo(prev=>({...prev, [tipo]:{todos:val}}));
   };
 
   const loadTransactions = async () => {
@@ -2161,14 +2158,14 @@ export default function App() {
                 <div style={{marginBottom:14}}>
                   <div style={{fontSize:12,color:"#00C9A7",marginBottom:6}}>Total Investimentos (R$)</div>
                   <input style={s.input} placeholder="Ex: 50.000,00"
-                    value={extrasFluxo.investimentos.todos ? String(extrasFluxo.investimentos.todos).replace(".",",") : ""}
-                    onChange={e=>saveExtraFluxo("investimentos", parseFloat(String(e.target.value).replace(",","."))||0)}/>
+                    defaultValue={extrasFluxo.investimentos.todos||""}
+                    onBlur={e=>saveExtraFluxo("investimentos", parseFloat(String(e.target.value).replace(/\./g,"").replace(",","."))||0)}/>
                 </div>
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:12,color:"#2ECC71",marginBottom:6}}>Total Contas a Receber (R$)</div>
                   <input style={s.input} placeholder="Ex: 30.000,00"
-                    value={extrasFluxo.contasReceber.todos ? String(extrasFluxo.contasReceber.todos).replace(".",",") : ""}
-                    onChange={e=>saveExtraFluxo("contasReceber", parseFloat(String(e.target.value).replace(",","."))||0)}/>
+                    defaultValue={extrasFluxo.contasReceber.todos||""}
+                    onBlur={e=>saveExtraFluxo("contasReceber", parseFloat(String(e.target.value).replace(/\./g,"").replace(",","."))||0)}/>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowModal(false)}>Cancelar</button>
