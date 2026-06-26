@@ -1175,7 +1175,7 @@ export default function App() {
     const isPositive = form.rd==="RECEITA" || form.rd==="INVESTIMENTOS";
     const finalVal = isPositive ? Math.abs(val) : -Math.abs(val);
     setSaving(true);
-    const payload={date:form.date,description:form.description,value:finalVal,type:finalVal>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
+    const payload={date:form.date,description:form.description,value:finalVal,type:finalVal>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,detalhe_class:form.detalhe_class||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
     if(editingId){
       await supabase.from("transactions").update(payload).eq("id",editingId);
       showToast("Lançamento atualizado!");
@@ -1188,7 +1188,7 @@ export default function App() {
   };
 
   const startEdit = (t) => {
-    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||""});
+    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||"",detalhe_class:t.detalhe_class||""});
     setEditingId(t.id); setModalMode("lancamento"); setShowModal(true);
   };
 
@@ -1543,7 +1543,7 @@ export default function App() {
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>
-                        {(()=>{
+                        {t.detalhe_class||(()=>{
                           const d = String(t.description||"").toUpperCase().trim();
                           const custom = [...customCats].sort((a,b)=>b.name.length-a.name.length).find(c=>d.includes(c.name.toUpperCase()));
                           if(custom) return custom.name;
@@ -2248,12 +2248,16 @@ export default function App() {
                     {RD_TYPES.map(r=><option key={r}>{r}</option>)}
                   </select>
                 </div>
-                <div style={{marginBottom:18}}>
+                <div style={{marginBottom:14}}>
                   <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Classificação</div>
                   <select style={{...s.input}} value={form.classificacao} onChange={e=>setForm(f=>({...f,classificacao:e.target.value}))}>
                     <option value="">Selecione...</option>
                     {allClassificacoes.map(c=><option key={c}>{c}</option>)}
                   </select>
+                </div>
+                <div style={{marginBottom:18}}>
+                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Detalhe Class.</div>
+                  <input style={s.input} placeholder="Ex: PAGAMENTOS TRIB" value={form.detalhe_class||""} onChange={e=>setForm(f=>({...f,detalhe_class:e.target.value}))}/>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowModal(false)}>Cancelar</button>
