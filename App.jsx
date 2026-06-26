@@ -1410,7 +1410,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.4 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2080,8 +2080,8 @@ export default function App() {
                   }).map(item=>{
                     const oc=getOcorrencia(item.id,agendaMes,agendaAno);
                     const status=oc?.status||"sem registro";
-                    const statusColor=status==="pago"?"#2ECC71":status==="pendente"?"#F5A623":"#6B8299";
-                    const statusLabel=status==="pago"?"✓ Pago":status==="pendente"?"⏳ Pendente":"— Não verificado";
+                    const statusColor=status==="pago"?"#2ECC71":status==="baixado"?"#6B8299":status==="pendente"?"#F5A623":"#6B8299";
+                    const statusLabel=status==="pago"?"✓ Pago":status==="baixado"?"✓ Baixado":status==="pendente"?"⏳ Pendente":"— Não verificado";
                     return (
                       <tr key={item.id} style={status==="pendente"?{background:"rgba(245,166,35,0.04)"}:{}}>
                         <td style={{...s.td,fontWeight:600}}>{item.nome}</td>
@@ -2101,6 +2101,28 @@ export default function App() {
                               onClick={()=>{setEditingAgenda(item.id);setAgendaForm({nome:item.nome,tipo:item.tipo||"",dia_vencimento:String(item.dia_vencimento),keywords:(item.keywords||[]).join(", "),rd:item.rd||"DESPESAS FIXAS",classificacao:item.classificacao||""});setShowAgendaModal(true);}}>✏</button>
                             <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}}
                               onClick={()=>setConfirmDelete("agenda_"+item.id)}>✕</button>
+                            {status==="pendente"&&(
+                              <button title="Baixar manualmente" style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}}
+                                onClick={async()=>{
+                                  await supabase.from("agenda_ocorrencias").upsert({
+                                    agenda_id:item.id, mes:agendaMes, ano:agendaAno,
+                                    status:"baixado", transaction_id:null, data_pagamento:null, valor_pago:null
+                                  },{onConflict:"agenda_id,mes,ano"});
+                                  await loadAgenda();
+                                  showToast("Compromisso baixado!");
+                                }}>✓</button>
+                            )}
+                            {status==="baixado"&&(
+                              <button title="Desfazer baixa" style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
+                                onClick={async()=>{
+                                  await supabase.from("agenda_ocorrencias").upsert({
+                                    agenda_id:item.id, mes:agendaMes, ano:agendaAno,
+                                    status:"pendente", transaction_id:null, data_pagamento:null, valor_pago:null
+                                  },{onConflict:"agenda_id,mes,ano"});
+                                  await loadAgenda();
+                                  showToast("Baixa desfeita!");
+                                }}>↩</button>
+                            )}
                             {status==="pendente"&&oc&&(
                               <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
                                 onClick={()=>setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno})}>🔗</button>
@@ -2212,7 +2234,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.4 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
