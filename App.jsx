@@ -1407,7 +1407,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.7 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.9 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1639,32 +1639,37 @@ export default function App() {
                       </tr>
                     );
                   })}
-                  {(extrasFluxo.investimentos.todos||0)>0&&(
-                    <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
-                      <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>TOTAL INVESTIMENTOS</td>
-                      <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#00C9A7"}}>{fmt(extrasFluxo.investimentos.todos||0)}</td>
-                      <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
-                      <td style={s.td}/>
-                    </tr>
-                  )}
-                  {(extrasFluxo.contasReceber.todos||0)>0&&(
-                    <tr style={{background:"rgba(46,204,113,0.04)"}}>
-                      <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>TOTAL CONTAS A RECEBER</td>
-                      <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(extrasFluxo.contasReceber.todos||0)}</td>
-                      <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
-                      <td style={s.td}/>
-                    </tr>
-                  )}
-                  {((extrasFluxo.investimentos.todos||0)+(extrasFluxo.contasReceber.todos||0))>0&&(()=>{
-                    const base=fluxoData.reduce((acc,[,d])=>acc+d.total,0);
-                    const total=base+(extrasFluxo.investimentos.todos||0)+(extrasFluxo.contasReceber.todos||0);
-                    return (
+                  {(()=>{
+                    const invVals = Object.values(extrasMonthly.investimentos||{});
+                    const recVals = Object.values(extrasMonthly.contasReceber||{});
+                    const lastInv = invVals.filter(v=>v>0).at(-1)||0;
+                    const lastRec = recVals.filter(v=>v>0).at(-1)||0;
+                    if(!lastInv&&!lastRec) return null;
+                    const base = fluxoData.reduce((acc,[,d])=>acc+d.total,0);
+                    const total = base+lastInv+lastRec;
+                    return (<>
+                      {lastInv>0&&(
+                        <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
+                          <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>TOTAL INVESTIMENTOS</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#00C9A7"}}>{fmt(lastInv)}</td>
+                          <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
+                          <td style={s.td}/>
+                        </tr>
+                      )}
+                      {lastRec>0&&(
+                        <tr style={{background:"rgba(46,204,113,0.04)"}}>
+                          <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>TOTAL CONTAS A RECEBER</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(lastRec)}</td>
+                          <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
+                          <td style={s.td}/>
+                        </tr>
+                      )}
                       <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
                         <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
                         <td style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</td>
                         <td colSpan={2}/>
                       </tr>
-                    );
+                    </>);
                   })()}
                 </tbody>
               </table>
@@ -2209,7 +2214,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.7 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.9 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2218,22 +2223,10 @@ export default function App() {
             {modalMode==="saldo"?(
               <>
                 <div style={{fontSize:17,fontWeight:700,marginBottom:6}}>Incluir Registro</div>
-                <div style={{fontSize:13,color:"#6B8299",marginBottom:20}}>Informe os valores de abertura e extras para compor o fluxo.</div>
-                <div style={{marginBottom:14}}>
+                <div style={{fontSize:13,color:"#6B8299",marginBottom:20}}>Informe o saldo inicial de abertura.</div>
+                <div style={{marginBottom:20}}>
                   <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Saldo Inicial (R$)</div>
                   <input style={s.input} placeholder="Ex: 7.351,01" value={saldoForm} onChange={e=>setSaldoForm(e.target.value)}/>
-                </div>
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:12,color:"#00C9A7",marginBottom:6}}>Total Investimentos (R$)</div>
-                  <input style={s.input} placeholder="Ex: 50.000,00"
-                    defaultValue={extrasFluxo.investimentos.todos||""}
-                    onBlur={e=>saveExtraFluxo("investimentos", parseFloat(String(e.target.value).replace(/\./g,"").replace(",","."))||0)}/>
-                </div>
-                <div style={{marginBottom:20}}>
-                  <div style={{fontSize:12,color:"#2ECC71",marginBottom:6}}>Total Contas a Receber (R$)</div>
-                  <input style={s.input} placeholder="Ex: 30.000,00"
-                    defaultValue={extrasFluxo.contasReceber.todos||""}
-                    onBlur={e=>saveExtraFluxo("contasReceber", parseFloat(String(e.target.value).replace(/\./g,"").replace(",","."))||0)}/>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowModal(false)}>Cancelar</button>
