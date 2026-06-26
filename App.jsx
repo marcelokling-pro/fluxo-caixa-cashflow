@@ -1410,7 +1410,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2031,19 +2031,14 @@ export default function App() {
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",position:"relative"}}
                       onClick={()=>{
                         if(!k) return;
-                        if(k==="dia_vencimento"){
-                          if(agendaSortCol===k) setAgendaSortDir(d=>d==="asc"?"desc":"asc");
-                          else{setAgendaSortCol(k);setAgendaSortDir("asc");}
-                          setShowDiaFilter(f=>!f);
-                          return;
-                        }
                         if(agendaSortCol===k) setAgendaSortDir(d=>d==="asc"?"desc":"asc");
                         else{setAgendaSortCol(k);setAgendaSortDir("asc");}
                       }}>
-                      {l}{k&&k!=="dia_vencimento"&&agendaSortCol===k?(agendaSortDir==="asc"?" ↑":" ↓"):""}
+                      {l}{k&&agendaSortCol===k?(agendaSortDir==="asc"?" ↑":" ↓"):""}
                       {k==="dia_vencimento"&&(
-                        <span style={{marginLeft:4,fontSize:10,color:"#00C9A7"}}>
-                          {agendaSortCol==="dia_vencimento"?(agendaSortDir==="asc"?"↑ ":"↓ "):""}{agendaDiaFilter.length>0?`(${agendaDiaFilter.length})`:""} ▾
+                        <span style={{marginLeft:4,fontSize:10,color:"#00C9A7",cursor:"pointer"}}
+                          onClick={e=>{e.stopPropagation();setShowDiaFilter(f=>!f);}}>
+                          {agendaDiaFilter.length>0?`(${agendaDiaFilter.length})`:""} ▾
                         </span>
                       )}
                       {k==="dia_vencimento"&&showDiaFilter&&(
@@ -2217,7 +2212,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
