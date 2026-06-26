@@ -1596,16 +1596,22 @@ export default function App() {
                 <option value="todos">Todos os meses</option>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
               </select>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:20}}>
-              {[
-                {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
-                {l:"Total Receitas", v:transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0), c:"#2ECC71"},
-                {l:"Total Despesas", v:Math.abs(transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Number(t.value),0)), c:"#E8445A"},
-                {l:"Resultado",      v:transactions.reduce((s,t)=>s+Number(t.value),0), c:transactions.reduce((s,t)=>s+Number(t.value),0)>=0?"#00C9A7":"#E8445A"},
-                {l:"Saldo Atual",    v:metrics.saldo, c:metrics.saldo>=0?"#00C9A7":"#E8445A"},
-              ].map(m=>(
-                <div key={m.l} style={s.card}><div style={{fontSize:11,color:"#6B8299",marginBottom:6,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:20,fontWeight:700,color:m.c}}>{fmt(m.v)}</div></div>
-              ))}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:20}}>
+              {(()=>{
+                const lastInv = Object.values(extrasMonthly.investimentos||{}).filter(v=>v>0).at(-1)||0;
+                const lastRec = Object.values(extrasMonthly.contasReceber||{}).filter(v=>v>0).at(-1)||0;
+                const disponibilidade = metrics.saldo + lastInv + lastRec;
+                return [
+                  {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
+                  {l:"Total Receitas", v:transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0), c:"#2ECC71"},
+                  {l:"Total Despesas", v:Math.abs(transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Number(t.value),0)), c:"#E8445A"},
+                  {l:"Resultado",      v:transactions.reduce((s,t)=>s+Number(t.value),0), c:transactions.reduce((s,t)=>s+Number(t.value),0)>=0?"#00C9A7":"#E8445A"},
+                  {l:"Saldo Atual",    v:metrics.saldo, c:metrics.saldo>=0?"#00C9A7":"#E8445A"},
+                  {l:"Disponibilidade",v:disponibilidade, c:disponibilidade>=0?"#00C9A7":"#E8445A"},
+                ].map(m=>(
+                  <div key={m.l} style={{...s.card,padding:"10px 12px"}}><div style={{fontSize:10,color:"#6B8299",marginBottom:4,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:16,fontWeight:700,color:m.c}}>{fmt(m.v)}</div></div>
+                ));
+              })()}
             </div>
             <div style={s.card}>
               <table style={s.table}>
