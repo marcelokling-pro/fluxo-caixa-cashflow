@@ -1102,7 +1102,10 @@ export default function App() {
         const p=t.date?.split("/");
         if(!p||p.length<3) return false;
         if(parseInt(p[1])!==mes||parseInt(p[2])!==ano) return false;
-        return keywords.some(k=>t.description?.toUpperCase().includes(k.toUpperCase()));
+        return keywords.some(k=>
+          t.description?.toUpperCase().includes(k.toUpperCase()) ||
+          (t.detalhe_class&&t.detalhe_class.toUpperCase().includes(k.toUpperCase()))
+        );
       });
       await supabase.from("agenda_ocorrencias").upsert({
         agenda_id:item.id, mes, ano,
@@ -1407,7 +1410,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v3.9 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2214,7 +2217,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v3.9 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
