@@ -1205,8 +1205,24 @@ export default function App() {
           await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
         }
         const buf = await file.arrayBuffer();
-        const wb = window.XLSX.read(buf,{type:"array"});
-        allRows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:""});
+        const wb = window.XLSX.read(buf,{type:"array",sheetRows:0});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        // Read cell by cell to avoid truncation on null numeric cells
+        const ref = ws['!ref'] ? window.XLSX.utils.decode_range(ws['!ref']) : {s:{r:0,c:0},e:{r:0,c:0}};
+        // Expand range using all cell keys
+        Object.keys(ws).filter(k=>!k.startsWith('!')).forEach(k=>{
+          const a=window.XLSX.utils.decode_cell(k);
+          if(a.r>ref.e.r) ref.e.r=a.r;
+          if(a.c>ref.e.c) ref.e.c=a.c;
+        });
+        for(let r=ref.s.r;r<=ref.e.r;r++){
+          const row=[];
+          for(let c=ref.s.c;c<=ref.e.c;c++){
+            const cell=ws[window.XLSX.utils.encode_cell({r,c})];
+            row.push(cell&&cell.v!=null?String(cell.v):"");
+          }
+          allRows.push(row);
+        }
       } else {
         const text = await file.text();
         const cleaned = text.replace(/^\uFEFF/,"");
@@ -1214,13 +1230,12 @@ export default function App() {
         const sep = lines[0].includes(";") ? ";" : ",";
         allRows = lines.map(l=>l.split(sep).map(c=>c.replace(/"/g,"").trim()));
       }
-      // Find best header row: prefer the row whose NEXT rows have date-like values in first non-empty col
+      // Find best header row
       let hi = 0, bestScore = 0;
       for(let i=0;i<Math.min(30,allRows.length);i++){
         const row = allRows[i];
         const filled = row.filter(c=>String(c).trim()).length;
         if(filled < 2) continue;
-        // Check if next 2 rows have date-like values
         let dateScore = 0;
         for(let j=i+1;j<Math.min(i+4,allRows.length);j++){
           const nextRow = allRows[j];
@@ -1233,7 +1248,6 @@ export default function App() {
       }
       headers = allRows[hi].map((c,i)=>String(c).trim()||`col ${i}`);
       preview = allRows.slice(hi+1,hi+4).map(r=>headers.map((_,i)=>String(r[i]||"")));
-      // Auto-detect columns
       const guessCol = (aliases) => {
         const idx = headers.findIndex(h=>aliases.some(a=>h.toUpperCase().includes(a.toUpperCase())));
         return idx >= 0 ? idx : 0;
@@ -1242,11 +1256,9 @@ export default function App() {
       const autoDesc = guessCol(["ESTABELECIMENTO","HISTORICO","DESCRICAO","DESCRIPTION","LANCAMENTO","COMPLEMENTO"]);
       const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"]);
       const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"]);
-      // Auto-extract conta from file header rows (before data header)
       let autoContaValue = "";
       for(let i=0;i<Math.min(hi,allRows.length);i++){
-        const row = allRows[i];
-        const rowText = row.map(c=>String(c||"")).join(";");
+        const rowText = allRows[i].map(c=>String(c||"")).join(";");
         const m = rowText.match(/(?:conta|account|n[ºo°]\.?\s*conta|numero\s*conta|ag[eê]ncia\/conta|ag\/conta)[:\s;]+([0-9\-\/\.]+)/i);
         if(m) { autoContaValue = m[1].trim(); break; }
       }
@@ -1263,7 +1275,6 @@ export default function App() {
   const processColumnMapper = async () => {
     if(!columnMapper) return;
     const {file, allRows, headerIdx, mode, transaction, map, isCartao, autoContaValue} = columnMapper;
-    // Infer year from filename — get the last 4-digit number (avoids card numbers like 3274)
     const yearMatches = file.name.match(/\d{4}/g);
     const inferredYear = yearMatches ? yearMatches[yearMatches.length-1] : String(new Date().getFullYear());
     const rawRows = allRows.slice(headerIdx+1);
@@ -1271,7 +1282,7 @@ export default function App() {
       const rawDate = String(cols[map.date]||"").trim();
       const rawDesc = String(cols[map.desc]||"").trim();
       const rawVal  = cols[map.val];
-      const rawConta= columnMapper.autoContaValue || (map.conta>=0 && map.conta!==map.date && map.conta!==map.desc && map.conta!==map.val ? String(cols[map.conta]||"").trim() : "");
+      const rawConta= autoContaValue || "";
       if(!rawDesc) return null;
       // Parse date: DD/MM, DD/MM/YYYY, or Excel serial
       let date = "";
@@ -1410,7 +1421,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.5 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2234,7 +2245,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.5 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
