@@ -1421,7 +1421,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.4 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2183,8 +2183,8 @@ export default function App() {
                   const key = t.conta||"sem conta";
                   if(!extratos[key]) extratos[key]={conta:key,count:0,min:"",max:""};
                   extratos[key].count++;
-                  if(!extratos[key].min||t.date<extratos[key].min) extratos[key].min=t.date;
-                  if(!extratos[key].max||t.date>extratos[key].max) extratos[key].max=t.date;
+                  if(!extratos[key].min||dateToSortable(t.date)<dateToSortable(extratos[key].min)) extratos[key].min=t.date;
+                  if(!extratos[key].max||dateToSortable(t.date)>dateToSortable(extratos[key].max)) extratos[key].max=t.date;
                 });
                 const rows = Object.values(extratos);
                 if(!rows.length) return <div style={{color:"#6B8299",fontSize:13}}>Nenhum extrato importado ainda.</div>;
@@ -2245,7 +2245,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.4 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
