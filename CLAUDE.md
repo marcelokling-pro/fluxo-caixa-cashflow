@@ -61,7 +61,9 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Regra:** ao concluir qualquer demanda, bumpar a versão e atualizar a string na sidebar antes de reportar o trabalho como feito.
 
-**Commit:** nunca criar um commit sem confirmação explícita do usuário de que o teste no localhost foi realizado e aprovado.
+**Commit e push:** após confirmação do teste no localhost, fazer o commit e o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente.
+
+**Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
 
 ## Styles
 
