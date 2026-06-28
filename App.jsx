@@ -817,6 +817,7 @@ export default function App() {
   const [aiLoading,setAiLoading] = useState(false);
   const [saving,setSaving]     = useState(false);
   const [showConfirmClear,setShowConfirmClear] = useState(false);
+  const [confirmDeleteBatch,setConfirmDeleteBatch] = useState(null);
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
   const [agenda,setAgenda]               = useState([]);
   const [agendaOcorrencias,setAgendaOcorrencias] = useState([]);
@@ -1000,20 +1001,20 @@ export default function App() {
   },[transactions,fluxoGroupBy,fluxoMonth]);
 
   // ── Classify & save ────────────────────────────────────────────────────────
-  const classifyAndSave = async (rows) => {
+  const classifyAndSave = async (rows, fileName="") => {
     setAiLoading(true);
     const toSave=[], toReview=[];
     for (const row of rows) {
       if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
       const local = localClassify(row.description, customCats);
       if (local) {
-        toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, status:"confirmado", origin:"extrato", ai_classified:false, needs_review:false, created_by:user.id});
+        toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, status:"confirmado", origin:"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
       } else {
         const ai = await classifyWithGemini(row.description);
         if (ai) {
-          toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:ai.rd, classificacao:ai.classificacao, status:"confirmado", origin:"extrato", ai_classified:true, needs_review:false, created_by:user.id});
+          toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:ai.rd, classificacao:ai.classificacao, status:"confirmado", origin:"extrato", ai_classified:true, needs_review:false, created_by:user.id, source_file:fileName||null});
         } else {
-          toReview.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESAS ADMINISTRATIVAS", status:"pendente", origin:"extrato", ai_classified:true, needs_review:true, created_by:user.id});
+          toReview.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:Number(row.value)>=0?"RECEITA":"DESPESAS VARIÁVEIS", classificacao:Number(row.value)>=0?"RECEITA DE VENDAS":"DESPESAS ADMINISTRATIVAS", status:"pendente", origin:"extrato", ai_classified:true, needs_review:true, created_by:user.id, source_file:fileName||null});
         }
       }
     }
@@ -1367,6 +1368,16 @@ export default function App() {
     }
     setConfirmDelete(null);
   };
+  const doDeleteBatch = async () => {
+    if(!confirmDeleteBatch) return;
+    const ids = confirmDeleteBatch.ids;
+    for(let i=0;i<ids.length;i+=50){
+      await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
+    }
+    setTransactions(prev=>prev.filter(t=>!ids.includes(t.id)));
+    setConfirmDeleteBatch(null);
+    showToast(`${ids.length} lançamentos removidos.`);
+  };
   const clearAll = async () => {
     await supabase.from("transactions").delete().neq("id","00000000-0000-0000-0000-000000000000");
     await supabase.from("settings").upsert({key:"saldo_inicial",value:"0"});
@@ -1421,7 +1432,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.5 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.7.4 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1853,7 +1864,7 @@ export default function App() {
                   </div>
                   <div style={{display:"flex",gap:10}}>
                     <button style={s.btn("danger")} onClick={()=>setPendingImport(null)}>✕ Cancelar</button>
-                    <button style={s.btn()} onClick={()=>classifyAndSave(pendingImport.newRows)} disabled={pendingImport.newRows.length===0}>
+                    <button style={s.btn()} onClick={()=>classifyAndSave(pendingImport.newRows, pendingImport.fileName)} disabled={pendingImport.newRows.length===0}>
                       🤖 Classificar e Importar ({pendingImport.newRows.length})
                     </button>
                   </div>
@@ -2182,32 +2193,45 @@ export default function App() {
             <div style={s.card}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Histórico de Importações</div>
               {(()=>{
-                // Group transactions by origin and conta to infer imports
                 const extratos = {};
                 transactions.filter(t=>t.origin==="extrato").forEach(t=>{
-                  const key = t.conta||"sem conta";
-                  if(!extratos[key]) extratos[key]={conta:key,count:0,min:"",max:""};
+                  const batchKey = t.created_at ? t.created_at.slice(0,16) : "unknown";
+                  const key = (t.conta||"sem conta") + "__" + batchKey;
+                  if(!extratos[key]) extratos[key]={conta:t.conta||"sem conta",importedAt:batchKey,fileName:t.source_file||"—",count:0,min:"",max:"",ids:[]};
                   extratos[key].count++;
+                  extratos[key].ids.push(t.id);
                   if(!extratos[key].min||dateToSortable(t.date)<dateToSortable(extratos[key].min)) extratos[key].min=t.date;
                   if(!extratos[key].max||dateToSortable(t.date)>dateToSortable(extratos[key].max)) extratos[key].max=t.date;
                 });
-                const rows = Object.values(extratos);
+                const rows = Object.values(extratos).sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
+                const fmtImport = iso => {
+                  if(!iso||iso==="unknown") return "—";
+                  const [d,t] = iso.split("T");
+                  const [y,m,dd] = d.split("-");
+                  return `${dd}/${m}/${y} ${t}`;
+                };
                 if(!rows.length) return <div style={{color:"#6B8299",fontSize:13}}>Nenhum extrato importado ainda.</div>;
                 return (
                   <table style={s.table}>
                     <thead><tr>
                       <th style={s.th}>Conta</th>
+                      <th style={s.th}>Importado em</th>
                       <th style={s.th}>Lançamentos</th>
                       <th style={s.th}>Período início</th>
                       <th style={s.th}>Período fim</th>
+                      <th style={s.th}>Arquivo</th>
+                      <th style={s.th}></th>
                     </tr></thead>
                     <tbody>
                       {rows.map(r=>(
-                        <tr key={r.conta}>
+                        <tr key={r.conta+r.importedAt}>
                           <td style={s.td}>{r.conta}</td>
+                          <td style={s.td}>{fmtImport(r.importedAt)}</td>
                           <td style={s.td}>{r.count}</td>
                           <td style={s.td}>{r.min||"—"}</td>
                           <td style={s.td}>{r.max||"—"}</td>
+                          <td style={s.td}>{r.fileName}</td>
+                          <td style={s.td}><button style={{...s.btn("danger"),fontSize:11,padding:"4px 10px"}} onClick={()=>setConfirmDeleteBatch(r)}>↩ Desfazer</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -2250,7 +2274,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.5 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.7.4 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2409,6 +2433,26 @@ export default function App() {
               ))}
             </div>
             <button style={{...s.btn("ghost"),width:"100%",marginTop:14}} onClick={()=>setAssociating(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteBatch&&(
+        <div style={s.modal} onClick={()=>setConfirmDeleteBatch(null)}>
+          <div style={{...s.mbox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>↩ Desfazer importação</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:8}}>
+              Conta: <strong style={{color:"#fff"}}>{confirmDeleteBatch.conta}</strong><br/>
+              Importado em: <strong style={{color:"#fff"}}>{confirmDeleteBatch.importedAt}</strong><br/>
+              Período: <strong style={{color:"#fff"}}>{confirmDeleteBatch.min} → {confirmDeleteBatch.max}</strong>
+            </div>
+            <div style={{background:"#1a1a2e",border:"1px solid #E8445A44",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#E8445A",marginBottom:20}}>
+              ⚠ Atenção: <strong>{confirmDeleteBatch.count} lançamentos</strong> serão excluídos permanentemente. Classificações e detalhamentos vinculados também serão perdidos. O arquivo poderá ser reimportado após a exclusão.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDeleteBatch(null)}>Cancelar</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={doDeleteBatch}>Sim, desfazer importação</button>
+            </div>
           </div>
         </div>
       )}

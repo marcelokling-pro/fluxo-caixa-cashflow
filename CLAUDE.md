@@ -65,7 +65,7 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
 
-**Ao aplicar qualquer alteração:** informar previamente o número de linhas que serão modificadas e qual versão será gravada.
+**Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
 
 ## Styles
 
