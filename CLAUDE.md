@@ -9,6 +9,8 @@ npm run dev      # Start Vite dev server
 npm run build    # Production build
 ```
 
+O servidor Vite atualiza o browser automaticamente ao salvar arquivos. Após reiniciar o computador, é necessário um F5 manual uma única vez para reconectar — depois disso volta automático.
+
 No test suite is configured (`npm test` exits with error).
 
 ## Architecture
