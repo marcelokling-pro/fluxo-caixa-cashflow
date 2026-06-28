@@ -49,7 +49,7 @@ XLSX parsing uses the `xlsx` library loaded dynamically from CDN at runtime (`wi
 
 ## Versionamento
 
-A versão atual está hardcoded na sidebar do `App.jsx` (buscar por `FluxoCaixa v`).
+A versão atual está hardcoded no `App.jsx` em 3 locais (buscar por `Fluxo de Caixa-`).
 
 Formato: `MAJOR.MINOR.PATCH`
 
@@ -66,6 +66,8 @@ Formato: `MAJOR.MINOR.PATCH`
 **Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
 
 **Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
+
+**Instruções de configuração externa:** sempre detalhar passo a passo com exatamente onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy". O usuário não conhece as particularidades de cada serviço.
 
 ## Styles
 
