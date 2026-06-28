@@ -837,6 +837,7 @@ export default function App() {
   const [reclassifyList,setReclassifyList]   = useState(null);
   const [reclassifySelected,setReclassifySelected] = useState([]);
   const [associating,setAssociating]     = useState(null);
+  const [faturaWarning,setFaturaWarning] = useState(null);
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
   const [agendaSortDir,setAgendaSortDir] = useState("asc");
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
@@ -1353,8 +1354,19 @@ export default function App() {
   };
 
   // ── File import ────────────────────────────────────────────────────────────
+  const isFaturaFile = (file, rows=[]) => {
+    if (/fatura/i.test(file.name)) return true;
+    if (rows.length > 5) {
+      const descs = rows.slice(0,30).map(r=>String(Object.values(r)[1]||""));
+      const parcelas = descs.filter(d=>/\d{2}\/\d{2}/.test(d)).length;
+      if (parcelas / descs.length > 0.4) return true;
+    }
+    return false;
+  };
+
   const handleFile = useCallback((file)=>{
     if(!file) return;
+    if(isFaturaFile(file)) { setFaturaWarning(file); return; }
     openColumnMapper(file, "extrato");
   },[importedHashes]);
 
@@ -1497,7 +1509,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2255,7 +2267,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.4.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.5.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2441,7 +2453,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2492,6 +2504,28 @@ export default function App() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Fatura warning */}
+      {faturaWarning&&(
+        <div style={s.modal} onClick={()=>setFaturaWarning(null)}>
+          <div style={{...s.mbox,maxWidth:480,border:"2px solid #F5A623"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:32,textAlign:"center",marginBottom:8}}>⚠️</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#F5A623",textAlign:"center",marginBottom:8}}>Arquivo de Fatura Detectado</div>
+            <div style={{fontSize:13,color:"#6B8299",textAlign:"center",marginBottom:6}}>
+              <strong style={{color:"#E8EDF2"}}>{faturaWarning.name}</strong>
+            </div>
+            <div style={{fontSize:13,color:"#6B8299",textAlign:"center",marginBottom:20,lineHeight:1.6}}>
+              Este arquivo parece ser uma <strong style={{color:"#F5A623"}}>fatura de cartão de crédito</strong>, não um extrato bancário.<br/>
+              Importá-lo aqui pode gerar lançamentos incorretos.<br/><br/>
+              Para importar a fatura de um cartão, use o módulo de <strong style={{color:"#00C9A7"}}>Detalhamento</strong> em Lançamentos.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setFaturaWarning(null)}>Cancelar</button>
+              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{const f=faturaWarning;setFaturaWarning(null);openColumnMapper(f,"extrato");}}>Importar mesmo assim</button>
+            </div>
           </div>
         </div>
       )}
@@ -2798,6 +2832,15 @@ export default function App() {
               </div>
               <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>setColumnMapper(null)}>✕</button>
             </div>
+
+            {isFaturaFile(columnMapper.file)&&columnMapper.mode==="extrato"&&(
+              <div style={{background:"rgba(245,166,35,0.1)",border:"1px solid #F5A623",borderRadius:8,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:20}}>⚠️</span>
+                <div style={{fontSize:12,color:"#F5A623",lineHeight:1.5}}>
+                  <strong>Atenção:</strong> Este arquivo parece ser uma fatura de cartão de crédito. Verifique cuidadosamente o mapeamento antes de confirmar a importação.
+                </div>
+              </div>
+            )}
 
             {/* Preview table */}
             <div style={{marginBottom:16,overflowX:"auto"}}>
