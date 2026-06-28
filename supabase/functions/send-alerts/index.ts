@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
         </thead>
         <tbody>${htmlRows}</tbody>
       </table>
-      <p style="color:#999;font-size:12px;margin-top:20px">Fluxo de Caixa · ${today.toLocaleDateString("pt-BR")}</p>
+      <p style="color:#999;font-size:12px;margin-top:20px">Fluxo de Caixa v5.2.1 · ${today.toLocaleDateString("pt-BR")}</p>
     </div>`;
 
   let sent = 0;
