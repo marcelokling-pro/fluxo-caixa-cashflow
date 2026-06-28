@@ -1421,7 +1421,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.4 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.6.5 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2011,7 +2011,12 @@ export default function App() {
                   {MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
                 </select>
                 <select style={s.sel} value={agendaAno} onChange={e=>setAgendaAno(Number(e.target.value))}>
-                  {[2024,2025,2026,2027].map(y=><option key={y}>{y}</option>)}
+                  {(()=>{
+                    const cur = new Date().getFullYear();
+                    const fromData = transactions.map(t=>parseInt(t.date?.split("/")?.[2])).filter(y=>y>2000);
+                    const min = Math.min(...fromData, cur);
+                    return Array.from({length: cur+2-min+1}, (_,i)=>min+i).map(y=><option key={y}>{y}</option>);
+                  })()}
                 </select>
                 <button style={s.btn("ghost")} onClick={()=>reconcileAgenda(agendaMes,agendaAno)}>🔄 Reconciliar</button>
                 <button style={s.btn()} onClick={()=>{setEditingAgenda(null);setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});setShowAgendaModal(true);}}>+ Novo</button>
@@ -2245,7 +2250,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.4 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.6.5 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
