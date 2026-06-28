@@ -820,6 +820,8 @@ export default function App() {
   const [showConfirmClear,setShowConfirmClear] = useState(false);
   const [confirmDeleteBatch,setConfirmDeleteBatch] = useState(null);
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
+  const [fluxoGroupOrder,setFluxoGroupOrder] = useState({});
+  const [dragGroupIdx,setDragGroupIdx] = useState(null);
   const [agenda,setAgenda]               = useState([]);
   const [agendaOcorrencias,setAgendaOcorrencias] = useState([]);
   const [alertDaysAhead,setAlertDaysAhead]     = useState(3);
@@ -934,7 +936,14 @@ export default function App() {
       const s=data.find(d=>d.key==="saldo_inicial"); if(s) setSaldoInicial(parseFloat(s.value)||0);
       const ad=data.find(d=>d.key==="alert_days_ahead"); if(ad?.value) setAlertDaysAhead(parseInt(ad.value)||3);
       const ar=data.find(d=>d.key==="alert_recurrence"); if(ar?.value) setAlertRecurrence(ar.value);
+      const go=data.find(d=>d.key==="fluxo_group_order"); if(go?.value) try{setFluxoGroupOrder(JSON.parse(go.value));}catch{}
     }
+  };
+
+  const saveFluxoGroupOrder = async (newNames) => {
+    const updated = {...fluxoGroupOrder,[fluxoGroupBy]:newNames};
+    setFluxoGroupOrder(updated);
+    await supabase.from("settings").upsert({key:"fluxo_group_order",value:JSON.stringify(updated)},{onConflict:"key"});
   };
 
   const loadCustomCats = async () => {
@@ -1008,8 +1017,15 @@ export default function App() {
       if(!groups[key]) groups[key]={total:0,count:0};
       groups[key].total+=Number(t.value); groups[key].count++;
     });
-    return Object.entries(groups).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total));
-  },[transactions,fluxoGroupBy,fluxoMonth]);
+    const order = fluxoGroupOrder[fluxoGroupBy] || [];
+    return Object.entries(groups).sort((a,b)=>{
+      const ia=order.indexOf(a[0]), ib=order.indexOf(b[0]);
+      if(ia===-1&&ib===-1) return Math.abs(b[1].total)-Math.abs(a[1].total);
+      if(ia===-1) return 1;
+      if(ib===-1) return -1;
+      return ia-ib;
+    });
+  },[transactions,fluxoGroupBy,fluxoMonth,fluxoGroupOrder]);
 
   // ── Classify & save ────────────────────────────────────────────────────────
   const classifyAndSave = async (rows, fileName="") => {
@@ -1481,7 +1497,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.2.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.3.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1691,58 +1707,66 @@ export default function App() {
               <table style={s.table}>
                 <thead><tr><th style={s.th}>Grupo</th><th style={{...s.th,textAlign:"right"}}>Total</th><th style={{...s.th,textAlign:"right"}}>Qtd</th><th style={s.th}>Distribuição</th></tr></thead>
                 <tbody>
-                  {fluxoData.map(([group,data])=>{
-                    const maxAbs=Math.max(...fluxoData.map(([,d])=>Math.abs(d.total)),1);
-                    const pct=Math.round((Math.abs(data.total)/maxAbs)*100);
-                    const handleGroupClick=()=>{
-                      if(fluxoGroupBy==="rd") setFilter({rd:group,classificacao:"todas",status:"todos",dateFrom:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-01`:"",dateTo:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-${new Date(new Date().getFullYear(),fluxoMonth,0).getDate()}`:"" });
-                      else if(fluxoGroupBy==="classificacao") setFilter({rd:"todos",classificacao:group,status:"todos",dateFrom:"",dateTo:""});
-                      else setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
-                      setTab("lancamentos");
-                    };
-                    return (
-                      <tr key={group} style={{cursor:"pointer"}} onClick={handleGroupClick}>
-                        <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>{group}</td>
-                        <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
-                        <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count}</td>
-                        <td style={{...s.td,width:200}}>
-                          <div style={{background:"#1E2D3D",borderRadius:4,height:8}}>
-                            <div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
                   {(()=>{
-                    const invVals = Object.values(extrasMonthly.investimentos||{});
-                    const recVals = Object.values(extrasMonthly.contasReceber||{});
-                    const lastInv = invVals.filter(v=>v>0).at(-1)||0;
-                    const lastRec = recVals.filter(v=>v>0).at(-1)||0;
-                    if(!lastInv&&!lastRec) return null;
-                    const base = fluxoData.reduce((acc,[,d])=>acc+d.total,0);
-                    const total = base+lastInv+lastRec;
+                    const lastInv=Object.values(extrasMonthly.investimentos||{}).filter(v=>v>0).at(-1)||0;
+                    const lastRec=Object.values(extrasMonthly.contasReceber||{}).filter(v=>v>0).at(-1)||0;
+                    const hasExtras=lastInv>0||lastRec>0;
+                    const grandTotal=fluxoData.reduce((acc,[,d])=>acc+d.total,0)+lastInv+lastRec;
+                    const txItems=fluxoData.map(([g,d])=>({group:g,data:{...d,isExtra:false},nameColor:"#00C9A7",rowStyle:{}}));
+                    const extraItems=[
+                      ...(lastInv>0?[{group:"INVESTIMENTOS",data:{total:lastInv,count:null,isExtra:true},nameColor:"#00C9A7",rowStyle:{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}]:[]),
+                      ...(lastRec>0?[{group:"CONTAS A RECEBER",data:{total:lastRec,count:null,isExtra:true},nameColor:"#2ECC71",rowStyle:{background:"rgba(46,204,113,0.04)"}}]:[]),
+                    ];
+                    const allItems=[...txItems,...extraItems];
+                    const order=fluxoGroupOrder[fluxoGroupBy]||[];
+                    const inOrder=order.filter(n=>allItems.some(r=>r.group===n)).map(n=>allItems.find(r=>r.group===n));
+                    const notInOrder=allItems.filter(r=>!order.includes(r.group));
+                    const sortedRows=[...inOrder,...notInOrder];
+                    const maxAbs=Math.max(...sortedRows.map(r=>Math.abs(r.data.total)),1);
                     return (<>
-                      {lastInv>0&&(
-                        <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
-                          <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>INVESTIMENTOS</td>
-                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#00C9A7"}}>{fmt(lastInv)}</td>
-                          <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
-                          <td style={s.td}/>
+                      {sortedRows.map((row,idx)=>{
+                        const {group,data,nameColor,rowStyle}=row;
+                        const pct=Math.round((Math.abs(data.total)/maxAbs)*100);
+                        const handleGroupClick=()=>{
+                          if(data.isExtra) return;
+                          if(fluxoGroupBy==="rd") setFilter({rd:group,classificacao:"todas",status:"todos",dateFrom:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-01`:"",dateTo:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-${new Date(new Date().getFullYear(),fluxoMonth,0).getDate()}`:"" });
+                          else if(fluxoGroupBy==="classificacao") setFilter({rd:"todos",classificacao:group,status:"todos",dateFrom:"",dateTo:""});
+                          else setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
+                          setTab("lancamentos");
+                        };
+                        return (
+                          <tr key={group} style={{cursor:data.isExtra?"default":"pointer",...rowStyle}}
+                            draggable={true}
+                            onDragStart={()=>setDragGroupIdx(idx)}
+                            onDragOver={e=>e.preventDefault()}
+                            onDrop={()=>{
+                              if(dragGroupIdx===null||dragGroupIdx===idx){setDragGroupIdx(null);return;}
+                              const names=sortedRows.map(r=>r.group);
+                              const [dragged]=names.splice(dragGroupIdx,1);
+                              names.splice(idx,0,dragged);
+                              setDragGroupIdx(null);
+                              saveFluxoGroupOrder(names);
+                            }}
+                            onClick={handleGroupClick}>
+                            <td style={{...s.td,fontWeight:600,color:nameColor}}>
+                              <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
+                              {group}
+                            </td>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
+                            <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
+                            <td style={{...s.td,width:200}}>
+                              {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {hasExtras&&(
+                        <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
+                          <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:grandTotal>=0?"#2ECC71":"#E8445A"}}>{fmt(grandTotal)}</td>
+                          <td colSpan={2}/>
                         </tr>
                       )}
-                      {lastRec>0&&(
-                        <tr style={{background:"rgba(46,204,113,0.04)"}}>
-                          <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>CONTAS A RECEBER</td>
-                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(lastRec)}</td>
-                          <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
-                          <td style={s.td}/>
-                        </tr>
-                      )}
-                      <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
-                        <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
-                        <td style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</td>
-                        <td colSpan={2}/>
-                      </tr>
                     </>);
                   })()}
                 </tbody>
@@ -2229,7 +2253,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.2.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.3.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2415,7 +2439,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.2.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.3.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
