@@ -788,6 +788,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
   );
 };
 
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
@@ -821,6 +822,11 @@ export default function App() {
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
   const [agenda,setAgenda]               = useState([]);
   const [agendaOcorrencias,setAgendaOcorrencias] = useState([]);
+  const [alertDaysAhead,setAlertDaysAhead]     = useState(3);
+  const [alertRecurrence,setAlertRecurrence]   = useState("1");
+  const [alertContacts,setAlertContacts]       = useState([]);
+  const [contactForm,setContactForm]           = useState({name:"",email:""});
+  const [sendingAlert,setSendingAlert]         = useState(false);
   const [agendaMes,setAgendaMes]         = useState(new Date().getMonth()+1);
   const [agendaAno,setAgendaAno]         = useState(new Date().getFullYear());
   const [showAgendaModal,setShowAgendaModal] = useState(false);
@@ -876,6 +882,7 @@ export default function App() {
     return ()=>supabase.removeChannel(ch);
   },[user]);
 
+
   const loadExtrasFluxo = async () => {
     const {data} = await supabase.from("extras_fluxo").select("*");
     if(data){
@@ -904,7 +911,7 @@ export default function App() {
     await supabase.from("extras_fluxo").upsert({tipo:dbTipo, valor:0, valor_json:JSON.stringify(updated)},{onConflict:"tipo"});
   };
 
-  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); };
+  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); loadAlertContacts(); };
 
   const saveExtraFluxo = async (tipo, val) => {
     const dbTipo = tipo==="investimentos" ? "investimentos" : "contas_receber";
@@ -923,7 +930,11 @@ export default function App() {
 
   const loadSettings = async () => {
     const {data}=await supabase.from("settings").select("*");
-    if(data){ const s=data.find(d=>d.key==="saldo_inicial"); if(s) setSaldoInicial(parseFloat(s.value)||0); }
+    if(data){
+      const s=data.find(d=>d.key==="saldo_inicial"); if(s) setSaldoInicial(parseFloat(s.value)||0);
+      const ad=data.find(d=>d.key==="alert_days_ahead"); if(ad?.value) setAlertDaysAhead(parseInt(ad.value)||3);
+      const ar=data.find(d=>d.key==="alert_recurrence"); if(ar?.value) setAlertRecurrence(ar.value);
+    }
   };
 
   const loadCustomCats = async () => {
@@ -1378,6 +1389,44 @@ export default function App() {
     setConfirmDeleteBatch(null);
     showToast(`${ids.length} lançamentos removidos.`);
   };
+  const loadAlertContacts = async () => {
+    const {data}=await supabase.from("alert_contacts").select("*").eq("user_id",user.id).order("name");
+    if(data) setAlertContacts(data);
+  };
+
+  const addContact = async () => {
+    if(!contactForm.name||!contactForm.email){ showToast("Preencha nome e e-mail","error"); return; }
+    await supabase.from("alert_contacts").insert({user_id:user.id, name:contactForm.name, phone:contactForm.email});
+    setContactForm({name:"",email:""});
+    await loadAlertContacts();
+    showToast("Destinatário adicionado!");
+  };
+
+  const removeContact = async (id) => {
+    await supabase.from("alert_contacts").delete().eq("id",id);
+    await loadAlertContacts();
+  };
+
+  const saveAlertDays = async (days) => {
+    setAlertDaysAhead(days);
+    await supabase.from("settings").upsert({key:"alert_days_ahead",value:String(days)},{onConflict:"key"});
+  };
+
+  const saveAlertRecurrence = async (val) => {
+    setAlertRecurrence(val);
+    await supabase.from("settings").upsert({key:"alert_recurrence",value:val},{onConflict:"key"});
+  };
+
+  const sendAlertsNow = async () => {
+    setSendingAlert(true);
+    try {
+      const {error} = await supabase.functions.invoke("send-alerts");
+      if(error) showToast("Erro ao enviar: "+error.message,"error");
+      else showToast("Alertas enviados com sucesso!");
+    } catch(e){ showToast("Erro: "+e.message,"error"); }
+    setSendingAlert(false);
+  };
+
   const clearAll = async () => {
     await supabase.from("transactions").delete().neq("id","00000000-0000-0000-0000-000000000000");
     await supabase.from("settings").upsert({key:"saldo_inicial",value:"0"});
@@ -1432,7 +1481,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.7.5 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v5.0.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2180,13 +2229,105 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>FluxoCaixa180626_v3.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>FluxoCaixa280626_v5.0.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
                 <button style={{...s.btn("ghost"),fontSize:12,padding:"7px 14px"}} onClick={()=>exportFluxoCSV(transactions)}>⬇ Exportar CSV</button>
                 <button style={{...s.btn("danger"),fontSize:12,padding:"7px 14px"}} onClick={()=>setShowConfirmClear(true)}>🗑 Apagar todos os dados</button>
               </div>
+            </div>
+
+            {/* Alertas de Vencimento WhatsApp */}
+            <div style={{...s.card,marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>🔔 Alertas de Vencimento — WhatsApp</div>
+
+              {/* Antecedência */}
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:16}}>
+                <span style={{fontSize:12,color:"#6B8299"}}>Avisar com:</span>
+                {[3,5,7,10].map(d=>(
+                  <button key={d} style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
+                    background:alertDaysAhead===d?"#00C9A7":"#1E2D3D",color:alertDaysAhead===d?"#0F1923":"#6B8299"}}
+                    onClick={()=>saveAlertDays(d)}>{d}d</button>
+                ))}
+                <span style={{fontSize:11,color:"#6B8299",marginLeft:4}}>de antecedência</span>
+              </div>
+
+              {/* Recorrência */}
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:16,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:"#6B8299"}}>Recorrência:</span>
+                {[{v:"1",l:"1x/dia"},{v:"2",l:"2x/dia"},{v:"3",l:"3x/dia"}].map(({v,l})=>(
+                  <button key={v} style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
+                    background:alertRecurrence===v?"#00C9A7":"#1E2D3D",color:alertRecurrence===v?"#0F1923":"#6B8299"}}
+                    onClick={()=>saveAlertRecurrence(v)}>{l}</button>
+                ))}
+                <button style={{...s.btn(),fontSize:12,padding:"4px 14px",marginLeft:8}} onClick={sendAlertsNow} disabled={sendingAlert}>
+                  {sendingAlert?"Enviando...":"▶ Enviar agora"}
+                </button>
+              </div>
+
+              {/* Cadastro de destinatários */}
+              <div style={{background:"#0F1923",borderRadius:8,padding:"12px 14px",border:"1px solid #1E2D3D",marginBottom:16}}>
+                <div style={{fontSize:11,color:"#6B8299",marginBottom:10,fontWeight:600}}>Destinatários dos alertas</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,marginBottom:10,alignItems:"flex-end"}}>
+                  <div>
+                    <div style={{fontSize:10,color:"#6B8299",marginBottom:3}}>Nome</div>
+                    <input style={{...s.input,padding:"6px 10px",fontSize:12}} placeholder="Nome"
+                      value={contactForm.name} onChange={e=>setContactForm(f=>({...f,name:e.target.value}))}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:"#6B8299",marginBottom:3}}>E-mail</div>
+                    <input style={{...s.input,padding:"6px 10px",fontSize:12}} placeholder="email@gmail.com"
+                      value={contactForm.email} onChange={e=>setContactForm(f=>({...f,email:e.target.value}))}/>
+                  </div>
+                  <button style={{...s.btn(),fontSize:12,padding:"6px 14px"}} onClick={addContact}>+ Adicionar</button>
+                </div>
+                {alertContacts.length===0
+                  ? <div style={{fontSize:12,color:"#6B8299"}}>Nenhum destinatário cadastrado.</div>
+                  : alertContacts.map(c=>(
+                    <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderRadius:6,background:"#162130",marginBottom:4}}>
+                      <div>
+                        <span style={{fontSize:12,color:"#E8EDF2",fontWeight:600}}>{c.name}</span>
+                        <span style={{fontSize:11,color:"#6B8299",marginLeft:10}}>{c.phone}</span>
+                      </div>
+                      <button style={{...s.btn("danger"),fontSize:11,padding:"3px 8px"}} onClick={()=>removeContact(c.id)}>✕</button>
+                    </div>
+                  ))
+                }
+              </div>
+
+              {/* Próximos vencimentos */}
+              {(()=>{
+                const today=new Date();
+                const upcoming=agenda.filter(item=>{
+                  for(let d=0;d<=alertDaysAhead;d++){
+                    const dt=new Date(today); dt.setDate(today.getDate()+d);
+                    if(dt.getDate()===item.dia_vencimento){
+                      const oc=agendaOcorrencias.find(o=>o.agenda_id===item.id&&o.mes===dt.getMonth()+1&&o.ano===dt.getFullYear());
+                      if(!oc||oc.status==="pendente") return true;
+                    }
+                  }
+                  return false;
+                });
+                if(!upcoming.length) return <div style={{fontSize:12,color:"#6B8299"}}>Nenhum vencimento nos próximos {alertDaysAhead} dias.</div>;
+                return (
+                  <div>
+                    <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>Próximos vencimentos ({alertDaysAhead} dias):</div>
+                    {upcoming.map(item=>{
+                      let daysUntil=0;
+                      for(let d=0;d<=alertDaysAhead;d++){ const c=new Date(today); c.setDate(today.getDate()+d); if(c.getDate()===item.dia_vencimento){daysUntil=d;break;} }
+                      return (
+                        <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderRadius:6,background:"#0F1923",marginBottom:4}}>
+                          <span style={{fontSize:12,color:"#E8EDF2"}}>{item.nome}</span>
+                          <span style={{fontSize:11,color:daysUntil===0?"#E8445A":daysUntil<=2?"#F5A623":"#6B8299"}}>
+                            {daysUntil===0?"Hoje":daysUntil===1?"Amanhã":`em ${daysUntil} dias`} — dia {item.dia_vencimento}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Histórico de arquivos importados */}
@@ -2274,7 +2415,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.7.5 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa280626_v5.0.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
