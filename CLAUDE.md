@@ -11,6 +11,16 @@ npm run build    # Production build
 
 O servidor Vite atualiza o browser automaticamente ao salvar arquivos. Após reiniciar o computador, é necessário um F5 manual uma única vez para reconectar — depois disso volta automático.
 
+### Deploy da Edge Function
+
+Após qualquer alteração em `supabase/functions/send-alerts/index.ts`, fazer o deploy via CLI:
+
+```bash
+supabase functions deploy send-alerts --project-ref xioqemsshqxagvwdttte
+```
+
+O push para o GitHub **não** faz o deploy automático da edge function.
+
 No test suite is configured (`npm test` exits with error).
 
 ## Architecture
