@@ -1432,7 +1432,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.7.4 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>FluxoCaixa v4.7.5 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1675,7 +1675,7 @@ export default function App() {
                     return (<>
                       {lastInv>0&&(
                         <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
-                          <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>TOTAL INVESTIMENTOS</td>
+                          <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>INVESTIMENTOS</td>
                           <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#00C9A7"}}>{fmt(lastInv)}</td>
                           <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
                           <td style={s.td}/>
@@ -1683,7 +1683,7 @@ export default function App() {
                       )}
                       {lastRec>0&&(
                         <tr style={{background:"rgba(46,204,113,0.04)"}}>
-                          <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>TOTAL CONTAS A RECEBER</td>
+                          <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>CONTAS A RECEBER</td>
                           <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(lastRec)}</td>
                           <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>—</td>
                           <td style={s.td}/>
@@ -1790,7 +1790,7 @@ export default function App() {
                           </tr>
                         );
                       })()}
-                      {/* TOTAL INVESTIMENTOS mensal */}
+                      {/* INVESTIMENTOS mensal */}
                       {(()=>{
                         const invVals = activeMths.map(m=>((extrasMonthly.investimentos||{})[String(MONTHS.indexOf(m)+1)])||0);
                         const recVals = activeMths.map(m=>((extrasMonthly.contasReceber||{})[String(MONTHS.indexOf(m)+1)])||0);
@@ -1804,7 +1804,7 @@ export default function App() {
                         return (<>
                           {hasInv&&(
                             <tr style={{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}>
-                              <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>TOTAL INVESTIMENTOS</td>
+                              <td style={{...s.td,fontWeight:600,color:"#00C9A7"}}>INVESTIMENTOS</td>
                               {invVals.map((v,i)=>(
                                 <td key={i} style={{...s.td,textAlign:"right",fontWeight:600,color:"#00C9A7"}}>{v?fmt(v):"—"}</td>
                               ))}
@@ -1813,7 +1813,7 @@ export default function App() {
                           )}
                           {hasRec&&(
                             <tr style={{background:"rgba(46,204,113,0.04)"}}>
-                              <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>TOTAL CONTAS A RECEBER</td>
+                              <td style={{...s.td,fontWeight:600,color:"#2ECC71"}}>CONTAS A RECEBER</td>
                               {recVals.map((v,i)=>(
                                 <td key={i} style={{...s.td,textAlign:"right",fontWeight:600,color:"#2ECC71"}}>{v?fmt(v):"—"}</td>
                               ))}
@@ -2274,7 +2274,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.7.4 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>FluxoCaixa180626_v4.7.5 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
