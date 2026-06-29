@@ -52,7 +52,6 @@ const BASE_CLASSIFICATIONS = [
   {d:"FACEBOOK",          r:"DESPESAS VARIÁVEIS", c:"MIDIAS E INTERNET"},
   {d:"FARMÁCIA",          r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS"},
   {d:"FGTS",              r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
-  {d:"FORNECEDOR",         r:"DESPESAS VARIÁVEIS", c:"FORNECEDORES"},
   {d:"FRETE",             r:"DESPESAS VARIÁVEIS", c:"DESPESA COM PRODUTOS"},
   {d:"GOOGLE ADS",        r:"DESPESAS VARIÁVEIS", c:"MIDIAS E INTERNET"},
   {d:"GOOGLE",            r:"DESPESAS FIXAS",     c:"TECNOLOGIA E SISTEMAS"},
@@ -81,7 +80,6 @@ const BASE_CLASSIFICATIONS = [
   {d:"PRÓ LABORE",        r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
   {d:"REDE",              r:"RECEITA",            c:"RECEITA DE VENDAS"},
   {d:"RECEBIMENTO",       r:"RECEITA",            c:"RECEITA DE VENDAS"},
-  {d:"REND PAGO APLIC",   r:"RECEITA",            c:"RECEITA DE INVESTIMENTOS"},
   {d:"RENDIMENTO",        r:"RECEITA",            c:"RECEITA DE INVESTIMENTOS"},
   {d:"RESCISÃO",          r:"DESPESAS VARIÁVEIS", c:"DESPESAS COM PESSOAL"},
   {d:"RESGATE",           r:"INVESTIMENTOS",      c:"INVESTIMENTOS"},
@@ -175,9 +173,8 @@ const generateHash = (date, desc, value) =>
 const localClassify = (desc, customCats = []) => {
   const d = String(desc).toUpperCase().trim();
   // Check custom categories first (user-defined takes priority)
-  for (const cat of [...customCats].sort((a,b) => (b.name||"").length - (a.name||"").length)) {
-    if (cat.name && cat.rd && cat.classificacao && d.includes(cat.name.toUpperCase())) return { r: cat.rd, c: cat.classificacao };
-    if (cat.rd && cat.classificacao && Array.isArray(cat.keywords) && cat.keywords.some(k => k && typeof k==="string" && d.includes(k.toUpperCase()))) return { r: cat.rd, c: cat.classificacao };
+  for (const cat of [...customCats].sort((a,b) => b.name.length - a.name.length)) {
+    if (d.includes(cat.name.toUpperCase())) return { r: cat.rd, c: cat.classificacao };
   }
   // Then base classifications (already sorted by length desc)
   for (const cls of SORTED_CLASSIFICATIONS) {
@@ -223,53 +220,6 @@ Responda SOMENTE JSON válido sem markdown:
     if (parsed.rd && parsed.classificacao) return parsed;
   } catch(e) { console.error("Gemini error:", e); }
   return null; // null = needs review
-};
-
-const cleanMerchantName = (desc) =>
-  desc
-    .replace(/\s*\*.*$/, '')             // * código da loja
-    .replace(/-CT.*/i, '')               // sufixo -CT
-    .replace(/_\S*\s*$/, '')             // _CÓDIGO no final
-    .replace(/\s+\d{2}\/\d{2}\s*$/, '') // parcela XX/YY no final
-    .trim();
-
-const classifyBatchWithGemini = async (descriptions) => {
-  if (!descriptions.length) return [];
-  try {
-    const numbered = descriptions.map((d,i)=>`${i+1}. ${d}`).join("\n");
-    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_KEY}`, {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ contents:[{ parts:[{ text:
-`Classifique as transações brasileiras abaixo. Retorne SOMENTE um JSON array na mesma ordem, sem markdown nem texto extra.
-
-Transações:
-${numbered}
-
-R/D disponíveis: ${RD_TYPES.join(", ")}
-Classificações disponíveis: ${CLASSIFICACOES.join(", ")}
-
-Regras:
-- RECEBIMENTO, PIX RECEBIDO, PIX QR CODE RECEBIDO, REDE AMEX/VISA/MAST = RECEITA / RECEITA DE VENDAS
-- RENDIMENTO, CDB, TESOURO = RECEITA / RECEITA DE INVESTIMENTOS
-- PIX ENVIADO, TED ENVIADA, TRANSFERÊNCIA = MOVIMENTAÇÃO / MOVIMENTAÇÃO
-- APLICAÇÃO, RESGATE = INVESTIMENTOS / INVESTIMENTOS
-- DARF, SIMPLES, ISS, ICMS, IOF = DESPESAS VARIÁVEIS / IMPOSTOS
-- SALÁRIO, INSS, FGTS, PRÓ LABORE = DESPESAS FIXAS / DESPESAS COM PESSOAL
-- ALUGUEL, CONDOMÍNIO, IPTU = DESPESAS FIXAS / DESPESA OPERACIONAL LOJA
-- TARIFA, TAR PIX, TAR TED = DESPESAS FIXAS / DESPESA BANCÁRIA
-- LUZ, ÁGUA, ENERGIA, TELEFONE, CLARO, VIVO = DESPESAS FIXAS / DESPESA OPERACIONAL LOJA
-- GOOGLE ADS, FACEBOOK, INSTAGRAM = DESPESAS VARIÁVEIS / MIDIAS E INTERNET
-- Lojas, estabelecimentos, compras de cartão = DESPESAS VARIÁVEIS / DESPESAS ADMINISTRATIVAS
-
-Formato obrigatório (exatamente ${descriptions.length} itens, na mesma ordem):
-[{"rd":"...","classificacao":"..."},...]` }] }] })
-    });
-    const data = await res.json();
-    const text = (data?.candidates?.[0]?.content?.parts?.[0]?.text||"[]").trim();
-    const result = JSON.parse(text.replace(/```json|```/g,"").trim());
-    if (Array.isArray(result) && result.length === descriptions.length) return result;
-  } catch(e) { console.error("Gemini batch error:", e); }
-  return null; // null = fallback para chamadas individuais
 };
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
@@ -625,31 +575,26 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // CLASSIFICAÇÕES TAB — unified, editable, searchable
 // ══════════════════════════════════════════════════════════════════════════════
-const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingClassifications=[], loadPendingClassifications, user, loadTransactions}) => {
+const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
   const [search, setSearch] = useState("");
   const [filterRd, setFilterRd] = useState("todos");
   const [editingRow, setEditingRow] = useState(null);
-  const [editingKwInput, setEditingKwInput] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS"});
   const [saving, setSaving] = useState(false);
-  const [editPending, setEditPending] = useState({});
-  const [reclassifyMsg, setReclassifyMsg] = useState("");
-  const [pendingApply, setPendingApply] = useState(null); // {ruleName, rd, classificacao, trans[], details[]}
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
       id: c.id,
       detalhe: c.name||"",
-      rd: c.rd||"",
+      rd: c.rd||c.keywords?.[0]||"",
       classificacao: c.classificacao||"",
-      keywords: c.keywords||[],
       isCustom: true
     }));
     const customNames = new Set(custom.map(c=>c.detalhe.toUpperCase()));
     const base = BASE_CLASSIFICATIONS
       .filter(c => !customNames.has(c.d.toUpperCase().trim()))
-      .map(c=>({id:"base_"+c.d, detalhe:c.d, rd:c.r, classificacao:c.c, keywords:[], isCustom:false}));
+      .map(c=>({id:"base_"+c.d, detalhe:c.d, rd:c.r, classificacao:c.c, isCustom:false}));
     return [...custom, ...base].sort((a,b)=>a.detalhe.localeCompare(b.detalhe));
   }, [customCats]);
 
@@ -659,54 +604,43 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
     return ms && mr;
   }), [allRows, search, filterRd]);
 
-  const findAffected = async (ruleName, keywords) => {
-    const kws = [ruleName.toUpperCase(), ...keywords.map(k=>k.toUpperCase())].filter(Boolean);
-    const [{data:trans},{data:details}] = await Promise.all([
-      supabase.from("transactions").select("id,description,data,valor,rd,classificacao"),
-      supabase.from("transaction_details").select("id,description,valor,rd,classificacao")
-    ]);
-    return {
-      trans: (trans||[]).filter(t => kws.some(k => t.description.toUpperCase().includes(k))),
-      details: (details||[]).filter(d => kws.some(k => d.description.toUpperCase().includes(k)))
-    };
-  };
-
   const saveEdit = async () => {
     if (!editingRow?.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
-    const ruleName = editingRow.detalhe.trim().toUpperCase();
-    const kws = editingRow.keywords?.length ? editingRow.keywords : [editingRow.detalhe.trim().toLowerCase()];
     if (editingRow.isCustom && !editingRow.id.startsWith("base_")) {
-      await supabase.from("categories").update({ name: ruleName, rd: editingRow.rd, classificacao: editingRow.classificacao, keywords: kws }).eq("id", editingRow.id);
+      await supabase.from("categories").update({
+        name: editingRow.detalhe.trim().toUpperCase(),
+        rd: editingRow.rd, classificacao: editingRow.classificacao,
+        keywords: [editingRow.detalhe.trim().toLowerCase()],
+      }).eq("id", editingRow.id);
+      showToast("Classificação atualizada!");
     } else {
-      const {error} = await supabase.from("categories").upsert({ name: ruleName, rd: editingRow.rd, classificacao: editingRow.classificacao, keywords: kws }, {onConflict:"name"});
-      if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
+      // Editing a base entry: upsert custom override
+      const {error} = await supabase.from("categories").upsert({
+        name: editingRow.detalhe.trim().toUpperCase(),
+        rd: editingRow.rd, classificacao: editingRow.classificacao,
+        keywords: [editingRow.detalhe.trim().toLowerCase()],
+      }, {onConflict:"name"});
+      if (error) showToast("Erro: "+error.message,"error");
+      else showToast("Classificação salva!");
     }
-    const {trans, details} = await findAffected(ruleName, kws);
-    await loadCustomCats(); setEditingRow(null); setEditingKwInput(""); setSaving(false);
-    if (trans.length + details.length > 0) {
-      setPendingApply({ ruleName, rd: editingRow.rd, classificacao: editingRow.classificacao, trans, details });
-    } else {
-      showToast("Classificação salva! (nenhum lançamento afetado)");
-    }
+    await loadCustomCats(); setEditingRow(null); setSaving(false);
   };
 
   const saveNew = async () => {
     if (!newRow.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
     const name = newRow.detalhe.trim().toUpperCase();
-    const kws = [newRow.detalhe.trim().toLowerCase()];
-    const {error} = await supabase.from("categories").upsert({ name, rd: newRow.rd, classificacao: newRow.classificacao, keywords: kws }, {onConflict:"name"});
-    if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
-    const {trans, details} = await findAffected(name, kws);
+    // Try upsert: insert or update on conflict
+    const {error} = await supabase.from("categories").upsert({
+      name, rd: newRow.rd, classificacao: newRow.classificacao,
+      keywords: [newRow.detalhe.trim().toLowerCase()],
+    }, {onConflict:"name"});
+    if (error) { showToast("Erro ao salvar: "+error.message,"error"); }
+    else showToast("Classificação salva!");
     await loadCustomCats();
     setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS"});
     setShowAdd(false); setSaving(false);
-    if (trans.length + details.length > 0) {
-      setPendingApply({ ruleName: name, rd: newRow.rd, classificacao: newRow.classificacao, trans, details });
-    } else {
-      showToast("Classificação salva! (nenhum lançamento afetado)");
-    }
   };
 
   const deleteCustom = async (id) => {
@@ -720,109 +654,6 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
 
   return (
     <>
-      {pendingApply&&(
-        <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7",padding:16}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-            <div>
-              <div style={{fontSize:13,fontWeight:700,color:"#00C9A7",marginBottom:2}}>
-                ⚡ Regra "{pendingApply.ruleName}" salva
-              </div>
-              <div style={{fontSize:11,color:"#6B8299"}}>
-                {pendingApply.trans.length} lançamento(s) + {pendingApply.details.length} item(ns) de fatura encontrado(s) — deseja aplicar <strong style={{color:"#E8EDF2"}}>{pendingApply.rd} / {pendingApply.classificacao}</strong>?
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button style={{...s.btn(),padding:"6px 14px",fontSize:12}} onClick={async()=>{
-                setReclassifyMsg("Aplicando...");
-                for(const t of pendingApply.trans) await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,needs_review:false}).eq("id",t.id);
-                for(const d of pendingApply.details) await supabase.from("transaction_details").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,needs_review:false}).eq("id",d.id);
-                setReclassifyMsg(""); setPendingApply(null);
-                await loadTransactions?.();
-                showToast(`✓ ${pendingApply.trans.length + pendingApply.details.length} lançamentos atualizados`);
-              }}>Aplicar em todos</button>
-              <button style={{...s.btn("ghost"),padding:"6px 14px",fontSize:12}} onClick={()=>setPendingApply(null)}>Pular</button>
-            </div>
-          </div>
-          {pendingApply.trans.length>0&&(
-            <div style={{marginBottom:6}}>
-              <div style={{fontSize:10,color:"#6B8299",marginBottom:4}}>LANÇAMENTOS</div>
-              <div style={{maxHeight:120,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-                {pendingApply.trans.map(t=>(
-                  <div key={t.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,background:"rgba(0,201,167,0.05)",borderRadius:4,padding:"3px 8px"}}>
-                    <span style={{color:"#E8EDF2"}}>{t.data} — {t.description}</span>
-                    <span style={{color:"#6B8299",marginLeft:12,whiteSpace:"nowrap"}}>{t.rd||"—"} / {t.classificacao||"—"}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {pendingApply.details.length>0&&(
-            <div>
-              <div style={{fontSize:10,color:"#6B8299",marginBottom:4}}>FATURA / DETALHAMENTOS</div>
-              <div style={{maxHeight:100,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-                {pendingApply.details.map(d=>(
-                  <div key={d.id} style={{display:"flex",justifyContent:"space-between",fontSize:11,background:"rgba(0,201,167,0.05)",borderRadius:4,padding:"3px 8px"}}>
-                    <span style={{color:"#E8EDF2"}}>{d.description}</span>
-                    <span style={{color:"#6B8299",marginLeft:12,whiteSpace:"nowrap"}}>{d.rd||"—"} / {d.classificacao||"—"}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {pendingClassifications.length>0&&(
-        <div style={{...s.card,marginBottom:16,border:"1px solid #F5A623",padding:16}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#F5A623",marginBottom:4}}>⏳ Aguardando revisão · {pendingClassifications.length} comerciante(s) novo(s)</div>
-          <div style={{fontSize:11,color:"#6B8299",marginBottom:14}}>Classificados pelo Gemini — confirme ou ajuste antes de salvar na base permanente.</div>
-          {pendingClassifications.map(item=>{
-            const ep = editPending[item.id]||{rd:item.rd,classificacao:item.classificacao,subcategoria:item.subcategoria||item.merchant_name};
-            const setEp = patch=>setEditPending(prev=>({...prev,[item.id]:{...ep,...patch}}));
-            const confirm = async()=>{
-              await supabase.from("categories").upsert({name:ep.subcategoria.toUpperCase(),rd:ep.rd,classificacao:ep.classificacao,keywords:[ep.subcategoria.toLowerCase()]},{onConflict:"name"});
-              await supabase.from("pending_classifications").delete().eq("id",item.id);
-              await Promise.all([loadCustomCats(),loadPendingClassifications()]);
-              showToast("Classificação confirmada!");
-              setEditPending(prev=>{const n={...prev};delete n[item.id];return n;});
-            };
-            const reject = async()=>{
-              await supabase.from("pending_classifications").delete().eq("id",item.id);
-              await loadPendingClassifications();
-              showToast("Removido da fila.");
-            };
-            const II2={background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"5px 8px",color:"#E8EDF2",fontSize:12,width:"100%"};
-            return(
-              <div key={item.id} style={{background:"rgba(245,166,35,0.05)",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid rgba(245,166,35,0.2)"}}>
-                <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr auto auto",gap:8,alignItems:"end"}}>
-                  <div>
-                    <div style={{fontSize:10,color:"#6B8299",marginBottom:3}}>Fornecedor / Subcategoria</div>
-                    <input style={II2} value={ep.subcategoria} onChange={e=>setEp({subcategoria:e.target.value})}/>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:"#6B8299",marginBottom:3}}>R/D</div>
-                    <select style={II2} value={ep.rd} onChange={e=>setEp({rd:e.target.value})}>
-                      {RD_TYPES.map(r=><option key={r}>{r}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:"#6B8299",marginBottom:3}}>Classificação</div>
-                    <select style={II2} value={ep.classificacao} onChange={e=>setEp({classificacao:e.target.value})}>
-                      {allCls.map(c=><option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div style={{fontSize:10,color:"#6B8299",alignSelf:"center",paddingTop:16}}>
-                    Gemini · {item.source}
-                  </div>
-                  <button style={{...s.btn(),padding:"5px 12px",fontSize:11,alignSelf:"end"}} onClick={confirm}>✓ Confirmar</button>
-                  <button style={{...s.btn("ghost"),padding:"5px 10px",fontSize:11,alignSelf:"end"}} onClick={reject}>✕</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <div>
           <div style={{fontSize:21,fontWeight:700}}>Classificações</div>
@@ -857,31 +688,17 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
               showToast(`${rows.length} classificações importadas!`);
             } catch(err){ showToast("Erro: "+err.message,"error"); }
           }}/>
-          {reclassifyMsg&&<span style={{fontSize:11,color:"#F5A623",fontFamily:"monospace"}}>⏳ {reclassifyMsg}</span>}
-          <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} disabled={!!reclassifyMsg} onClick={async()=>{
-            if(!window.confirm("Reclassificar apenas lançamentos SEM classificação ou marcados para revisão?\n\nLançamentos já classificados NÃO serão alterados.")) return;
-            setReclassifyMsg("Buscando pendentes...");
-            const [{data:trans},{data:details}] = await Promise.all([
-              supabase.from("transactions").select("id,description,classificacao,needs_review").or("classificacao.is.null,classificacao.eq.,needs_review.eq.true"),
-              supabase.from("transaction_details").select("id,description,classificacao,needs_review").or("classificacao.is.null,classificacao.eq.,needs_review.eq.true")
-            ]);
-            let count=0, detailCount=0;
-            const allPending = [...(trans||[]), ...(details||[])];
-            let done=0;
-            for(const t of (trans||[])){
-              done++; setReclassifyMsg(`Lançamentos: ${done} de ${allPending.length}...`);
+          <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
+            if(!window.confirm("Reclassificar TODOS os lançamentos com base nas classificações atuais?")) return;
+            const {data:trans} = await supabase.from("transactions").select("id,description");
+            if(!trans) return;
+            let count=0;
+            for(const t of trans){
               const local = localClassify(t.description, customCats);
               if(local){ await supabase.from("transactions").update({rd:local.r,classificacao:local.c,needs_review:false}).eq("id",t.id); count++; }
             }
-            for(const d of (details||[])){
-              done++; setReclassifyMsg(`Detalhamentos: ${done} de ${allPending.length}...`);
-              const local = localClassify(d.description, customCats);
-              if(local){ await supabase.from("transaction_details").update({rd:local.r,classificacao:local.c,needs_review:false}).eq("id",d.id); detailCount++; }
-            }
-            setReclassifyMsg("");
-            await loadTransactions?.();
-            showToast(`✓ ${count} lançamentos + ${detailCount} itens classificados`);
-          }}>🔄 Classificar pendentes</button>
+            showToast(`${count} lançamentos reclassificados!`);
+          }}>🔄 Reclassificar</button>
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
@@ -928,7 +745,6 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
               <th style={s.th}>Descrição / Palavra-chave</th>
               <th style={s.th}>R/D</th>
               <th style={s.th}>Classificação</th>
-              <th style={s.th}>Keywords extras</th>
               <th style={{...s.th,width:80,textAlign:"center"}}>Ação</th>
             </tr>
           </thead>
@@ -940,25 +756,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
                     <td style={s.td}><input style={II} value={editingRow.detalhe} onChange={e=>setEditingRow(r=>({...r,detalhe:e.target.value}))}/></td>
                     <td style={s.td}><select style={IS} value={editingRow.rd} onChange={e=>setEditingRow(r=>({...r,rd:e.target.value}))}>{RD_TYPES.map(r=><option key={r}>{r}</option>)}</select></td>
                     <td style={s.td}><select style={IS} value={editingRow.classificacao} onChange={e=>setEditingRow(r=>({...r,classificacao:e.target.value}))}>{allCls.map(c=><option key={c}>{c}</option>)}</select></td>
-                    <td style={s.td}>
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                        {(editingRow.keywords||[]).filter(k=>k).map((kw,ki)=>(
-                          <span key={ki} style={{background:"rgba(0,201,167,0.12)",color:"#00C9A7",borderRadius:20,padding:"2px 8px",fontSize:10,display:"flex",alignItems:"center",gap:3}}>
-                            {kw}
-                            <span style={{cursor:"pointer",color:"#E8445A",fontWeight:700,fontSize:9}} onClick={()=>setEditingRow(r=>({...r,keywords:r.keywords.filter((_,i)=>i!==ki)}))}>✕</span>
-                          </span>
-                        ))}
-                        <input style={{...II,width:80,padding:"2px 6px",fontSize:10}} placeholder="+ add" value={editingKwInput}
-                          onChange={e=>setEditingKwInput(e.target.value)}
-                          onKeyDown={e=>{if(e.key==="Enter"&&editingKwInput.trim()){setEditingRow(r=>({...r,keywords:[...(r.keywords||[]),editingKwInput.trim().toLowerCase()]}));setEditingKwInput("");}}}/>
-                        {editingKwInput.trim()&&<button style={{background:"rgba(0,201,167,0.15)",border:"none",borderRadius:12,padding:"2px 8px",fontSize:10,cursor:"pointer",color:"#00C9A7"}}
-                          onClick={()=>{setEditingRow(r=>({...r,keywords:[...(r.keywords||[]),editingKwInput.trim().toLowerCase()]}));setEditingKwInput("");}}>+</button>}
-                      </div>
-                    </td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn(),padding:"3px 8px",fontSize:11}} onClick={saveEdit} disabled={saving}>✓</button>
-                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>{setEditingRow(null);setEditingKwInput("");}}>✕</button>
+                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow(null)}>✕</button>
                       </div>
                     </td>
                   </>
@@ -970,42 +771,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, pendingCla
                     </td>
                     <td style={s.td}><span style={{...s.badge(row.rd),fontSize:10}}>{row.rd}</span></td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.classificacao}</td>
-                    <td style={s.td}>
-                      <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                        {(row.keywords||[]).filter(k=>k).map((kw,ki)=>(
-                          <span key={ki} style={{background:"rgba(100,150,200,0.12)",color:"#6B8299",borderRadius:20,padding:"1px 7px",fontSize:9}}>{kw}</span>
-                        ))}
-                      </div>
-                    </td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} title="Editar" onClick={()=>{setEditingRow({...row});setEditingKwInput("");}}>✏</button>
-                        <button style={{...s.btn("warn"),padding:"3px 8px",fontSize:11}} disabled={!!reclassifyMsg} title={`Aplicar "${row.detalhe}" em todos os lançamentos que contêm essa palavra-chave`} onClick={async()=>{
-                          if(!row.rd||!row.classificacao){showToast("R/D e Classificação são obrigatórios.","error");return;}
-                          setReclassifyMsg(`Aplicando "${row.detalhe}"...`);
-                          const keywords = [row.detalhe.toUpperCase(), ...(row.keywords||[]).map(k=>k.toUpperCase())].filter(Boolean);
-                          const [{data:trans},{data:details}] = await Promise.all([
-                            supabase.from("transactions").select("id,description"),
-                            supabase.from("transaction_details").select("id,description")
-                          ]);
-                          let count=0, detailCount=0;
-                          for(const t of (trans||[])){
-                            const d=t.description.toUpperCase();
-                            if(keywords.some(k=>d.includes(k))){
-                              await supabase.from("transactions").update({rd:row.rd,classificacao:row.classificacao,needs_review:false}).eq("id",t.id); count++;
-                            }
-                          }
-                          for(const d of (details||[])){
-                            const desc=d.description.toUpperCase();
-                            if(keywords.some(k=>desc.includes(k))){
-                              await supabase.from("transaction_details").update({rd:row.rd,classificacao:row.classificacao,needs_review:false}).eq("id",d.id); detailCount++;
-                            }
-                          }
-                          setReclassifyMsg("");
-                          await loadTransactions?.();
-                          showToast(`✓ "${row.detalhe}": ${count} lançamentos + ${detailCount} itens atualizados`);
-                        }}>🔄</button>
-                        {row.isCustom&&<button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} title="Remover" onClick={()=>deleteCustom(row.id)}>✕</button>}
+                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row})}>✏</button>
+                        {row.isCustom&&<button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={()=>deleteCustom(row.id)}>✕</button>}
                       </div>
                     </td>
                   </>
@@ -1068,25 +837,16 @@ export default function App() {
   const [reclassifyList,setReclassifyList]   = useState(null);
   const [reclassifySelected,setReclassifySelected] = useState([]);
   const [associating,setAssociating]     = useState(null);
-  const [faturaWarning,setFaturaWarning] = useState(null);
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
   const [agendaSortDir,setAgendaSortDir] = useState("asc");
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
   const [showDiaFilter,setShowDiaFilter] = useState(false);
-  const [biMes,setBiMes]                       = useState(new Date().getMonth()+1);
-  const [biAno,setBiAno]                       = useState(new Date().getFullYear());
-  const [biRDFilter,setBiRDFilter]             = useState("");
-  const [biExpanded,setBiExpanded]             = useState(new Set());
-  const [biClsExpanded,setBiClsExpanded]       = useState(new Set());
-  const [biSubExpanded,setBiSubExpanded]       = useState(new Set());
-  const [pendingClassifications,setPendingClassifications] = useState([]);
   const [fluxoMonth,setFluxoMonth] = useState("todos");
   const [importedHashes,setImportedHashes] = useState(new Set());
   // v3.0 — Transaction details
   const [detailModal,setDetailModal]       = useState(null); // {transaction}
   const [detailItems,setDetailItems]       = useState([]); // items for current detail modal
   const [detailLoading,setDetailLoading]   = useState(false);
-  const [detailClassifyMsg,setDetailClassifyMsg] = useState("");
   const [detailSaving,setDetailSaving]     = useState(false);
   const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
   const [transDetailsMap,setTransDetailsMap] = useState({}); // {transaction_id: count}
@@ -1153,11 +913,7 @@ export default function App() {
     await supabase.from("extras_fluxo").upsert({tipo:dbTipo, valor:0, valor_json:JSON.stringify(updated)},{onConflict:"tipo"});
   };
 
-  const loadPendingClassifications = async () => {
-    const {data} = await supabase.from("pending_classifications").select("*").order("created_at",{ascending:false});
-    if(data) setPendingClassifications(data);
-  };
-  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); loadAlertContacts(); loadPendingClassifications(); };
+  const loadAll = () => { loadTransactions(); loadSettings(); loadCustomCats(); loadAgenda(); loadDetailsMap(); loadExtrasFluxo(); loadAlertContacts(); };
 
   const saveExtraFluxo = async (tipo, val) => {
     const dbTipo = tipo==="investimentos" ? "investimentos" : "contas_receber";
@@ -1204,48 +960,6 @@ export default function App() {
   },[transactions,saldoInicial]);
 
   const forecast = useMemo(()=>generateForecast(transactions),[transactions]);
-
-  const biData = useMemo(()=>{
-    const filtd = transactions.filter(t=>{
-      if(!t.date) return false;
-      const p = t.date.split("/");
-      if(p.length<3) return false;
-      if(parseInt(p[1])!==biMes||parseInt(p[2])!==biAno) return false;
-      if(biRDFilter && t.rd!==biRDFilter) return false;
-      return true;
-    });
-    const totalAbs = filtd.reduce((s,t)=>s+Math.abs(Number(t.value)),0);
-    const groups = {}; // rd → cls → sub
-    for(const t of filtd){
-      const rd  = t.rd||"Sem R/D";
-      const cls = t.classificacao||"Sem classificação";
-      const val = Number(t.value);
-      const matchedCat = [...customCats].sort((a,b)=>b.name.length-a.name.length).find(c=>{
-        const d = t.description.toUpperCase();
-        if(d.includes(c.name.toUpperCase())) return true;
-        return c.keywords?.some(k=>k&&d.includes(k.toUpperCase()));
-      });
-      const subName = matchedCat?.name || cleanMerchantName(t.description) || t.description.split(/[\s*/]/)[0].substring(0,22);
-      if(!groups[rd]) groups[rd]={total:0,count:0,pct:0,cls:{}};
-      groups[rd].total+=val; groups[rd].count++;
-      if(!groups[rd].cls[cls]) groups[rd].cls[cls]={total:0,count:0,pct:0,subs:{}};
-      groups[rd].cls[cls].total+=val; groups[rd].cls[cls].count++;
-      if(!groups[rd].cls[cls].subs[subName]) groups[rd].cls[cls].subs[subName]={total:0,count:0,pct:0,items:[]};
-      groups[rd].cls[cls].subs[subName].total+=val; groups[rd].cls[cls].subs[subName].count++;
-      groups[rd].cls[cls].subs[subName].items.push(t);
-    }
-    for(const rd in groups){
-      groups[rd].pct = totalAbs ? Math.abs(groups[rd].total)/totalAbs*100 : 0;
-      const rdAbs = Math.abs(groups[rd].total);
-      for(const cls in groups[rd].cls){
-        groups[rd].cls[cls].pct = rdAbs ? Math.abs(groups[rd].cls[cls].total)/rdAbs*100 : 0;
-        const clsAbs = Math.abs(groups[rd].cls[cls].total);
-        for(const sub in groups[rd].cls[cls].subs)
-          groups[rd].cls[cls].subs[sub].pct = clsAbs ? Math.abs(groups[rd].cls[cls].subs[sub].total)/clsAbs*100 : 0;
-      }
-    }
-    return Object.entries(groups).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total));
-  },[transactions,customCats,biMes,biAno,biRDFilter]);
 
   const filtered = useMemo(()=>{
     let list=[...transactions];
@@ -1368,14 +1082,7 @@ export default function App() {
     setDetailModal(t);
     setDetailLoading(true);
     const {data} = await supabase.from("transaction_details").select("*").eq("transaction_id",t.id).order("date");
-    const items = (data||[]).map(item => {
-      if (!item.classificacao) {
-        const local = localClassify(item.description, customCats);
-        if (local) return {...item, rd: local.r, classificacao: local.c};
-      }
-      return item;
-    });
-    setDetailItems(items);
+    setDetailItems(data||[]);
     setDetailLoading(false);
   };
 
@@ -1512,12 +1219,7 @@ export default function App() {
   };
 
   const startEdit = (t) => {
-    let rdVal = t.rd||"RECEITA", clsVal = t.classificacao||"";
-    if (!clsVal) {
-      const local = localClassify(t.description, customCats);
-      if (local) { rdVal = local.r; clsVal = local.c; }
-    }
-    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:rdVal,classificacao:clsVal,conta:t.conta||"",detalhe_class:t.detalhe_class||""});
+    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||"",detalhe_class:t.detalhe_class||""});
     setEditingId(t.id); setModalMode("lancamento"); setShowModal(true);
   };
 
@@ -1641,81 +1343,18 @@ export default function App() {
       // detalhe
       if(!parsed.length){showToast("Nenhum item encontrado.","error");return;}
       setDetailLoading(true);
-      setDetailClassifyMsg("Processando...");
-
-      // 1ª passagem: classificação local
-      const localResults = parsed.map(row=>({row, local:localClassify(row.description, customCats)}));
-      const unclassified = localResults.filter(r=>!r.local);
-
-      // 2ª passagem: Gemini em batch para os sem match local
-      let aiResults = [];
-      if (unclassified.length > 0) {
-        setDetailClassifyMsg(`Classificando ${unclassified.length} itens com IA...`);
-        const batch = await classifyBatchWithGemini(unclassified.map(r=>r.row.description));
-        if (batch) {
-          aiResults = batch;
-        } else {
-          // fallback: chamadas individuais
-          for (let i=0; i<unclassified.length; i++) {
-            setDetailClassifyMsg(`Classificando ${i+1} de ${unclassified.length}...`);
-            const ai = await classifyWithGemini(unclassified[i].row.description);
-            aiResults.push(ai||null);
-          }
-        }
-      }
-
-      // Monta itens e coleta categorias novas para salvar
-      const items = [];
-      const newCats = [];
-      let aiIdx = 0;
-      for (const {row, local} of localResults) {
-        if (local) {
-          items.push({transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:local.r,classificacao:local.c,ai_classified:false,needs_review:false});
-        } else {
-          const ai = aiResults[aiIdx++]||null;
-          if (ai?.rd && ai?.classificacao) {
-            items.push({transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:ai.rd,classificacao:ai.classificacao,ai_classified:true,needs_review:false});
-            newCats.push({name:cleanMerchantName(row.description).toUpperCase(),rd:ai.rd,classificacao:ai.classificacao});
-          } else {
-            items.push({transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:"",classificacao:"",ai_classified:false,needs_review:true});
-          }
-        }
-      }
-
-      // Envia novos comerciantes para fila de revisão (não salva direto no customCats)
-      if (newCats.length > 0) {
-        const existingNames = new Set([...customCats.map(c=>c.name.toUpperCase()), ...pendingClassifications.map(p=>p.merchant_name.toUpperCase())]);
-        const toQueue = newCats.filter(c=>!existingNames.has(c.name.toUpperCase())).map(c=>({
-          merchant_name:c.name, rd:c.rd, classificacao:c.classificacao, subcategoria:c.name,
-          source:"gemini_detalhe", user_id:user.id
-        }));
-        if(toQueue.length>0){
-          await supabase.from("pending_classifications").insert(toQueue);
-          await loadPendingClassifications();
-          showToast(`${toQueue.length} comerciante(s) novo(s) enviado(s) para revisão`);
-        }
-      }
-
-      setDetailClassifyMsg("");
+      const items = parsed.map(row=>{
+        const local = localClassify(row.description, customCats);
+        return {transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:local?.r||"",classificacao:local?.c||"",ai_classified:false,needs_review:!local};
+      });
       setDetailItems(items);
       setDetailLoading(false);
     }
   };
 
   // ── File import ────────────────────────────────────────────────────────────
-  const isFaturaFile = (file, rows=[]) => {
-    if (/fatura/i.test(file.name)) return true;
-    if (rows.length > 5) {
-      const descs = rows.slice(0,30).map(r=>String(Object.values(r)[1]||""));
-      const parcelas = descs.filter(d=>/\d{2}\/\d{2}/.test(d)).length;
-      if (parcelas / descs.length > 0.4) return true;
-    }
-    return false;
-  };
-
   const handleFile = useCallback((file)=>{
     if(!file) return;
-    if(isFaturaFile(file)) { setFaturaWarning(file); return; }
     openColumnMapper(file, "extrato");
   },[importedHashes]);
 
@@ -1823,7 +1462,6 @@ export default function App() {
     {id:"projecao",     icon:"↗", label:"Projeção"},
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
     {id:"agenda",       icon:"📅",label:"Agenda"},
-    {id:"bi",           icon:"📊",label:"BI"},
     {id:"operacional",  icon:"⚙", label:"Operacional"},
   ];
 
@@ -1859,7 +1497,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.6.2.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2604,119 +2242,8 @@ export default function App() {
 
         {/* CLASSIFICAÇÕES */}
         {tab==="classificacoes"&&(
-          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s} pendingClassifications={pendingClassifications} loadPendingClassifications={loadPendingClassifications} user={user} loadTransactions={loadTransactions}/>
+          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s}/>
         )}
-
-        {/* BI */}
-        {tab==="bi"&&(()=>{
-          const toggleRd  = rd =>setBiExpanded(prev=>{const n=new Set(prev);n.has(rd)?n.delete(rd):n.add(rd);return n;});
-          const toggleCls = key=>setBiClsExpanded(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
-          const toggleSub = key=>setBiSubExpanded(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
-          const totalGeral = biData.reduce((s,[,g])=>s+Math.abs(g.total),0);
-          return (
-            <>
-              <div style={{fontSize:21,fontWeight:700,marginBottom:4}}>📊 BI</div>
-              <div style={{fontSize:13,color:"#6B8299",marginBottom:20}}>Análise por R/D · Classificação · Fornecedor · {MONTHS[biMes-1]} {biAno}</div>
-
-              {/* Filtros */}
-              <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
-                <select style={s.sel} value={biMes} onChange={e=>setBiMes(+e.target.value)}>
-                  {MONTHS.map((m,i)=><option key={i+1} value={i+1}>{m.charAt(0).toUpperCase()+m.slice(1)}</option>)}
-                </select>
-                <select style={s.sel} value={biAno} onChange={e=>setBiAno(+e.target.value)}>
-                  {Array.from({length:5},(_,i)=>new Date().getFullYear()-2+i).map(y=><option key={y}>{y}</option>)}
-                </select>
-                <select style={s.sel} value={biRDFilter} onChange={e=>setBiRDFilter(e.target.value)}>
-                  <option value="">Todos R/D</option>
-                  {RD_TYPES.map(r=><option key={r}>{r}</option>)}
-                </select>
-                <div style={{fontSize:12,color:"#6B8299",display:"flex",alignItems:"center"}}>
-                  Total: <strong style={{color:"#E8EDF2",marginLeft:6}}>{fmt(totalGeral)}</strong>
-                </div>
-              </div>
-
-              {biData.length===0&&(
-                <div style={{...s.card,textAlign:"center",padding:40,color:"#6B8299"}}>Nenhuma transação no período selecionado.</div>
-              )}
-
-              {/* Nível 1: R/D */}
-              {biData.map(([rd,rdGroup])=>(
-                <div key={rd} style={{...s.card,marginBottom:8,padding:0,overflow:"hidden"}}>
-                  <div style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,background:"rgba(0,201,167,0.05)"}}
-                    onClick={()=>toggleRd(rd)}>
-                    <span style={{fontSize:12,color:biExpanded.has(rd)?"#00C9A7":"#6B8299",width:10}}>{biExpanded.has(rd)?"▾":"▸"}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>{rd}</div>
-                      <div style={{background:"#0F1923",borderRadius:4,height:5}}>
-                        <div style={{background:"#00C9A7",borderRadius:4,height:5,width:`${Math.min(rdGroup.pct,100)}%`,transition:"width .3s"}}/>
-                      </div>
-                    </div>
-                    <div style={{textAlign:"right",minWidth:130}}>
-                      <div style={{fontWeight:700,fontSize:14,color:rdGroup.total>=0?"#2ECC71":"#E8445A"}}>{fmt(rdGroup.total)}</div>
-                      <div style={{fontSize:11,color:"#6B8299"}}>{rdGroup.count} tx · {rdGroup.pct.toFixed(1)}%</div>
-                    </div>
-                  </div>
-
-                  {/* Nível 2: Classificação */}
-                  {biExpanded.has(rd)&&Object.entries(rdGroup.cls).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([cls,clsGroup])=>{
-                    const clsKey=`${rd}|${cls}`;
-                    return(
-                      <div key={cls}>
-                        <div style={{padding:"9px 16px 9px 36px",borderTop:"1px solid #1E2D3D",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}
-                          onClick={()=>toggleCls(clsKey)}>
-                          <span style={{fontSize:11,color:biClsExpanded.has(clsKey)?"#F5A623":"#6B8299",width:10}}>{biClsExpanded.has(clsKey)?"▾":"▸"}</span>
-                          <div style={{flex:1}}>
-                            <div style={{fontSize:12,fontWeight:600,marginBottom:3}}>{cls}</div>
-                            <div style={{background:"#0F1923",borderRadius:4,height:3}}>
-                              <div style={{background:"#F5A623",borderRadius:4,height:3,width:`${Math.min(clsGroup.pct,100)}%`,transition:"width .3s"}}/>
-                            </div>
-                          </div>
-                          <div style={{textAlign:"right",minWidth:130}}>
-                            <div style={{fontSize:12,color:clsGroup.total>=0?"#2ECC71":"#E8445A",fontWeight:600}}>{fmt(clsGroup.total)}</div>
-                            <div style={{fontSize:10,color:"#6B8299"}}>{clsGroup.count} tx · {clsGroup.pct.toFixed(1)}%</div>
-                          </div>
-                        </div>
-
-                        {/* Nível 3: Subcategoria / Fornecedor */}
-                        {biClsExpanded.has(clsKey)&&Object.entries(clsGroup.subs).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([sub,sg])=>{
-                          const subKey=`${rd}|${cls}|${sub}`;
-                          return(
-                            <div key={sub}>
-                              <div style={{padding:"7px 16px 7px 58px",borderTop:"1px solid rgba(30,45,61,0.7)",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}
-                                onClick={()=>toggleSub(subKey)}>
-                                <span style={{fontSize:10,color:biSubExpanded.has(subKey)?"#6B8299":"#3A4F61",width:10}}>{biSubExpanded.has(subKey)?"▾":"▸"}</span>
-                                <div style={{flex:1}}>
-                                  <div style={{fontSize:11,marginBottom:2}}>{sub}</div>
-                                  <div style={{background:"#0F1923",borderRadius:4,height:2}}>
-                                    <div style={{background:"#4A90D9",borderRadius:4,height:2,width:`${Math.min(sg.pct,100)}%`}}/>
-                                  </div>
-                                </div>
-                                <div style={{textAlign:"right",minWidth:130}}>
-                                  <div style={{fontSize:11,color:sg.total>=0?"#2ECC71":"#E8445A"}}>{fmt(sg.total)}</div>
-                                  <div style={{fontSize:10,color:"#6B8299"}}>{sg.count} tx · {sg.pct.toFixed(1)}%</div>
-                                </div>
-                              </div>
-                              {/* Nível 4: Transações individuais */}
-                              {biSubExpanded.has(subKey)&&sg.items.sort((a,b)=>b.date.localeCompare(a.date)).map((t,ti)=>(
-                                <div key={ti} style={{padding:"5px 16px 5px 76px",borderTop:"1px solid rgba(30,45,61,0.4)",display:"flex",justifyContent:"space-between",alignItems:"center",background:"rgba(15,25,35,0.6)"}}>
-                                  <div>
-                                    <div style={{fontSize:11,color:"#C8D8E8"}}>{t.description}</div>
-                                    <div style={{fontSize:10,color:"#6B8299"}}>{t.date}</div>
-                                  </div>
-                                  <div style={{fontSize:11,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</div>
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </>
-          );
-        })()}
 
         {/* OPERACIONAL */}
         {tab==="operacional"&&(
@@ -2728,7 +2255,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.6.2.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.4.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2914,7 +2441,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.6.2.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2965,28 +2492,6 @@ export default function App() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Fatura warning */}
-      {faturaWarning&&(
-        <div style={s.modal} onClick={()=>setFaturaWarning(null)}>
-          <div style={{...s.mbox,maxWidth:480,border:"2px solid #F5A623"}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:32,textAlign:"center",marginBottom:8}}>⚠️</div>
-            <div style={{fontSize:18,fontWeight:700,color:"#F5A623",textAlign:"center",marginBottom:8}}>Arquivo de Fatura Detectado</div>
-            <div style={{fontSize:13,color:"#6B8299",textAlign:"center",marginBottom:6}}>
-              <strong style={{color:"#E8EDF2"}}>{faturaWarning.name}</strong>
-            </div>
-            <div style={{fontSize:13,color:"#6B8299",textAlign:"center",marginBottom:20,lineHeight:1.6}}>
-              Este arquivo parece ser uma <strong style={{color:"#F5A623"}}>fatura de cartão de crédito</strong>, não um extrato bancário.<br/>
-              Importá-lo aqui pode gerar lançamentos incorretos.<br/><br/>
-              Para importar a fatura de um cartão, use o módulo de <strong style={{color:"#00C9A7"}}>Detalhamento</strong> em Lançamentos.
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setFaturaWarning(null)}>Cancelar</button>
-              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{const f=faturaWarning;setFaturaWarning(null);openColumnMapper(f,"extrato");}}>Importar mesmo assim</button>
-            </div>
           </div>
         </div>
       )}
@@ -3167,7 +2672,7 @@ export default function App() {
               onChange={e=>{const f=e.target.files[0];if(f){handleDetailFile(f,detailModal);e.target.value="";}}}/>
 
             {detailLoading&&(
-              <div style={{textAlign:"center",padding:32,color:"#00C9A7"}}>⏳ {detailClassifyMsg||"Processando..."}</div>
+              <div style={{textAlign:"center",padding:32,color:"#00C9A7"}}>⏳ Processando...</div>
             )}
 
             {/* Confirmação: fatura de cartão? */}
@@ -3293,15 +2798,6 @@ export default function App() {
               </div>
               <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>setColumnMapper(null)}>✕</button>
             </div>
-
-            {isFaturaFile(columnMapper.file)&&columnMapper.mode==="extrato"&&(
-              <div style={{background:"rgba(245,166,35,0.1)",border:"1px solid #F5A623",borderRadius:8,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:20}}>⚠️</span>
-                <div style={{fontSize:12,color:"#F5A623",lineHeight:1.5}}>
-                  <strong>Atenção:</strong> Este arquivo parece ser uma fatura de cartão de crédito. Verifique cuidadosamente o mapeamento antes de confirmar a importação.
-                </div>
-              </div>
-            )}
 
             {/* Preview table */}
             <div style={{marginBottom:16,overflowX:"auto"}}>
