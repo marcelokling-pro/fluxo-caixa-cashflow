@@ -169,6 +169,13 @@ const dateToSortable = (d) => {
 const generateHash = (date, desc, value) =>
   `${date}|${String(desc).trim().toUpperCase()}|${parseFloat(value).toFixed(2)}`;
 
+const isCCTransaction = (t) => {
+  if ((t.origin||"") === "fatura") return true;
+  if ((t.conta||"").startsWith("CC/")) return true;
+  if (/\d{3,}\/\d/.test(t.conta||"")) return true;
+  return false;
+};
+
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
 const localClassify = (desc, customCats = []) => {
   const d = String(desc).toUpperCase().trim();
@@ -575,13 +582,14 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // CLASSIFICAÇÕES TAB — unified, editable, searchable
 // ══════════════════════════════════════════════════════════════════════════════
-const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
+const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions}) => {
   const [search, setSearch] = useState("");
   const [filterRd, setFilterRd] = useState("todos");
   const [editingRow, setEditingRow] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS"});
   const [saving, setSaving] = useState(false);
+  const [pendingApply, setPendingApply] = useState(null);
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -604,6 +612,14 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
     return ms && mr;
   }), [allRows, search, filterRd]);
 
+  const findAffected = async (keyword) => {
+    const kw = keyword.trim().toUpperCase();
+    const {data} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
+    return (data||[]).filter(t =>
+      t.description.toUpperCase().includes(kw) && !isCCTransaction(t)
+    );
+  };
+
   const saveEdit = async () => {
     if (!editingRow?.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
@@ -613,34 +629,41 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
         rd: editingRow.rd, classificacao: editingRow.classificacao,
         keywords: [editingRow.detalhe.trim().toLowerCase()],
       }).eq("id", editingRow.id);
-      showToast("Classificação atualizada!");
     } else {
-      // Editing a base entry: upsert custom override
       const {error} = await supabase.from("categories").upsert({
         name: editingRow.detalhe.trim().toUpperCase(),
         rd: editingRow.rd, classificacao: editingRow.classificacao,
         keywords: [editingRow.detalhe.trim().toLowerCase()],
       }, {onConflict:"name"});
-      if (error) showToast("Erro: "+error.message,"error");
-      else showToast("Classificação salva!");
+      if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
     }
+    const affected = await findAffected(editingRow.detalhe);
     await loadCustomCats(); setEditingRow(null); setSaving(false);
+    if (affected.length > 0) {
+      setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, trans:affected});
+    } else {
+      showToast("Classificação salva!");
+    }
   };
 
   const saveNew = async () => {
     if (!newRow.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
     const name = newRow.detalhe.trim().toUpperCase();
-    // Try upsert: insert or update on conflict
     const {error} = await supabase.from("categories").upsert({
       name, rd: newRow.rd, classificacao: newRow.classificacao,
       keywords: [newRow.detalhe.trim().toLowerCase()],
     }, {onConflict:"name"});
-    if (error) { showToast("Erro ao salvar: "+error.message,"error"); }
-    else showToast("Classificação salva!");
+    if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
+    const affected = await findAffected(newRow.detalhe);
     await loadCustomCats();
     setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS"});
     setShowAdd(false); setSaving(false);
+    if (affected.length > 0) {
+      setPendingApply({ruleName:name, rd:newRow.rd, classificacao:newRow.classificacao, trans:affected});
+    } else {
+      showToast("Classificação salva!");
+    }
   };
 
   const deleteCustom = async (id) => {
@@ -702,6 +725,43 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s}) => {
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
+
+      {pendingApply&&(
+        <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7",padding:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"#00C9A7",marginBottom:3}}>
+                Regra "{pendingApply.ruleName}" salva — {pendingApply.trans.length} lançamento(s) encontrado(s)
+              </div>
+              <div style={{fontSize:11,color:"#6B8299"}}>
+                Deseja aplicar <strong style={{color:"#E8EDF2"}}>{pendingApply.rd} / {pendingApply.classificacao}</strong> em todos?
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,flexShrink:0,marginLeft:16}}>
+              <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} onClick={async()=>{
+                for(const t of pendingApply.trans)
+                  await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,needs_review:false}).eq("id",t.id);
+                await loadTransactions?.();
+                setPendingApply(null);
+                showToast(`✓ ${pendingApply.trans.length} lançamento(s) atualizados`);
+              }}>Aplicar em todos</button>
+              <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} onClick={()=>{setPendingApply(null);showToast("Classificação salva.");}}>Pular</button>
+            </div>
+          </div>
+          <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
+            {pendingApply.trans.map(t=>(
+              <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,padding:"5px 8px",borderRadius:4,background:"rgba(0,201,167,0.04)",border:"1px solid rgba(0,201,167,0.1)"}}>
+                <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.date} — {t.description}</span>
+                <span style={{marginLeft:12,whiteSpace:"nowrap",flexShrink:0}}>
+                  <span style={{color:"#F5A623"}}>{t.rd||"—"} / {t.classificacao||"—"}</span>
+                  <span style={{color:"#6B8299",margin:"0 6px"}}>→</span>
+                  <span style={{color:"#00C9A7"}}>{pendingApply.rd} / {pendingApply.classificacao}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showAdd&&(
         <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7"}}>
@@ -962,7 +1022,7 @@ export default function App() {
   const forecast = useMemo(()=>generateForecast(transactions),[transactions]);
 
   const filtered = useMemo(()=>{
-    let list=[...transactions];
+    let list=transactions.filter(t=>!isCCTransaction(t));
     // drillDown overrides filter when set
     if(drillDown){
       if(drillDown.rd) list=list.filter(t=>t.rd===drillDown.rd);
@@ -1028,20 +1088,20 @@ export default function App() {
   },[transactions,fluxoGroupBy,fluxoMonth,fluxoGroupOrder]);
 
   // ── Classify & save ────────────────────────────────────────────────────────
-  const classifyAndSave = async (rows, fileName="") => {
+  const classifyAndSave = async (rows, fileName="", isCreditCard=false) => {
     setAiLoading(true);
     const toSave=[], toReview=[];
     for (const row of rows) {
       if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
       const local = localClassify(row.description, customCats);
       if (local) {
-        toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, status:"confirmado", origin:"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
+        toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
       } else {
         const ai = await classifyWithGemini(row.description);
         if (ai) {
-          toSave.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:ai.rd, classificacao:ai.classificacao, status:"confirmado", origin:"extrato", ai_classified:true, needs_review:false, created_by:user.id, source_file:fileName||null});
+          toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:ai.rd, classificacao:ai.classificacao, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:true, needs_review:false, created_by:user.id, source_file:fileName||null});
         } else {
-          toReview.push({...row, type:Number(row.value)>=0?"entrada":"saída", rd:Number(row.value)>=0?"RECEITA":"DESPESAS VARIÁVEIS", classificacao:Number(row.value)>=0?"RECEITA DE VENDAS":"DESPESAS ADMINISTRATIVAS", status:"pendente", origin:"extrato", ai_classified:true, needs_review:true, created_by:user.id, source_file:fileName||null});
+          toReview.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:Number(row.value)>=0?"RECEITA":"DESPESAS VARIÁVEIS", classificacao:Number(row.value)>=0?"RECEITA DE VENDAS":"DESPESAS ADMINISTRATIVAS", status:"pendente", origin:isCreditCard?"fatura":"extrato", ai_classified:true, needs_review:true, created_by:user.id, source_file:fileName||null});
         }
       }
     }
@@ -1337,7 +1397,7 @@ export default function App() {
     if(mode==="extrato"){
       if(!parsed.length){showToast("Nenhum lançamento encontrado.","error");return;}
       const newRows = parsed.filter(r=>!importedHashes.has(generateHash(r.date,r.description,r.value)));
-      setPendingImport({fileName:file.name,rows:parsed,newRows,dups:parsed.length-newRows.length});
+      setPendingImport({fileName:file.name,rows:parsed,newRows,dups:parsed.length-newRows.length,isCreditCard:isCartao||false});
       setTab("importar");
     } else {
       // detalhe
@@ -1497,7 +1557,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1550,7 +1610,7 @@ export default function App() {
                       <td style={{...s.td,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.conta||"—"}</td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{isCCTransaction(t)?<span style={{color:"#F5A623",fontWeight:600}}>CC/{(t.conta||"").replace(/^CC\//,"")}</span>:(t.conta||"—")}</td>
                       <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
                       <td style={s.td}><span style={{fontSize:11,color:t.needs_review?"#F5A623":t.status==="confirmado"?"#2ECC71":"#6B8299"}}>{t.needs_review?"⚠ revisar":t.status}</span></td>
                     </tr>
@@ -1641,7 +1701,7 @@ export default function App() {
                           return base ? base.d : "—";
                         })()}
                       </td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.conta||"—"}</td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{isCCTransaction(t)?<span style={{color:"#F5A623",fontWeight:600}}>CC/{(t.conta||"").replace(/^CC\//,"")}</span>:(t.conta||"—")}</td>
                       <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
                         {transDetailsMap[t.id]>0
                           ? <button style={{background:"none",border:"none",cursor:"pointer",fontWeight:600,fontSize:12,color:Number(t.value)>=0?"#2ECC71":"#E8445A",padding:0,textDecoration:"underline dotted",textUnderlineOffset:3}} title="Ver detalhamento" onClick={()=>openDetailModal(t)}>{fmt(Number(t.value))} ↗</button>
@@ -1937,7 +1997,7 @@ export default function App() {
                   </div>
                   <div style={{display:"flex",gap:10}}>
                     <button style={s.btn("danger")} onClick={()=>setPendingImport(null)}>✕ Cancelar</button>
-                    <button style={s.btn()} onClick={()=>classifyAndSave(pendingImport.newRows, pendingImport.fileName)} disabled={pendingImport.newRows.length===0}>
+                    <button style={s.btn()} onClick={()=>classifyAndSave(pendingImport.newRows, pendingImport.fileName, pendingImport.isCreditCard)} disabled={pendingImport.newRows.length===0}>
                       🤖 Classificar e Importar ({pendingImport.newRows.length})
                     </button>
                   </div>
@@ -2242,7 +2302,7 @@ export default function App() {
 
         {/* CLASSIFICAÇÕES */}
         {tab==="classificacoes"&&(
-          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s}/>
+          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s} loadTransactions={loadTransactions}/>
         )}
 
         {/* OPERACIONAL */}
@@ -2255,7 +2315,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.4.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.5.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2441,7 +2501,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.4.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
