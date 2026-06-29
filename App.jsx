@@ -179,13 +179,11 @@ const isCCTransaction = (t) => {
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
 const localClassify = (desc, customCats = []) => {
   const d = String(desc).toUpperCase().trim();
-  // Check custom categories first (user-defined takes priority)
   for (const cat of [...customCats].sort((a,b) => b.name.length - a.name.length)) {
-    if (d.includes(cat.name.toUpperCase())) return { r: cat.rd, c: cat.classificacao };
+    if (d.includes(cat.name.toUpperCase())) return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null };
   }
-  // Then base classifications (already sorted by length desc)
   for (const cls of SORTED_CLASSIFICATIONS) {
-    if (d.includes(cls.d.toUpperCase().trim())) return { r: cls.r, c: cls.c };
+    if (d.includes(cls.d.toUpperCase().trim())) return { r: cls.r, c: cls.c, sub: null };
   }
   return null;
 };
@@ -587,7 +585,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [filterRd, setFilterRd] = useState("todos");
   const [editingRow, setEditingRow] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS"});
+  const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:""});
   const [saving, setSaving] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
 
@@ -595,8 +593,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     const custom = customCats.map(c=>({
       id: c.id,
       detalhe: c.name||"",
-      rd: c.rd||c.keywords?.[0]||"",
+      rd: c.rd||"",
       classificacao: c.classificacao||"",
+      subcategoria: c.subcategoria||"",
+      keywords: (c.keywords||[]).filter(k=>k&&k!==c.name?.toLowerCase()),
       isCustom: true
     }));
     const customNames = new Set(custom.map(c=>c.detalhe.toUpperCase()));
@@ -627,12 +627,14 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       await supabase.from("categories").update({
         name: editingRow.detalhe.trim().toUpperCase(),
         rd: editingRow.rd, classificacao: editingRow.classificacao,
+        subcategoria: editingRow.subcategoria||null,
         keywords: [editingRow.detalhe.trim().toLowerCase()],
       }).eq("id", editingRow.id);
     } else {
       const {error} = await supabase.from("categories").upsert({
         name: editingRow.detalhe.trim().toUpperCase(),
         rd: editingRow.rd, classificacao: editingRow.classificacao,
+        subcategoria: editingRow.subcategoria||null,
         keywords: [editingRow.detalhe.trim().toLowerCase()],
       }, {onConflict:"name"});
       if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
@@ -640,7 +642,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     const affected = await findAffected(editingRow.detalhe);
     await loadCustomCats(); setEditingRow(null); setSaving(false);
     if (affected.length > 0) {
-      setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, trans:affected});
+      setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, subcategoria:editingRow.subcategoria||null, trans:affected});
     } else {
       showToast("Classificação salva!");
     }
@@ -652,15 +654,16 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     const name = newRow.detalhe.trim().toUpperCase();
     const {error} = await supabase.from("categories").upsert({
       name, rd: newRow.rd, classificacao: newRow.classificacao,
+      subcategoria: newRow.subcategoria||null,
       keywords: [newRow.detalhe.trim().toLowerCase()],
     }, {onConflict:"name"});
     if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
     const affected = await findAffected(newRow.detalhe);
     await loadCustomCats();
-    setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS"});
+    setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",subcategoria:""});
     setShowAdd(false); setSaving(false);
     if (affected.length > 0) {
-      setPendingApply({ruleName:name, rd:newRow.rd, classificacao:newRow.classificacao, trans:affected});
+      setPendingApply({ruleName:name, rd:newRow.rd, classificacao:newRow.classificacao, subcategoria:newRow.subcategoria||null, trans:affected});
     } else {
       showToast("Classificação salva!");
     }
@@ -740,7 +743,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             <div style={{display:"flex",gap:8,flexShrink:0,marginLeft:16}}>
               <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} onClick={async()=>{
                 for(const t of pendingApply.trans)
-                  await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,needs_review:false}).eq("id",t.id);
+                  await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,subcategoria:pendingApply.subcategoria||null,needs_review:false}).eq("id",t.id);
                 await loadTransactions?.();
                 setPendingApply(null);
                 showToast(`✓ ${pendingApply.trans.length} lançamento(s) atualizados`);
@@ -766,7 +769,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       {showAdd&&(
         <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7"}}>
           <div style={{fontSize:13,fontWeight:600,marginBottom:14,color:"#00C9A7"}}>Nova Classificação</div>
-          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
             <div>
               <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Descrição / Palavra-chave</div>
               <input style={{...II,padding:"8px 10px",fontSize:13}} placeholder="Ex: FORNECEDOR SILVA LTDA"
@@ -783,6 +786,11 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
               <select style={{...IS,padding:"8px 10px",fontSize:13}} value={newRow.classificacao} onChange={e=>setNewRow(r=>({...r,classificacao:e.target.value}))}>
                 {allCls.map(c=><option key={c}>{c}</option>)}
               </select>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Subcategoria</div>
+              <input style={{...II,padding:"8px 10px",fontSize:13}} placeholder="Opcional"
+                value={newRow.subcategoria||""} onChange={e=>setNewRow(r=>({...r,subcategoria:e.target.value}))}/>
             </div>
             <button style={{...s.btn(),padding:"8px 16px"}} onClick={saveNew} disabled={saving}>{saving?"...":"Salvar"}</button>
           </div>
@@ -805,6 +813,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
               <th style={s.th}>Descrição / Palavra-chave</th>
               <th style={s.th}>R/D</th>
               <th style={s.th}>Classificação</th>
+              <th style={s.th}>Subcategoria</th>
+              <th style={s.th}>Keywords extras</th>
               <th style={{...s.th,width:80,textAlign:"center"}}>Ação</th>
             </tr>
           </thead>
@@ -816,6 +826,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     <td style={s.td}><input style={II} value={editingRow.detalhe} onChange={e=>setEditingRow(r=>({...r,detalhe:e.target.value}))}/></td>
                     <td style={s.td}><select style={IS} value={editingRow.rd} onChange={e=>setEditingRow(r=>({...r,rd:e.target.value}))}>{RD_TYPES.map(r=><option key={r}>{r}</option>)}</select></td>
                     <td style={s.td}><select style={IS} value={editingRow.classificacao} onChange={e=>setEditingRow(r=>({...r,classificacao:e.target.value}))}>{allCls.map(c=><option key={c}>{c}</option>)}</select></td>
+                    <td style={s.td}><input style={II} value={editingRow.subcategoria||""} placeholder="Subcategoria" onChange={e=>setEditingRow(r=>({...r,subcategoria:e.target.value}))}/></td>
+                    <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{(editingRow.keywords||[]).map(k=><span key={k} style={{background:"#1E2D3D",borderRadius:20,padding:"1px 6px",marginRight:3,fontSize:10}}>{k}</span>)}</td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn(),padding:"3px 8px",fontSize:11}} onClick={saveEdit} disabled={saving}>✓</button>
@@ -831,6 +843,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     </td>
                     <td style={s.td}><span style={{...s.badge(row.rd),fontSize:10}}>{row.rd}</span></td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.classificacao}</td>
+                    <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.subcategoria||<span style={{color:"#3a4a5a"}}>—</span>}</td>
+                    <td style={s.td}>{row.isCustom&&(row.keywords||[]).length>0?<div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(row.keywords||[]).map(k=><span key={k} style={{background:"#1E2D3D",color:"#6B8299",borderRadius:20,fontSize:10,padding:"1px 6px"}}>{k}</span>)}</div>:<span style={{color:"#3a4a5a"}}>—</span>}</td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row})}>✏</button>
@@ -1095,7 +1109,7 @@ export default function App() {
       if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
       const local = localClassify(row.description, customCats);
       if (local) {
-        toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
+        toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, subcategoria:local.sub||null, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
       } else {
         const ai = await classifyWithGemini(row.description);
         if (ai) {
@@ -1160,12 +1174,12 @@ export default function App() {
   const saveDetailItems = async () => {
     if (!detailModal) return;
     setDetailSaving(true);
-    // Delete existing and re-insert
     await supabase.from("transaction_details").delete().eq("transaction_id",detailModal.id);
-    const toInsert = detailItems.map(({transaction_id,date,description,value,rd,classificacao,ai_classified,needs_review})=>
-      ({transaction_id,date,description,value,rd,classificacao,ai_classified,needs_review}));
+    const toInsert = detailItems.map(({transaction_id,date,description,value,rd,classificacao,subcategoria,keywords,ai_classified,needs_review})=>
+      ({transaction_id,date,description,value,rd,classificacao,subcategoria:subcategoria||null,keywords:keywords?.length?keywords:null,ai_classified,needs_review}));
     for(let i=0;i<toInsert.length;i+=50){
-      await supabase.from("transaction_details").insert(toInsert.slice(i,i+50));
+      const {error} = await supabase.from("transaction_details").insert(toInsert.slice(i,i+50));
+      if(error){ showToast("Erro ao salvar: "+error.message,"error"); setDetailSaving(false); return; }
     }
     await loadDetailsMap();
     showToast(`${toInsert.length} itens salvos!`);
@@ -1192,7 +1206,7 @@ export default function App() {
         if(parseInt(p[1])!==mes||parseInt(p[2])!==ano) return false;
         return keywords.some(k=>
           t.description?.toUpperCase().includes(k.toUpperCase()) ||
-          (t.detalhe_class&&t.detalhe_class.toUpperCase().includes(k.toUpperCase()))
+          (t.subcategoria&&t.subcategoria.toUpperCase().includes(k.toUpperCase()))
         );
       });
       await supabase.from("agenda_ocorrencias").upsert({
@@ -1266,7 +1280,7 @@ export default function App() {
     const isPositive = form.rd==="RECEITA" || form.rd==="INVESTIMENTOS";
     const finalVal = isPositive ? Math.abs(val) : -Math.abs(val);
     setSaving(true);
-    const payload={date:form.date,description:form.description,value:finalVal,type:finalVal>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,detalhe_class:form.detalhe_class||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
+    const payload={date:form.date,description:form.description,value:finalVal,type:finalVal>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
     if(editingId){
       await supabase.from("transactions").update(payload).eq("id",editingId);
       showToast("Lançamento atualizado!");
@@ -1279,7 +1293,7 @@ export default function App() {
   };
 
   const startEdit = (t) => {
-    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||"",detalhe_class:t.detalhe_class||""});
+    setForm({date:t.date,description:t.description,value:String(Math.abs(Number(t.value))).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||"",subcategoria:t.subcategoria||""});
     setEditingId(t.id); setModalMode("lancamento"); setShowModal(true);
   };
 
@@ -1557,7 +1571,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.6.0.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1669,7 +1683,7 @@ export default function App() {
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 280px)"}}>
               <table style={s.table}>
                 <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
-                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Detalhe Class.",k:"detalhe_class"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
@@ -1693,7 +1707,7 @@ export default function App() {
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>
-                        {t.detalhe_class||(()=>{
+                        {t.subcategoria||(()=>{
                           const d = String(t.description||"").toUpperCase().trim();
                           const custom = [...customCats].sort((a,b)=>b.name.length-a.name.length).find(c=>d.includes(c.name.toUpperCase()));
                           if(custom) return custom.name;
@@ -2315,7 +2329,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.5.5.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.6.0.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2501,7 +2515,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.5.5.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.6.0.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2543,8 +2557,8 @@ export default function App() {
                   </select>
                 </div>
                 <div style={{marginBottom:18}}>
-                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Detalhe Class.</div>
-                  <input style={s.input} placeholder="Ex: PAGAMENTOS TRIB" value={form.detalhe_class||""} onChange={e=>setForm(f=>({...f,detalhe_class:e.target.value}))}/>
+                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Subcategoria</div>
+                  <input style={s.input} placeholder="Ex: PAGAMENTOS TRIB" value={form.subcategoria||""} onChange={e=>setForm(f=>({...f,subcategoria:e.target.value}))}/>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowModal(false)}>Cancelar</button>
@@ -2795,6 +2809,8 @@ export default function App() {
                           <th style={{...s.th,textAlign:"right"}}>Valor</th>
                           <th style={s.th}>R/D</th>
                           <th style={s.th}>Classificação</th>
+                          <th style={s.th}>Subcategoria</th>
+                          <th style={s.th}>Keywords</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2819,6 +2835,16 @@ export default function App() {
                                 <option value="">—</option>
                                 {allClassificacoes.map(c=><option key={c}>{c}</option>)}
                               </select>
+                            </td>
+                            <td style={s.td}>
+                              <input style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
+                                placeholder="—" value={item.subcategoria||""}
+                                onChange={e=>updateDetailItem(idx,"subcategoria",e.target.value)}/>
+                            </td>
+                            <td style={s.td}>
+                              <input style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
+                                placeholder="kw1, kw2" value={(item.keywords||[]).join(", ")}
+                                onChange={e=>updateDetailItem(idx,"keywords",e.target.value.split(",").map(k=>k.trim()).filter(Boolean))}/>
                             </td>
                           </tr>
                         ))}
