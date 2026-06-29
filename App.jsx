@@ -1355,22 +1355,21 @@ export default function App() {
         descSimilar(merchantKey(t.description), editedMerchant) &&
         (t.rd !== form.rd || t.classificacao !== form.classificacao)
       ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null}));
-      // Populate keyword for future auto-classification (best-effort — never blocks)
+      // Populate keyword for future auto-classification
       try {
         const kwEntry = merchantKey(form.description).toLowerCase();
         if (kwEntry && form.rd && form.classificacao) {
-          // Look up by name first — avoids conflict when classification changed
-          const {data:byName} = await supabase.from("categories").select("id,keywords").ilike("name",kwEntry).limit(1);
-          const cat = (byName||[])[0] || null;
-          if (cat) {
-            const merged = [...new Set([...(cat.keywords||[]),kwEntry])];
-            await supabase.from("categories").update({keywords:merged,rd:form.rd,classificacao:form.classificacao}).eq("id",cat.id);
-          } else {
-            await supabase.from("categories").insert({name:kwEntry.toUpperCase(),rd:form.rd,classificacao:form.classificacao,keywords:[kwEntry]});
-          }
+          const existing = customCats.find(c => c.name?.toLowerCase()===kwEntry || (c.keywords||[]).includes(kwEntry));
+          const merged = [...new Set([...(existing?.keywords||[]),kwEntry])];
+          await supabase.from("categories").upsert({
+            name: existing?.name||kwEntry.toUpperCase(),
+            rd: form.rd, classificacao: form.classificacao,
+            subcategoria: existing?.subcategoria||null,
+            keywords: merged,
+          },{onConflict:"name"});
           await loadCustomCats();
         }
-      } catch(_) {}
+      } catch(e){ console.error("KW populate:",e); }
       setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
       setEditingId(null); setShowModal(false); setSaving(false);
       if(similar.length>0){
@@ -1575,23 +1574,23 @@ export default function App() {
       const cls = similarPending.items[0]?.suggestedClass;
       for (const t of similarPending.items)
         await supabase.from("transactions").update({rd:t.suggestedRd,classificacao:t.suggestedClass,subcategoria:t.suggestedSub||similarPending.subcategoria||null,needs_review:false,status:"confirmado"}).eq("id",t.id);
-      // Populate keywords so future imports classify automatically (best-effort)
+      // Populate keywords so future imports classify automatically
       try {
         if (rd && cls) {
           const newKws = [...new Set(similarPending.items.map(t=>merchantKey(t.description).toLowerCase()).filter(Boolean))];
           for (const kw of newKws) {
-            const {data:byName} = await supabase.from("categories").select("id,keywords").ilike("name",kw).limit(1);
-            const cat = (byName||[])[0] || null;
-            if (cat) {
-              const merged = [...new Set([...(cat.keywords||[]),kw])];
-              await supabase.from("categories").update({keywords:merged,rd,classificacao:cls}).eq("id",cat.id);
-            } else {
-              await supabase.from("categories").insert({name:kw.toUpperCase(),rd,classificacao:cls,keywords:[kw]});
-            }
+            const existing = customCats.find(c => c.name?.toLowerCase()===kw || (c.keywords||[]).includes(kw));
+            const merged = [...new Set([...(existing?.keywords||[]),kw])];
+            await supabase.from("categories").upsert({
+              name: existing?.name||kw.toUpperCase(),
+              rd, classificacao: cls,
+              subcategoria: existing?.subcategoria||null,
+              keywords: merged,
+            },{onConflict:"name"});
           }
           await loadCustomCats();
         }
-      } catch(_) {}
+      } catch(e){ console.error("KW populate:",e); }
       await loadTransactions();
       showToast(`${similarPending.items.length} transações classificadas e keywords atualizadas!`);
     } else {
@@ -1725,7 +1724,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.1.9 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.2.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2475,7 +2474,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.1.9</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.2.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2661,7 +2660,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.1.9 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.2.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
