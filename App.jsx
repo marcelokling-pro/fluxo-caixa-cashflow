@@ -176,14 +176,44 @@ const isCCTransaction = (t) => {
   return false;
 };
 
+// Strip common bank prefixes to isolate merchant name
+const merchantKey = (desc) => String(desc).toUpperCase().trim()
+  .replace(/^(BOLETO\s+PAGO|COMPRA\s+\S+|PIX\s+ENVIADO|PIX\s+RECEBIDO|PIX\s+|PAGAMENTO\s+|TED\s+|DOC\s+|TRANSFERENCIA\s+|DEBITO\s+|CREDITO\s+)\s*/,'')
+  .replace(/\s+/g,' ').trim();
+
+// Flexible description match: handles spaces ("J B" vs "JB") and bank truncation ("SANTOS" vs "SANT")
+const flexMatch = (desc, kw) => {
+  const d = String(desc).toUpperCase().trim();
+  const k = String(kw).trim().toUpperCase();
+  if (!k || !d) return false;
+  if (d.includes(k)) return true;
+  if (d.replace(/\s+/g,"").includes(k.replace(/\s+/g,""))) return true;
+  const words = k.split(/\s+/).filter(w=>w.length>=4);
+  if (!words.length) return false;
+  const hits = words.filter(w => d.includes(w) || (w.length>=5 && d.includes(w.substring(0,4))));
+  return hits.length >= Math.ceil(words.length * 0.6);
+};
+
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
 const localClassify = (desc, customCats = []) => {
   const d = String(desc).toUpperCase().trim();
-  for (const cat of [...customCats].sort((a,b) => b.name.length - a.name.length)) {
-    if (d.includes(cat.name.toUpperCase())) return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null };
+  const sorted = [...customCats].sort((a,b) => b.name.length - a.name.length);
+  // Pass 1: match by category name
+  for (const cat of sorted) {
+    if (cat.rd && cat.classificacao && d.includes(cat.name.toUpperCase()))
+      return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null, catId: cat.id, matchedKw: cat.name };
   }
+  // Pass 2: match by keywords[]
+  for (const cat of sorted) {
+    if (!cat.rd || !cat.classificacao) continue;
+    for (const kw of (cat.keywords||[])) {
+      if (kw && d.includes(kw.toUpperCase()))
+        return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null, catId: cat.id, matchedKw: kw };
+    }
+  }
+  // Pass 3: base classifications
   for (const cls of SORTED_CLASSIFICATIONS) {
-    if (d.includes(cls.d.toUpperCase().trim())) return { r: cls.r, c: cls.c, sub: null };
+    if (d.includes(cls.d.toUpperCase().trim())) return { r: cls.r, c: cls.c, sub: null, catId: null, matchedKw: cls.d };
   }
   return null;
 };
@@ -612,34 +642,36 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     return ms && mr;
   }), [allRows, search, filterRd]);
 
-  const findAffected = async (keyword) => {
-    const kw = keyword.trim().toUpperCase();
+  const findAffected = async (keywords) => {
+    const kws = (Array.isArray(keywords)?keywords:[keywords]).map(k=>k.trim().toUpperCase()).filter(Boolean);
     const {data} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
     return (data||[]).filter(t =>
-      t.description.toUpperCase().includes(kw) && !isCCTransaction(t)
+      kws.some(kw=>flexMatch(t.description, kw)) && !isCCTransaction(t)
     );
   };
 
   const saveEdit = async () => {
     if (!editingRow?.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
+    const nameKw = editingRow.detalhe.trim().toLowerCase();
+    const mergedKws = [...new Set([nameKw, ...(editingRow.keywords||[])])];
     if (editingRow.isCustom && !editingRow.id.startsWith("base_")) {
       await supabase.from("categories").update({
         name: editingRow.detalhe.trim().toUpperCase(),
         rd: editingRow.rd, classificacao: editingRow.classificacao,
         subcategoria: editingRow.subcategoria||null,
-        keywords: [editingRow.detalhe.trim().toLowerCase()],
+        keywords: mergedKws,
       }).eq("id", editingRow.id);
     } else {
       const {error} = await supabase.from("categories").upsert({
         name: editingRow.detalhe.trim().toUpperCase(),
         rd: editingRow.rd, classificacao: editingRow.classificacao,
         subcategoria: editingRow.subcategoria||null,
-        keywords: [editingRow.detalhe.trim().toLowerCase()],
+        keywords: mergedKws,
       }, {onConflict:"name"});
       if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
     }
-    const affected = await findAffected(editingRow.detalhe);
+    const affected = await findAffected([editingRow.detalhe, ...(editingRow.keywords||[])]);
     await loadCustomCats(); setEditingRow(null); setSaving(false);
     if (affected.length > 0) {
       setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, subcategoria:editingRow.subcategoria||null, trans:affected});
@@ -655,10 +687,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     const {error} = await supabase.from("categories").upsert({
       name, rd: newRow.rd, classificacao: newRow.classificacao,
       subcategoria: newRow.subcategoria||null,
-      keywords: [newRow.detalhe.trim().toLowerCase()],
+      keywords: [...new Set([newRow.detalhe.trim().toLowerCase(), ...(newRow.keywords||[])])],
     }, {onConflict:"name"});
     if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
-    const affected = await findAffected(newRow.detalhe);
+    const affected = await findAffected([newRow.detalhe, ...(newRow.keywords||[])]);
     await loadCustomCats();
     setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",subcategoria:""});
     setShowAdd(false); setSaving(false);
@@ -715,16 +747,36 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             } catch(err){ showToast("Erro: "+err.message,"error"); }
           }}/>
           <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
-            if(!window.confirm("Reclassificar TODOS os lançamentos com base nas classificações atuais?")) return;
-            const {data:trans} = await supabase.from("transactions").select("id,description");
+            if(!window.confirm("Reclassificar lançamentos SEM classificação ou marcados para revisão?")) return;
+            const {data:trans} = await supabase.from("transactions").select("id,description,classificacao,needs_review");
             if(!trans) return;
             let count=0;
             for(const t of trans){
+              if(t.classificacao && !t.needs_review) continue;
               const local = localClassify(t.description, customCats);
               if(local){ await supabase.from("transactions").update({rd:local.r,classificacao:local.c,needs_review:false}).eq("id",t.id); count++; }
             }
             showToast(`${count} lançamentos reclassificados!`);
           }}>🔄 Reclassificar</button>
+          <button style={{...s.btn("ghost"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
+            if(!window.confirm("Varrer todos os lançamentos e popular Keywords com descrições que derem match nas classificações existentes?")) return;
+            const {data:trans} = await supabase.from("transactions").select("id,description");
+            if(!trans||!customCats.length){ showToast("Nenhum dado encontrado.","error"); return; }
+            let count=0;
+            for (const cat of customCats) {
+              if (!cat.rd || !cat.classificacao) continue;
+              const matching = trans.filter(t=>String(t.description).toUpperCase().includes(cat.name.toUpperCase()));
+              if (!matching.length) continue;
+              const existing = (cat.keywords||[]).map(k=>k.toLowerCase());
+              const toAdd = [...new Set(matching.map(t=>t.description.toLowerCase().trim()))]
+                .filter(k=>!existing.includes(k) && k!==cat.name.toLowerCase());
+              if (!toAdd.length) continue;
+              await supabase.from("categories").update({keywords:[...(cat.keywords||[]),...toAdd]}).eq("id",cat.id);
+              count += toAdd.length;
+            }
+            await loadCustomCats();
+            showToast(`${count} keywords populadas a partir dos lançamentos existentes!`);
+          }}>📚 Popular Keywords</button>
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
@@ -888,6 +940,7 @@ export default function App() {
   const [dragOver,setDragOver] = useState(false);
   const [pendingImport,setPendingImport] = useState(null);
   const [reviewItems,setReviewItems] = useState(null);
+  const [similarPending,setSimilarPending] = useState(null);
   const [toast,setToast]       = useState(null);
   const [aiLoading,setAiLoading] = useState(false);
   const [saving,setSaving]     = useState(false);
@@ -1045,7 +1098,8 @@ export default function App() {
     } else {
       if(filter.rd!=="todos")           list=list.filter(t=>t.rd===filter.rd);
       if(filter.classificacao!=="todas") list=list.filter(t=>t.classificacao===filter.classificacao);
-      if(filter.status!=="todos")        list=list.filter(t=>t.status===filter.status);
+      if(filter.status==="nao_classificados") list=list.filter(t=>t.needs_review||!t.classificacao||!t.rd);
+      else if(filter.status!=="todos")    list=list.filter(t=>t.status===filter.status);
       if(filter.dateFrom)                list=list.filter(t=>dateToSortable(t.date)>=filter.dateFrom);
       if(filter.dateTo)                  list=list.filter(t=>dateToSortable(t.date)<=filter.dateTo);
     }
@@ -1283,13 +1337,43 @@ export default function App() {
     const payload={date:form.date,description:form.description,value:finalVal,type:finalVal>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
     if(editingId){
       await supabase.from("transactions").update(payload).eq("id",editingId);
-      showToast("Lançamento atualizado!");
+      // After editing, find other transactions with similar description that have different classification
+      const {data:all} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
+      const editedMerchant = merchantKey(form.description);
+      const similar = (all||[]).filter(t =>
+        t.id !== editingId &&
+        !isCCTransaction(t) &&
+        flexMatch(merchantKey(t.description), editedMerchant) &&
+        (t.rd !== form.rd || t.classificacao !== form.classificacao)
+      ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null}));
+      // Populate keyword for future auto-classification (best-effort — never blocks)
+      try {
+        const kwEntry = merchantKey(form.description).toLowerCase();
+        if (kwEntry && form.rd && form.classificacao) {
+          const {data:cats} = await supabase.from("categories").select("id,keywords").eq("rd",form.rd).eq("classificacao",form.classificacao).limit(1);
+          const cat = (cats||[])[0] || null;
+          if (cat) {
+            if (!(cat.keywords||[]).includes(kwEntry))
+              await supabase.from("categories").update({keywords:[...(cat.keywords||[]),kwEntry]}).eq("id",cat.id);
+          } else {
+            await supabase.from("categories").insert({name:kwEntry.toUpperCase(),rd:form.rd,classificacao:form.classificacao,keywords:[kwEntry]});
+          }
+          await loadCustomCats();
+        }
+      } catch(_) {}
+      setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
+      setEditingId(null); setShowModal(false); setSaving(false);
+      if(similar.length>0){
+        setSimilarPending({items:similar,count:1,subcategoria:form.subcategoria||null});
+      } else {
+        showToast("Lançamento atualizado!");
+      }
     } else {
       await supabase.from("transactions").insert(payload);
       showToast("Lançamento adicionado!");
+      setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
+      setEditingId(null); setShowModal(false); setSaving(false);
     }
-    setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
-    setEditingId(null); setShowModal(false); setSaving(false);
   };
 
   const startEdit = (t) => {
@@ -1432,19 +1516,77 @@ export default function App() {
     openColumnMapper(file, "extrato");
   },[importedHashes]);
 
-  // FIX #4: confirmReview redirects and cleans state properly
   const confirmReview = async (reviewed) => {
     const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado"}));
     for(let i=0;i<rows.length;i+=50){
       await supabase.from("transactions").insert(rows.slice(i,i+50));
     }
-    showToast(`${rows.length} lançamentos revisados e salvos!`);
+    // Auto-add keyword: register description in categories so future imports classify automatically
+    for (const r of reviewed) {
+      if (!r.rd || !r.classificacao) continue;
+      const desc = String(r.description).toUpperCase().trim();
+      const match = customCats.find(c => c.rd===r.rd && c.classificacao===r.classificacao &&
+        (desc.includes((c.name||"").toUpperCase()) || (c.keywords||[]).some(k=>k&&desc.includes(k.toUpperCase()))));
+      const kwEntry = r.description.toLowerCase().trim();
+      if (match) {
+        const existing = (match.keywords||[]).map(k=>k.toLowerCase());
+        if (!existing.includes(kwEntry) && match.name.toLowerCase()!==kwEntry)
+          await supabase.from("categories").update({keywords:[...(match.keywords||[]),kwEntry]}).eq("id",match.id);
+      } else {
+        await supabase.from("categories").upsert({name:desc,rd:r.rd,classificacao:r.classificacao,keywords:[kwEntry]},{onConflict:"name"});
+      }
+    }
+    // Find other unclassified transactions similar to the ones just reviewed
+    const {data:similar} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin").eq("needs_review",true);
+    const hits = (similar||[]).filter(t=>!isCCTransaction(t)).map(t=>{
+      const td = String(t.description).toUpperCase();
+      const match = reviewed.find(r=>{
+        const words = String(r.description).toUpperCase().split(/\s+/).filter(w=>w.length>3);
+        return words.some(w=>td.includes(w));
+      });
+      return match ? {...t,suggestedRd:match.rd,suggestedClass:match.classificacao} : null;
+    }).filter(Boolean);
+    await loadCustomCats();
     setReviewItems(null);
     setPendingImport(null);
-    setTab("lancamentos"); // FIX #4
+    if (hits.length) {
+      setSimilarPending({items:hits, count:rows.length});
+    } else {
+      showToast(`${rows.length} lançamentos revisados e salvos!`);
+      setTab("lancamentos");
+    }
   };
 
   const cancelReview = () => { setReviewItems(null); setPendingImport(null); };
+
+  const confirmSimilarPending = async (apply) => {
+    if (apply) {
+      const rd = similarPending.items[0]?.suggestedRd;
+      const cls = similarPending.items[0]?.suggestedClass;
+      for (const t of similarPending.items)
+        await supabase.from("transactions").update({rd:t.suggestedRd,classificacao:t.suggestedClass,subcategoria:t.suggestedSub||similarPending.subcategoria||null,needs_review:false,status:"confirmado"}).eq("id",t.id);
+      // Populate keywords so future imports classify automatically (best-effort)
+      try {
+        if (rd && cls) {
+          const {data:cats} = await supabase.from("categories").select("id,keywords").eq("rd",rd).eq("classificacao",cls).limit(1);
+          const cat = (cats||[])[0] || null;
+          const newKws = [...new Set(similarPending.items.map(t=>merchantKey(t.description).toLowerCase()).filter(Boolean))];
+          if (cat) {
+            const merged = [...new Set([...(cat.keywords||[]),...newKws])];
+            await supabase.from("categories").update({keywords:merged}).eq("id",cat.id);
+          } else {
+            await supabase.from("categories").insert({name:newKws[0]?.toUpperCase()||cls,rd,classificacao:cls,keywords:newKws});
+          }
+          await loadCustomCats();
+        }
+      } catch(_) {}
+      await loadTransactions();
+      showToast(`${similarPending.items.length} transações classificadas e keywords atualizadas!`);
+    } else {
+      showToast("Lançamento salvo.");
+    }
+    setSimilarPending(null);
+  };
 
   const saveSaldoInicial = async () => {
     const v=parseValue(saldoForm);
@@ -1571,7 +1713,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.6.0.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.1.6 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -1670,7 +1812,7 @@ export default function App() {
                 <option value="todas">Todas Classificações</option>{allClassificacoes.map(c=><option key={c}>{c}</option>)}
               </select>
               <select style={s.sel} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
-                <option value="todos">Todos Status</option><option value="confirmado">Confirmado</option><option value="pendente">Pendente</option>
+                <option value="todos">Todos Status</option><option value="confirmado">Confirmado</option><option value="pendente">Pendente</option><option value="nao_classificados">Não classificados</option>
               </select>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
@@ -1706,15 +1848,7 @@ export default function App() {
                       </td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>
-                        {t.subcategoria||(()=>{
-                          const d = String(t.description||"").toUpperCase().trim();
-                          const custom = [...customCats].sort((a,b)=>b.name.length-a.name.length).find(c=>d.includes(c.name.toUpperCase()));
-                          if(custom) return custom.name;
-                          const base = SORTED_CLASSIFICATIONS.find(c=>d.includes(c.d.toUpperCase().trim()));
-                          return base ? base.d : "—";
-                        })()}
-                      </td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.subcategoria||"—"}</td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{isCCTransaction(t)?<span style={{color:"#F5A623",fontWeight:600}}>CC/{(t.conta||"").replace(/^CC\//,"")}</span>:(t.conta||"—")}</td>
                       <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
                         {transDetailsMap[t.id]>0
@@ -2329,7 +2463,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.6.0.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.1.6</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2515,7 +2649,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.6.0.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.1.6 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2714,6 +2848,28 @@ export default function App() {
       {/* Review modal */}
       {reviewItems&&(
         <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes}/>
+      )}
+
+      {/* Similar pending panel */}
+      {similarPending&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
+          <div style={{background:"#162130",borderRadius:16,padding:24,width:"100%",maxWidth:700,border:"1px solid #F5A623",maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{fontSize:16,fontWeight:700,color:"#F5A623",marginBottom:4}}>⚡ Transações similares encontradas</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>{similarPending.items.length} lançamento(s) com padrão semelhante ainda marcado(s) para revisão — deseja classificar?</div>
+            <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:320,overflowY:"auto",marginBottom:16}}>
+              {similarPending.items.map(t=>(
+                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,padding:"6px 10px",borderRadius:6,background:"rgba(245,166,35,0.05)",border:"1px solid rgba(245,166,35,0.15)"}}>
+                  <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.date} — {t.description}</span>
+                  <span style={{marginLeft:12,flexShrink:0,color:"#00C9A7",fontWeight:600,fontSize:11}}>{t.suggestedRd} / {t.suggestedClass}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>confirmSimilarPending(true)}>✓ Aplicar em todos ({similarPending.items.length})</button>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={()=>confirmSimilarPending(false)}>Pular</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Detail Modal — v3.0 */}
