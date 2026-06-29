@@ -771,7 +771,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
           <div style={{fontSize:13,fontWeight:600,marginBottom:14,color:"#00C9A7"}}>Nova Classificação</div>
           <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
             <div>
-              <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Descrição / Palavra-chave</div>
+              <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Descrição / Keywords</div>
               <input style={{...II,padding:"8px 10px",fontSize:13}} placeholder="Ex: FORNECEDOR SILVA LTDA"
                 value={newRow.detalhe} onChange={e=>setNewRow(r=>({...r,detalhe:e.target.value}))}/>
             </div>
@@ -794,7 +794,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             </div>
             <button style={{...s.btn(),padding:"8px 16px"}} onClick={saveNew} disabled={saving}>{saving?"...":"Salvar"}</button>
           </div>
-          <div style={{fontSize:11,color:"#6B8299",marginTop:10}}>💡 Quanto mais específica a palavra-chave, melhor a correspondência automática.</div>
+          <div style={{fontSize:11,color:"#6B8299",marginTop:10}}>💡 Quanto mais específica a keyword, melhor a correspondência automática.</div>
         </div>
       )}
 
@@ -810,11 +810,11 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
         <table style={s.table}>
           <thead>
             <tr>
-              <th style={s.th}>Descrição / Palavra-chave</th>
+              <th style={s.th}>Descrição / Keywords</th>
               <th style={s.th}>R/D</th>
               <th style={s.th}>Classificação</th>
               <th style={s.th}>Subcategoria</th>
-              <th style={s.th}>Keywords extras</th>
+              <th style={s.th}>Keywords</th>
               <th style={{...s.th,width:80,textAlign:"center"}}>Ação</th>
             </tr>
           </thead>
@@ -1571,7 +1571,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.6.0.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-280626 V.6.0.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2202,7 +2202,7 @@ export default function App() {
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 200px)",overscrollBehavior:"contain"}}>
               <table style={s.table}>
                 <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
-                  {[{l:"Compromisso",k:"nome"},{l:"Tipo",k:"tipo"},{l:"Vence dia",k:"dia_vencimento"},{l:"Palavras-chave",k:""},{l:"Status",k:"status"},{l:"Valor Pago",k:"valor"},{l:"Ação",k:""}].map(({l,k})=>(
+                  {[{l:"Compromisso",k:"nome"},{l:"Tipo",k:"tipo"},{l:"Vence dia",k:"dia_vencimento"},{l:"Keywords",k:""},{l:"Status",k:"status"},{l:"Valor Pago",k:"valor"},{l:"Ação",k:""}].map(({l,k})=>(
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",position:"relative"}}
                       onClick={()=>{
                         if(!k) return;
@@ -2329,7 +2329,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.6.0.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-280626 V.6.0.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2515,7 +2515,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.6.0.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-280626 V.6.0.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2589,7 +2589,7 @@ export default function App() {
         <div style={s.modal} onClick={()=>setShowAgendaModal(false)}>
           <div style={s.mbox} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:20}}>{editingAgenda?"Editar":"Novo"} Compromisso</div>
-            {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"},{l:"Palavras-chave (separadas por vírgula)",k:"keywords",ph:"Ex: aluguel, locação"}].map(({l,k,ph})=>(
+            {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"},{l:"Keywords (separadas por vírgula)",k:"keywords",ph:"Ex: aluguel, locação"}].map(({l,k,ph})=>(
               <div key={k} style={{marginBottom:14}}>
                 <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>{l}</div>
                 <input style={s.input} placeholder={ph} value={agendaForm[k]} onChange={e=>setAgendaForm(f=>({...f,[k]:e.target.value}))}/>
@@ -2609,7 +2609,7 @@ export default function App() {
               </select>
             </div>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:16,padding:"8px 12px",background:"rgba(0,201,167,0.05)",borderRadius:8}}>
-              💡 Palavras-chave usadas para correlacionar com lançamentos importados.
+              💡 Keywords usadas para correlacionar com lançamentos importados.
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowAgendaModal(false)}>Cancelar</button>
@@ -2624,7 +2624,7 @@ export default function App() {
         <div style={s.modal} onClick={()=>setReclassifyList(null)}>
           <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Reclassificar Lançamentos</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:4}}>{reclassifyList.items.length} lançamento(s) batem com a nova palavra-chave.</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:4}}>{reclassifyList.items.length} lançamento(s) batem com a nova keyword.</div>
             <div style={{fontSize:12,color:"#00C9A7",marginBottom:16}}>Nova: <strong>{reclassifyList.rd} / {reclassifyList.classificacao}</strong></div>
             <div style={{display:"flex",gap:10,marginBottom:12}}>
               <button style={{...s.btn("ghost"),fontSize:12,padding:"5px 12px"}} onClick={()=>setReclassifySelected(reclassifyList.items.map(t=>t.id))}>Selecionar todos</button>
