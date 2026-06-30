@@ -624,6 +624,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:"", keywords:""});
   const [saving, setSaving] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
+  const [applyingRule, setApplyingRule] = useState(false);
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -782,14 +783,17 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
               </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0,marginLeft:16}}>
-              <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} onClick={async()=>{
-                for(const t of pendingApply.trans)
-                  await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,subcategoria:pendingApply.subcategoria||null,needs_review:false}).eq("id",t.id);
+              <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} disabled={applyingRule} onClick={async()=>{
+                setApplyingRule(true);
+                const ids = pendingApply.trans.map(t=>t.id);
+                const {error} = await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,subcategoria:pendingApply.subcategoria||null,needs_review:false}).in("id",ids);
                 await loadTransactions?.();
+                setApplyingRule(false);
                 setPendingApply(null);
-                showToast(`✓ ${pendingApply.trans.length} lançamento(s) atualizados`);
-              }}>Aplicar em todos</button>
-              <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} onClick={()=>{setPendingApply(null);showToast("Classificação salva.");}}>Pular</button>
+                if(error) showToast("Erro: "+error.message,"error");
+                else showToast(`✓ ${ids.length} lançamento(s) atualizados`);
+              }}>{applyingRule?"Aplicando...":"Aplicar em todos"}</button>
+              <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} disabled={applyingRule} onClick={()=>{setPendingApply(null);showToast("Classificação salva.");}}>Pular</button>
             </div>
           </div>
           <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
@@ -958,6 +962,7 @@ export default function App() {
   const [editingAgenda,setEditingAgenda] = useState(null);
   const [agendaForm,setAgendaForm]       = useState({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
   const [reclassifyList,setReclassifyList]   = useState(null);
+  const [applyingSimilar,setApplyingSimilar] = useState(false);
   const [reclassifySelected,setReclassifySelected] = useState([]);
   const [associating,setAssociating]     = useState(null);
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
@@ -1300,11 +1305,10 @@ export default function App() {
   };
 
   const applyReclassify = async () => {
-    for (const id of reclassifySelected) {
-      await supabase.from("transactions").update({
-        rd:reclassifyList.rd, classificacao:reclassifyList.classificacao,
-      }).eq("id",id);
-    }
+    const {error} = await supabase.from("transactions").update({
+      rd:reclassifyList.rd, classificacao:reclassifyList.classificacao,
+    }).in("id",reclassifySelected);
+    if(error){ showToast("Erro: "+error.message,"error"); return; }
     showToast(reclassifySelected.length+" lançamento(s) reclassificado(s)!");
     setReclassifyList(null); setReclassifySelected([]);
     await loadTransactions();
@@ -1557,10 +1561,18 @@ export default function App() {
 
   const confirmSimilarPending = async (apply) => {
     if (apply) {
+      setApplyingSimilar(true);
       const rd = similarPending.items[0]?.suggestedRd;
       const cls = similarPending.items[0]?.suggestedClass;
-      for (const t of similarPending.items)
-        await supabase.from("transactions").update({rd:t.suggestedRd,classificacao:t.suggestedClass,subcategoria:t.suggestedSub||similarPending.subcategoria||null,needs_review:false,status:"confirmado"}).eq("id",t.id);
+      // Group by (rd, classificacao, sub) to update each group in a single batch call
+      const groups = {};
+      for (const t of similarPending.items) {
+        const sub = t.suggestedSub||similarPending.subcategoria||null;
+        const key = `${t.suggestedRd}|${t.suggestedClass}|${sub||""}`;
+        (groups[key] ||= {rd:t.suggestedRd, classificacao:t.suggestedClass, subcategoria:sub, ids:[]}).ids.push(t.id);
+      }
+      for (const g of Object.values(groups))
+        await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:false,status:"confirmado"}).in("id",g.ids);
       // Populate keywords so future imports classify automatically
       try {
         if (rd && cls) {
@@ -1579,6 +1591,7 @@ export default function App() {
         }
       } catch(e){ console.error("KW populate:",e); }
       await loadTransactions();
+      setApplyingSimilar(false);
       showToast(`${similarPending.items.length} transações classificadas e keywords atualizadas!`);
     } else {
       showToast("Lançamento salvo.");
@@ -1711,7 +1724,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.3.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.4.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2461,7 +2474,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.3.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.4.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2647,7 +2660,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.3.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.4.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2863,8 +2876,8 @@ export default function App() {
               ))}
             </div>
             <div style={{display:"flex",gap:10}}>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>confirmSimilarPending(true)}>✓ Aplicar em todos ({similarPending.items.length})</button>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={()=>confirmSimilarPending(false)}>Pular</button>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:applyingSimilar?"default":"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923",opacity:applyingSimilar?0.6:1}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(true)}>{applyingSimilar?"Aplicando...":`✓ Aplicar em todos (${similarPending.items.length})`}</button>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(false)}>Pular</button>
             </div>
           </div>
         </div>
