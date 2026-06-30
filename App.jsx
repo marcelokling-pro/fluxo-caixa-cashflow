@@ -197,10 +197,7 @@ const flexMatch = (desc, kw) => {
   if (!k || !d) return false;
   if (d.includes(k)) return true;
   if (d.replace(/\s+/g,"").includes(k.replace(/\s+/g,""))) return true;
-  const words = k.split(/\s+/).filter(w=>w.length>=4);
-  if (!words.length) return false;
-  const hits = words.filter(w => d.includes(w) || (w.length>=5 && d.includes(w.substring(0,4))));
-  return hits.length >= Math.ceil(words.length * 0.6);
+  return false;
 };
 
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
@@ -624,7 +621,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [filterRd, setFilterRd] = useState("todos");
   const [editingRow, setEditingRow] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:""});
+  const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:"", keywords:""});
   const [saving, setSaving] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
 
@@ -663,7 +660,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     if (!editingRow?.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
     const nameKw = editingRow.detalhe.trim().toLowerCase();
-    const mergedKws = [...new Set([nameKw, ...(editingRow.keywords||[])])];
+    const editKws = (editingRow.keywordsText||"").split(",").map(k=>k.trim().toLowerCase()).filter(Boolean);
+    const mergedKws = [...new Set([nameKw, ...editKws])];
     if (editingRow.isCustom && !editingRow.id.startsWith("base_")) {
       await supabase.from("categories").update({
         name: editingRow.detalhe.trim().toUpperCase(),
@@ -680,7 +678,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       }, {onConflict:"name"});
       if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
     }
-    const affected = await findAffected([editingRow.detalhe, ...(editingRow.keywords||[])]);
+    const affected = await findAffected([editingRow.detalhe, ...editKws]);
     await loadCustomCats(); setEditingRow(null); setSaving(false);
     if (affected.length > 0) {
       setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, subcategoria:editingRow.subcategoria||null, trans:affected});
@@ -693,15 +691,16 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     if (!newRow.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
     setSaving(true);
     const name = newRow.detalhe.trim().toUpperCase();
+    const kws = newRow.keywords.split(",").map(k=>k.trim().toLowerCase()).filter(Boolean);
     const {error} = await supabase.from("categories").upsert({
       name, rd: newRow.rd, classificacao: newRow.classificacao,
       subcategoria: newRow.subcategoria||null,
-      keywords: [...new Set([newRow.detalhe.trim().toLowerCase(), ...(newRow.keywords||[])])],
+      keywords: [...new Set([newRow.detalhe.trim().toLowerCase(), ...kws])],
     }, {onConflict:"name"});
     if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
-    const affected = await findAffected([newRow.detalhe, ...(newRow.keywords||[])]);
+    const affected = await findAffected([newRow.detalhe, ...kws]);
     await loadCustomCats();
-    setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",subcategoria:""});
+    setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",subcategoria:"",keywords:""});
     setShowAdd(false); setSaving(false);
     if (affected.length > 0) {
       setPendingApply({ruleName:name, rd:newRow.rd, classificacao:newRow.classificacao, subcategoria:newRow.subcategoria||null, trans:affected});
@@ -767,25 +766,6 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             }
             showToast(`${count} lançamentos reclassificados!`);
           }}>🔄 Reclassificar</button>
-          <button style={{...s.btn("ghost"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
-            if(!window.confirm("Varrer todos os lançamentos e popular Keywords com descrições que derem match nas classificações existentes?")) return;
-            const {data:trans} = await supabase.from("transactions").select("id,description");
-            if(!trans||!customCats.length){ showToast("Nenhum dado encontrado.","error"); return; }
-            let count=0;
-            for (const cat of customCats) {
-              if (!cat.rd || !cat.classificacao) continue;
-              const matching = trans.filter(t=>String(t.description).toUpperCase().includes(cat.name.toUpperCase()));
-              if (!matching.length) continue;
-              const existing = (cat.keywords||[]).map(k=>k.toLowerCase());
-              const toAdd = [...new Set(matching.map(t=>t.description.toLowerCase().trim()))]
-                .filter(k=>!existing.includes(k) && k!==cat.name.toLowerCase());
-              if (!toAdd.length) continue;
-              await supabase.from("categories").update({keywords:[...(cat.keywords||[]),...toAdd]}).eq("id",cat.id);
-              count += toAdd.length;
-            }
-            await loadCustomCats();
-            showToast(`${count} keywords populadas a partir dos lançamentos existentes!`);
-          }}>📚 Popular Keywords</button>
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
@@ -855,7 +835,11 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             </div>
             <button style={{...s.btn(),padding:"8px 16px"}} onClick={saveNew} disabled={saving}>{saving?"...":"Salvar"}</button>
           </div>
-          <div style={{fontSize:11,color:"#6B8299",marginTop:10}}>💡 Quanto mais específica a keyword, melhor a correspondência automática.</div>
+          <div style={{marginTop:10}}>
+            <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Keywords (separadas por vírgula, opcional)</div>
+            <input style={{...II,padding:"8px 10px",fontSize:13}} placeholder="Ex: termo1, termo2"
+              value={newRow.keywords} onChange={e=>setNewRow(r=>({...r,keywords:e.target.value}))}/>
+          </div>
         </div>
       )}
 
@@ -888,7 +872,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     <td style={s.td}><select style={IS} value={editingRow.rd} onChange={e=>setEditingRow(r=>({...r,rd:e.target.value}))}>{RD_TYPES.map(r=><option key={r}>{r}</option>)}</select></td>
                     <td style={s.td}><select style={IS} value={editingRow.classificacao} onChange={e=>setEditingRow(r=>({...r,classificacao:e.target.value}))}>{allCls.map(c=><option key={c}>{c}</option>)}</select></td>
                     <td style={s.td}><input style={II} value={editingRow.subcategoria||""} placeholder="Subcategoria" onChange={e=>setEditingRow(r=>({...r,subcategoria:e.target.value}))}/></td>
-                    <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{(editingRow.keywords||[]).map(k=><span key={k} style={{background:"#1E2D3D",borderRadius:20,padding:"1px 6px",marginRight:3,fontSize:10}}>{k}</span>)}</td>
+                    <td style={s.td}>
+                      <input style={II} placeholder="kw1, kw2" value={editingRow.keywordsText??""}
+                        onChange={e=>setEditingRow(r=>({...r,keywordsText:e.target.value}))}/>
+                    </td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn(),padding:"3px 8px",fontSize:11}} onClick={saveEdit} disabled={saving}>✓</button>
@@ -905,10 +892,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     <td style={s.td}><span style={{...s.badge(row.rd),fontSize:10}}>{row.rd}</span></td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.classificacao}</td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.subcategoria||<span style={{color:"#3a4a5a"}}>—</span>}</td>
-                    <td style={s.td}>{row.isCustom&&(row.keywords||[]).length>0?<div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(row.keywords||[]).map(k=><span key={k} style={{background:"#1E2D3D",color:"#6B8299",borderRadius:20,fontSize:10,padding:"1px 6px"}}>{k}</span>)}</div>:<span style={{color:"#3a4a5a"}}>—</span>}</td>
+                    <td style={{...s.td,maxWidth:220}}>{row.isCustom&&(row.keywords||[]).length>0?<div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:44,overflow:"hidden"}} title={(row.keywords||[]).join(", ")}>{(row.keywords||[]).slice(0,3).map(k=><span key={k} style={{background:"#1E2D3D",color:"#6B8299",borderRadius:20,fontSize:10,padding:"1px 6px",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k}</span>)}{(row.keywords||[]).length>3&&<span style={{fontSize:10,color:"#6B8299"}}>+{(row.keywords||[]).length-3}</span>}</div>:<span style={{color:"#3a4a5a"}}>—</span>}</td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row})}>✏</button>
+                        <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row,keywordsText:(row.keywords||[]).join(", ")})}>✏</button>
                         {row.isCustom&&<button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={()=>deleteCustom(row.id)}>✕</button>}
                       </div>
                     </td>
@@ -1724,7 +1711,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.2.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-290626 V.6.3.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2474,7 +2461,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.2.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-290626 V.6.3.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2660,7 +2647,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.2.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-290626 V.6.3.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
