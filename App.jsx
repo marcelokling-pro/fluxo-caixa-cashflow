@@ -195,6 +195,12 @@ const flexMatch = (desc, kw) => {
   const d = String(desc).toUpperCase().trim();
   const k = String(kw).trim().toUpperCase();
   if (!k || !d) return false;
+  // Keywords curtas (<=4 letras) só batem como palavra inteira, nunca como pedaço de outra palavra
+  // (ex: "ISS" não pode bater dentro de "LARISSA")
+  if (k.length <= 4 && !k.includes(" ")) {
+    const escaped = k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    return new RegExp(`(^|[^A-ZÀ-Ú0-9])${escaped}([^A-ZÀ-Ú0-9]|$)`).test(d);
+  }
   if (d.includes(k)) return true;
   if (d.replace(/\s+/g,"").includes(k.replace(/\s+/g,""))) return true;
   return false;
@@ -1738,7 +1744,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.5.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.5.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2488,7 +2494,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.5.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.5.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2674,7 +2680,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.5.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.5.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
