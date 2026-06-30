@@ -631,6 +631,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [saving, setSaving] = useState(false);
   const [pendingApply, setPendingApply] = useState(null);
   const [applyingRule, setApplyingRule] = useState(false);
+  const [sortCol, setSortCol] = useState("detalhe");
+  const [sortDir, setSortDir] = useState("asc");
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -650,11 +652,23 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     return [...custom, ...base].sort((a,b)=>a.detalhe.localeCompare(b.detalhe));
   }, [customCats, hiddenBaseCls]);
 
-  const filtered = useMemo(() => allRows.filter(r => {
-    const ms = !search || r.detalhe.toLowerCase().includes(search.toLowerCase()) || r.classificacao.toLowerCase().includes(search.toLowerCase());
-    const mr = filterRd==="todos" || r.rd===filterRd;
-    return ms && mr;
-  }), [allRows, search, filterRd]);
+  const toggleSort = (col) => {
+    if (sortCol===col) setSortDir(d=>d==="asc"?"desc":"asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  const filtered = useMemo(() => {
+    const base = allRows.filter(r => {
+      const ms = !search || r.detalhe.toLowerCase().includes(search.toLowerCase()) || r.classificacao.toLowerCase().includes(search.toLowerCase());
+      const mr = filterRd==="todos" || r.rd===filterRd;
+      return ms && mr;
+    });
+    return [...base].sort((a,b)=>{
+      const av = (a[sortCol]||"").toLowerCase();
+      const bv = (b[sortCol]||"").toLowerCase();
+      return sortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+  }, [allRows, search, filterRd, sortCol, sortDir]);
 
   const findAffected = async (keywords) => {
     const kws = (Array.isArray(keywords)?keywords:[keywords]).map(k=>k.trim().toUpperCase()).filter(Boolean);
@@ -856,24 +870,30 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
         </div>
       )}
 
-      <div style={{display:"flex",gap:10,marginBottom:16}}>
-        <input style={{...s.input,flex:1}} placeholder="🔍 Buscar por descrição ou classificação..." value={search} onChange={e=>setSearch(e.target.value)}/>
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <input style={{...s.input,flex:1,minWidth:200}} placeholder="🔍 Buscar por descrição ou classificação..." value={search} onChange={e=>setSearch(e.target.value)}/>
         <select style={s.sel} value={filterRd} onChange={e=>setFilterRd(e.target.value)}>
           <option value="todos">Todos R/D</option>
           {RD_TYPES.map(r=><option key={r}>{r}</option>)}
         </select>
+        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>toggleSort(sortCol)} title="Alternar ordem">
+          {sortCol==="detalhe"?"Descrição":sortCol==="rd"?"R/D":sortCol==="classificacao"?"Classificação":"Subcategoria"} {sortDir==="asc"?"↑":"↓"}
+        </button>
+        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setSearch("");setFilterRd("todos");setSortCol("detalhe");setSortDir("asc");}}>Limpar filtros</button>
       </div>
 
-      <div style={s.card}>
+      <div style={{...s.card,padding:0,overflow:"hidden"}}>
+        <div style={{overflowY:"auto",maxHeight:"60vh"}}>
         <table style={s.table}>
-          <thead>
+          <thead style={{position:"sticky",top:0,zIndex:2,background:"#162130"}}>
             <tr>
-              <th style={s.th}>Descrição</th>
-              <th style={s.th}>R/D</th>
-              <th style={s.th}>Classificação</th>
-              <th style={s.th}>Subcategoria</th>
-              <th style={s.th}>Keywords</th>
-              <th style={{...s.th,width:80,textAlign:"center"}}>Ação</th>
+              {[{l:"Descrição",k:"detalhe"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Keywords",k:null}].map(({l,k})=>(
+                <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",background:"#162130"}}
+                  onClick={()=>k&&toggleSort(k)}>
+                  {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
+                </th>
+              ))}
+              <th style={{...s.th,width:80,textAlign:"center",background:"#162130"}}>Ação</th>
             </tr>
           </thead>
           <tbody>
@@ -920,6 +940,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   );
@@ -1758,7 +1779,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.5.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.7.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2508,7 +2529,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.5.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.7.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2695,7 +2716,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.5.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.7.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(

@@ -71,7 +71,7 @@ Formato: `MAJOR.MINOR.PATCH`
 | MINOR | Demanda nova concluída e funcionando completamente |
 | PATCH | Ajuste/correção em uma demanda que ainda não estava completa |
 
-**Regra:** ao concluir qualquer demanda, bumpar a versão e atualizar a string na sidebar antes de reportar o trabalho como feito.
+**Regra:** ao concluir qualquer demanda, bumpar a versão e atualizar a string na sidebar antes de reportar o trabalho como feito. **Antes de aplicar qualquer alteração, informar ao usuário qual será a próxima versão** (ex: "esta alteração será a v6.7.0") para que ele saiba o que esperar.
 
 **Commit e push:** após confirmação do teste no localhost, fazer o commit E o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente. Nunca commitar sem fazer o push logo em seguida — o GitHub deve sempre refletir o último commit local.
 
