@@ -938,6 +938,7 @@ export default function App() {
   const [customCats,setCustomCats] = useState([]);
   const [saldoInicial,setSaldoInicial] = useState(0);
   const [hiddenBaseCls,setHiddenBaseCls] = useState([]);
+  const [alertCronExpr,setAlertCronExpr] = useState("");
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
@@ -1078,6 +1079,7 @@ export default function App() {
       const ar=data.find(d=>d.key==="alert_recurrence"); if(ar?.value) setAlertRecurrence(ar.value);
       const go=data.find(d=>d.key==="fluxo_group_order"); if(go?.value) try{setFluxoGroupOrder(JSON.parse(go.value));}catch{}
       const hb=data.find(d=>d.key==="hidden_base_classifications"); if(hb?.value) try{setHiddenBaseCls(JSON.parse(hb.value));}catch{}
+      const ce=data.find(d=>d.key==="alert_cron_expr"); if(ce?.value) setAlertCronExpr(ce.value);
     }
   };
 
@@ -1675,9 +1677,21 @@ export default function App() {
     await supabase.from("settings").upsert({key:"alert_days_ahead",value:String(days)},{onConflict:"key"});
   };
 
+  // Monta a expressão cron a partir da recorrência escolhida no Fluxo de Caixa — a origem da decisão é sempre aqui, nunca fixa no banco
+  const buildAlertCron = (recurrence) => {
+    const hoursByRecurrence = {"1":[8], "2":[8,18], "3":[8,13,18]};
+    const hours = hoursByRecurrence[recurrence] || [8];
+    return `0 ${hours.join(",")} * * *`;
+  };
+
   const saveAlertRecurrence = async (val) => {
     setAlertRecurrence(val);
     await supabase.from("settings").upsert({key:"alert_recurrence",value:val},{onConflict:"key"});
+    const cronExpr = buildAlertCron(val);
+    await supabase.from("settings").upsert({key:"alert_cron_expr",value:cronExpr},{onConflict:"key"});
+    const {error} = await supabase.rpc("manage_alert_schedule", {p_cron: cronExpr});
+    if (error) showToast("Erro ao agendar: "+error.message,"error");
+    else showToast(`Agendamento atualizado: ${val}x/dia`);
   };
 
   const sendAlertsNow = async () => {
@@ -2530,6 +2544,7 @@ export default function App() {
                   {sendingAlert?"Enviando...":"▶ Enviar agora"}
                 </button>
               </div>
+              {alertCronExpr&&<div style={{fontSize:11,color:"#6B8299",marginBottom:16}}>📅 Agendamento automático ativo (cron: <code style={{color:"#00C9A7"}}>{alertCronExpr}</code>)</div>}
 
               {/* Cadastro de destinatários */}
               <div style={{background:"#0F1923",borderRadius:8,padding:"12px 14px",border:"1px solid #1E2D3D",marginBottom:16}}>
