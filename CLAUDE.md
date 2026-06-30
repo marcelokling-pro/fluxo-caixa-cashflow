@@ -73,7 +73,7 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Regra:** ao concluir qualquer demanda, bumpar a versão e atualizar a string na sidebar antes de reportar o trabalho como feito.
 
-**Commit e push:** após confirmação do teste no localhost, fazer o commit e o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente.
+**Commit e push:** após confirmação do teste no localhost, fazer o commit E o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente. Nunca commitar sem fazer o push logo em seguida — o GitHub deve sempre refletir o último commit local.
 
 **Nunca recriar arquivos existentes do zero.** Sempre editar o arquivo original com as ferramentas Edit ou pequenas substituições. Nunca usar `git show ... > arquivo` ou Write para sobrescrever — isso pode corromper o estado do Vite e do git.
 
