@@ -75,11 +75,27 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Commit e push:** após confirmação do teste no localhost, fazer o commit e o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente.
 
+**Nunca recriar arquivos existentes do zero.** Sempre editar o arquivo original com as ferramentas Edit ou pequenas substituições. Nunca usar `git show ... > arquivo` ou Write para sobrescrever — isso pode corromper o estado do Vite e do git.
+
+**Sempre partir da última versão do GitHub.** Antes de qualquer alteração, confirmar que o arquivo local está em sincronia com o último commit do repositório. Fazer incrementos sobre o que existe — nunca reescrever do zero.
+
 **Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
 
 **Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
 
 **Instruções de configuração externa:** sempre detalhar passo a passo com exatamente onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy". O usuário não conhece as particularidades de cada serviço.
+
+## Lições do ciclo de Classificações (jun/2026)
+
+**Keywords devem ser texto manual exato, sem fuzzy match.** Já existiu um recurso de "Popular Keywords" (auto-geração a partir de transações) e uma lógica de match parcial no `flexMatch` (aceitava bater só pelas 4 primeiras letras de uma palavra). Ambos foram removidos por causarem contaminação cruzada entre categorias (ex: "transporte" classificando como "transferência", "BEM MAIS GES" pegando lançamentos de "BOLETO PAGO" genérico). Não reintroduzir fuzzy matching nas keywords — `flexMatch` deve continuar fazendo apenas substring exata (com ou sem espaços).
+
+**Exclusão de classificações "base"** (as fixas em `BASE_CLASSIFICATIONS` no código, sem registro no banco) funciona via lista de ocultação salva em `settings` (chave `hidden_base_classifications`) — não existe exclusão real para essas, só ocultação. Categorias custom (tabela `categories`) excluem de verdade via `deleteCustom`.
+
+**Não existe undo/lixeira.** Toda exclusão é definitiva no banco. Sempre confirmar com o usuário antes de excluir, e nunca implementar ações de exclusão em massa sem confirmação explícita.
+
+**Acesso ao Supabase fora do app é bloqueado por RLS.** A chave anônima não consegue ler/escrever nas tabelas (`categories`, `transactions`, etc.) via curl ou script externo — só funciona dentro do app com o usuário logado. Para inspecionar dados reais, pedir para o usuário rodar SQL no Supabase Studio (SQL Editor) ou colar print/texto da tela.
+
+**R/D e Classificação são obrigatórios em qualquer categoria.** Sem os dois preenchidos, a categoria fica "inerte" — o `localClassify` pula qualquer categoria com `rd` ou `classificacao` vazios, mesmo que tenha keywords boas cadastradas. Validação obrigatória já existe em `saveEdit`/`saveNew` na aba Classificações.
 
 ## Styles
 
