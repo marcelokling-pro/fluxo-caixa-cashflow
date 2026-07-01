@@ -711,7 +711,7 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   };
 
   // SVG line chart
-  const CW=580,CH=160,PL=36,PR=8,PT=8,PB=4;
+  const CW=600,CH=160,PL=40,PR=10,PT=8,PB=4;
   const cW=CW-PL-PR, cH=CH-PT-PB;
   const allV=evolucao.flatMap(e=>[e.rec,e.des,e.saldo]);
   const cMax=Math.max(...allV,1), cMin=Math.min(...allV,0), cRng=cMax-cMin||1;
@@ -898,7 +898,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
               ))}
             </div>
           </div>
-          <svg viewBox={`0 0 ${CW} ${CH+26}`} style={{width:"100%",overflow:"visible"}}>
+          <div style={{width:"100%",overflowX:"hidden"}}>
+          <svg viewBox={`0 0 ${CW} ${CH+26}`} style={{width:"100%",height:"auto",display:"block"}} preserveAspectRatio="xMidYMid meet">
             <defs>
               {chartLines.filter(l=>l.area).map((l,i)=>(
                 <linearGradient key={i} id={`biGrad${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -937,6 +938,7 @@ const AnaliseTab = ({transactions, s, fmt}) => {
               <text key={i} x={toX(i)} y={CH+20} fontSize={9} fill="#4A5E6D" textAnchor="middle">{e.lbl}</text>
             ))}
           </svg>
+          </div>
         </div>
 
         {/* Destaques */}
