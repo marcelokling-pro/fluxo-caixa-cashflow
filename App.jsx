@@ -980,6 +980,7 @@ export default function App() {
   const [saving,setSaving]     = useState(false);
   const [showConfirmClear,setShowConfirmClear] = useState(false);
   const [confirmDeleteBatch,setConfirmDeleteBatch] = useState(null);
+  const [confirmDeleteDetail,setConfirmDeleteDetail] = useState(null); // {id, description, count}
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
   const [fluxoGroupOrder,setFluxoGroupOrder] = useState({});
   const [dragGroupIdx,setDragGroupIdx] = useState(null);
@@ -1779,7 +1780,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.7.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.7.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2529,7 +2530,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.7.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.7.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2696,6 +2697,7 @@ export default function App() {
                           <th style={s.th}>Descrição</th>
                           <th style={s.th}>Itens</th>
                           <th style={s.th}>Valor</th>
+                          <th style={{...s.th,width:60,textAlign:"center"}}>Ação</th>
                         </tr></thead>
                         <tbody>
                           {linked.map(t=>(
@@ -2704,6 +2706,9 @@ export default function App() {
                               <td style={{...s.td,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                               <td style={s.td}><span style={{background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:700}}>📎{transDetailsMap[t.id]}</span></td>
                               <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
+                              <td style={{...s.td,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+                                <button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={()=>setConfirmDeleteDetail({id:t.id,description:t.description,count:transDetailsMap[t.id]})}>✕</button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -2716,7 +2721,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.7.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.7.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -2894,6 +2899,30 @@ export default function App() {
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDeleteBatch(null)}>Cancelar</button>
               <button style={{...s.btn("danger"),flex:1}} onClick={doDeleteBatch}>Sim, desfazer importação</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteDetail&&(
+        <div style={s.modal} onClick={()=>setConfirmDeleteDetail(null)}>
+          <div style={{...s.mbox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Remover detalhamento</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:8}}>
+              Lançamento: <strong style={{color:"#fff"}}>{confirmDeleteDetail.description}</strong>
+            </div>
+            <div style={{fontSize:13,color:"#F5A623",marginBottom:20}}>
+              ⚠ Atenção: <strong>{confirmDeleteDetail.count} itens</strong> serão excluídos permanentemente. Esta ação não pode ser desfeita.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDeleteDetail(null)}>Cancelar</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={async()=>{
+                const {error} = await supabase.from("transaction_details").delete().eq("transaction_id",confirmDeleteDetail.id);
+                if(error){showToast("Erro: "+error.message,"error");setConfirmDeleteDetail(null);return;}
+                await loadDetailsMap();
+                showToast("Detalhamento removido.");
+                setConfirmDeleteDetail(null);
+              }}>Sim, remover</button>
             </div>
           </div>
         </div>
