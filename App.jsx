@@ -628,8 +628,11 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   const [biAno, setBiAno] = useState(String(now.getFullYear()));
   const [biRd,  setBiRd]  = useState("todos");
   const [expanded, setExpanded] = useState({});
+  const [drillDown, setDrillDown] = useState(null); // null | {rd} | {rd,cl}
 
   const DCOLORS = ["#4F8EF7","#F5A623","#E8445A","#00C9A7","#9B59B6","#E67E22","#1ABC9C","#E74C3C"];
+  const RD_COLORS = {"RECEITA":"#4F8EF7","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF8C42","MOVIMENTAÇÃO":"#9B59B6"};
+  const rdColor = rd => RD_COLORS[rd] || "#F5A623";
 
   const anos = [...new Set(transactions.map(t=>t.date?.split("/")?.[2]).filter(Boolean))].sort();
 
@@ -661,17 +664,40 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   const prevSaldo = prevRec - prevDes;
   const pctChg = (cur,prev) => prev===0?null:((cur-prev)/Math.abs(prev)*100);
 
-  // Monthly evolution — last 12 months
+  // Base filtered (sem filtro de R/D — usado no drill down do gráfico)
+  const baseFiltered = transactions.filter(t=>{
+    const p = t.date?.split("/");
+    if(!p||p.length<3) return false;
+    if(biAno!=="todos" && p[2]!==biAno) return false;
+    if(biMes!=="todos" && parseInt(p[1])!==parseInt(biMes)) return false;
+    return true;
+  });
+
+  // Monthly evolution — meses do ano selecionado (ou últimos 12 se "todos")
   const evolucao = [];
-  for(let i=11;i>=0;i--){
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    const m = String(d.getMonth()+1).padStart(2,"0");
-    const a = String(d.getFullYear());
-    const lbl = d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
-    const ts = transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
-    const rec = ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
-    const des = ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
-    evolucao.push({lbl,rec,des,saldo:rec-des});
+  if(biAno!=="todos"){
+    const year=Number(biAno);
+    const maxM = year===now.getFullYear()?now.getMonth():11;
+    for(let mi=0;mi<=maxM;mi++){
+      const m=String(mi+1).padStart(2,"0"), a=String(year);
+      const lbl=new Date(year,mi,1).toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+      const ts=transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
+      const rec=ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
+      const des=ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+      evolucao.push({lbl,rec,des,saldo:rec-des,m,a});
+    }
+    // Remove meses sem dados no início
+    while(evolucao.length>1&&evolucao[0].rec===0&&evolucao[0].des===0) evolucao.shift();
+  } else {
+    for(let i=11;i>=0;i--){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const m=String(d.getMonth()+1).padStart(2,"0"),a=String(d.getFullYear());
+      const lbl=d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+      const ts=transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
+      const rec=ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
+      const des=ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+      evolucao.push({lbl,rec,des,saldo:rec-des,m,a});
+    }
   }
 
   // Sparkline helper
@@ -691,8 +717,9 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   const cMax=Math.max(...allV,1), cMin=Math.min(...allV,0), cRng=cMax-cMin||1;
   const toX=i=>PL+(i/(evolucao.length-1))*cW;
   const toY=v=>PT+cH-((v-cMin)/cRng)*cH;
-  const makePath=data=>{
-    const pts=data.map((v,i)=>({x:toX(i),y:toY(v)}));
+  const makePath=(data,toYFn=toY)=>{
+    if(!data||data.length<2) return "";
+    const pts=data.map((v,i)=>({x:toX(i),y:toYFn(v)}));
     let d=`M ${pts[0].x} ${pts[0].y}`;
     for(let i=1;i<pts.length;i++){
       const cp1x=pts[i-1].x+(pts[i].x-pts[i-1].x)/3;
@@ -701,14 +728,51 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     }
     return d;
   };
-  const makeArea=data=>{
-    const p=makePath(data);
-    return p+` L ${toX(data.length-1)} ${toY(0)} L ${PL} ${toY(0)} Z`;
+  const makeArea=(data,toYFn=toY)=>{
+    const p=makePath(data,toYFn);
+    if(!p) return "";
+    return p+` L ${toX(data.length-1)} ${toYFn(0)} L ${PL} ${toYFn(0)} Z`;
   };
   const recPath=makePath(evolucao.map(e=>e.rec));
   const desPath=makePath(evolucao.map(e=>e.des));
   const saldoPath=makePath(evolucao.map(e=>e.saldo));
   const gridVals=[cMin,cMin+cRng*0.25,cMin+cRng*0.5,cMin+cRng*0.75,cMax];
+
+  // Drill-down: linhas do gráfico variam conforme o nível
+  const chartLines = (() => {
+    if(!drillDown){
+      return [
+        {label:"Receitas",c:"#4F8EF7",data:evolucao.map(e=>e.rec),area:true,dashed:false},
+        {label:"Despesas",c:"#E8445A",data:evolucao.map(e=>e.des),area:true,dashed:false},
+        {label:"Saldo Acumulado",c:"#9B59B6",data:evolucao.map(e=>e.saldo),area:false,dashed:true},
+      ];
+    }
+    // Agrupa valores mensais por chave (classificação ou subcategoria)
+    const groupMap = {};
+    evolucao.forEach((ev,i)=>{
+      baseFiltered.filter(t=>{
+        const p=t.date?.split("/");
+        if(!p||p[1]!==ev.m||p[2]!==ev.a) return false;
+        if(t.rd!==drillDown.rd) return false;
+        if(drillDown.cl && t.classificacao!==drillDown.cl) return false;
+        return true;
+      }).forEach(t=>{
+        const key = drillDown.cl ? (t.subcategoria||"SEM SUBCATEGORIA") : (t.classificacao||"SEM CLASSIFICAÇÃO");
+        if(!groupMap[key]) groupMap[key]=new Array(evolucao.length).fill(0);
+        groupMap[key][i]+=Number(t.value);
+      });
+    });
+    return Object.entries(groupMap)
+      .sort((a,b)=>Math.abs(b[1].reduce((s,v)=>s+v,0))-Math.abs(a[1].reduce((s,v)=>s+v,0)))
+      .slice(0,5)
+      .map(([label,data],i)=>({label,c:DCOLORS[i],data,area:false,dashed:false}));
+  })();
+
+  // Recalcula limites do SVG com base nas linhas ativas
+  const drillAllV = chartLines.flatMap(l=>l.data);
+  const drillMax = Math.max(...drillAllV,1), drillMin=Math.min(...drillAllV,0), drillRng=drillMax-drillMin||1;
+  const toYd = v=>PT+cH-((v-drillMin)/drillRng)*cH;
+  const drillGridVals=[drillMin,drillMin+drillRng*0.25,drillMin+drillRng*0.5,drillMin+drillRng*0.75,drillMax];
 
   // Category breakdown
   const catMap={};
@@ -811,31 +875,41 @@ const AnaliseTab = ({transactions, s, fmt}) => {
       <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:12,marginBottom:14}}>
         {/* SVG Line Chart */}
         <div style={s.card}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:13,fontWeight:600}}>Evolução Mensal</div>
-            <div style={{display:"flex",gap:14}}>
-              {[{l:"Receitas",c:"#4F8EF7"},{l:"Despesas",c:"#E8445A"},{l:"Saldo Acumulado",c:"#9B59B6",dashed:true}].map(lg=>(
-                <span key={lg.l} style={{fontSize:10,color:lg.c,display:"flex",alignItems:"center",gap:4}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {drillDown&&(
+                <button onClick={()=>setDrillDown(drillDown.cl?{rd:drillDown.rd}:null)}
+                  style={{background:"none",border:"1px solid #2A3F52",borderRadius:5,color:"#6B8299",fontSize:10,cursor:"pointer",padding:"2px 7px"}}>← Voltar</button>
+              )}
+              <div style={{fontSize:13,fontWeight:600}}>
+                {drillDown
+                  ? (drillDown.cl
+                    ? <span><span style={{color:"#6B8299"}}>{drillDown.rd} → </span><span style={{color:rdColor(drillDown.rd)}}>{drillDown.cl}</span></span>
+                    : <span><span style={{color:"#6B8299"}}>Evolução Mensal → </span><span style={{color:rdColor(drillDown.rd)}}>{drillDown.rd}</span></span>)
+                  : "Evolução Mensal"}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              {chartLines.map(lg=>(
+                <span key={lg.label} style={{fontSize:10,color:lg.c,display:"flex",alignItems:"center",gap:4}}>
                   <svg width={20} height={4}><line x1={0} y1={2} x2={20} y2={2} stroke={lg.c} strokeWidth={2} strokeDasharray={lg.dashed?"4,2":undefined}/></svg>
-                  {lg.l}
+                  {lg.label}
                 </span>
               ))}
             </div>
           </div>
           <svg viewBox={`0 0 ${CW} ${CH+26}`} style={{width:"100%",overflow:"visible"}}>
             <defs>
-              <linearGradient id="biRecGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4F8EF7" stopOpacity="0.25"/>
-                <stop offset="100%" stopColor="#4F8EF7" stopOpacity="0.02"/>
-              </linearGradient>
-              <linearGradient id="biDesGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#E8445A" stopOpacity="0.18"/>
-                <stop offset="100%" stopColor="#E8445A" stopOpacity="0.02"/>
-              </linearGradient>
+              {chartLines.filter(l=>l.area).map((l,i)=>(
+                <linearGradient key={i} id={`biGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={l.c} stopOpacity="0.22"/>
+                  <stop offset="100%" stopColor={l.c} stopOpacity="0.02"/>
+                </linearGradient>
+              ))}
             </defs>
             {/* Grid */}
-            {gridVals.map((v,i)=>{
-              const y=toY(v);
+            {drillGridVals.map((v,i)=>{
+              const y=toYd(v);
               return (
                 <g key={i}>
                   <line x1={PL} y1={y} x2={PL+cW} y2={y} stroke="rgba(107,130,153,0.1)" strokeWidth={1}/>
@@ -843,23 +917,24 @@ const AnaliseTab = ({transactions, s, fmt}) => {
                 </g>
               );
             })}
-            {/* Zero line */}
-            {cMin<0&&<line x1={PL} y1={toY(0)} x2={PL+cW} y2={toY(0)} stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>}
+            {drillMin<0&&<line x1={PL} y1={toYd(0)} x2={PL+cW} y2={toYd(0)} stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>}
             {/* Area fills */}
-            <path d={makeArea(evolucao.map(e=>e.rec))} fill="url(#biRecGrad)"/>
-            <path d={makeArea(evolucao.map(e=>e.des))} fill="url(#biDesGrad)"/>
-            {/* Lines */}
-            <path d={recPath}   fill="none" stroke="#4F8EF7" strokeWidth={2}   strokeLinejoin="round" strokeLinecap="round"/>
-            <path d={desPath}   fill="none" stroke="#E8445A" strokeWidth={2}   strokeLinejoin="round" strokeLinecap="round"/>
-            <path d={saldoPath} fill="none" stroke="#9B59B6" strokeWidth={1.5} strokeDasharray="5,3"  strokeLinejoin="round" strokeLinecap="round"/>
-            {/* Dots + Labels */}
-            {evolucao.map((e,i)=>(
-              <g key={i}>
-                <circle cx={toX(i)} cy={toY(e.rec)}   r={3}   fill="#4F8EF7" stroke="#162130" strokeWidth={1.5}/>
-                <circle cx={toX(i)} cy={toY(e.des)}   r={3}   fill="#E8445A" stroke="#162130" strokeWidth={1.5}/>
-                <circle cx={toX(i)} cy={toY(e.saldo)} r={2.5} fill="#9B59B6" stroke="#162130" strokeWidth={1}/>
-                <text x={toX(i)} y={CH+20} fontSize={9} fill="#4A5E6D" textAnchor="middle">{e.lbl}</text>
+            {chartLines.filter(l=>l.area).map((l,i)=>(
+              <path key={i} d={makeArea(l.data,toYd)} fill={`url(#biGrad${i})`}/>
+            ))}
+            {/* Lines + Dots */}
+            {chartLines.map((l,li)=>(
+              <g key={li}>
+                <path d={makePath(l.data,toYd)} fill="none" stroke={l.c} strokeWidth={l.dashed?1.5:2}
+                  strokeDasharray={l.dashed?"5,3":undefined} strokeLinejoin="round" strokeLinecap="round"/>
+                {l.data.map((v,i)=>(
+                  <circle key={i} cx={toX(i)} cy={toYd(v)} r={3} fill={l.c} stroke="#162130" strokeWidth={1.5}/>
+                ))}
               </g>
+            ))}
+            {/* Month labels */}
+            {evolucao.map((e,i)=>(
+              <text key={i} x={toX(i)} y={CH+20} fontSize={9} fill="#4A5E6D" textAnchor="middle">{e.lbl}</text>
             ))}
           </svg>
         </div>
@@ -970,28 +1045,36 @@ const AnaliseTab = ({transactions, s, fmt}) => {
         {Object.entries(hierarquia).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([rd,rdData])=>{
           const rdPct=Math.abs(rdData.total)/maxHier*100;
           const rdKey=`rd_${rd}`;
+          const rdc=rdColor(rd);
+          const isDrilled=drillDown?.rd===rd;
           return (
             <div key={rd} style={{marginBottom:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:4}} onClick={()=>toggle(rdKey)}>
+              <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:4,background:isDrilled?"rgba(79,142,247,0.05)":"none",borderRadius:6,padding:"2px 4px"}}
+                onClick={()=>{toggle(rdKey);setDrillDown(isDrilled?null:{rd});}}>
                 <span style={{fontSize:11,color:"#4A5E6D",width:12}}>{expanded[rdKey]?"▼":"▶"}</span>
                 <span style={{...s.badge(rd),fontSize:10,minWidth:160}}>{rd}</span>
+                {isDrilled&&<span style={{fontSize:9,color:rdc,background:`${rdc}22`,borderRadius:4,padding:"1px 5px"}}>no gráfico ↑</span>}
                 <div style={{flex:1,height:6,background:"#1E2D3D",borderRadius:3,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${rdPct}%`,background:rdData.total>=0?"#00C9A7":"#E8445A",borderRadius:3}}/>
+                  <div style={{height:"100%",width:`${rdPct}%`,background:rdc,borderRadius:3}}/>
                 </div>
                 <span style={{fontSize:12,fontWeight:700,color:rdData.total>=0?"#2ECC71":"#E8445A",minWidth:110,textAlign:"right"}}>{fmt(rdData.total)}</span>
               </div>
               {expanded[rdKey]&&(
                 <div style={{paddingLeft:24}}>
-                  {Object.entries(rdData.cls).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([cl,clData])=>{
+                  {Object.entries(rdData.cls).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([cl,clData],cli)=>{
                     const clPct=Math.abs(clData.total)/Math.abs(rdData.total)*100;
                     const clKey=`cl_${rd}_${cl}`;
+                    const clc=DCOLORS[cli%DCOLORS.length];
+                    const isClDrilled=drillDown?.rd===rd&&drillDown?.cl===cl;
                     return (
                       <div key={cl} style={{marginBottom:5}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:2}} onClick={()=>toggle(clKey)}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:2,background:isClDrilled?"rgba(79,142,247,0.05)":"none",borderRadius:5,padding:"2px 4px"}}
+                          onClick={e=>{e.stopPropagation();toggle(clKey);setDrillDown(isClDrilled?{rd}:{rd,cl});}}>
                           <span style={{fontSize:11,color:"#4A5E6D",width:12}}>{expanded[clKey]?"▼":"▶"}</span>
                           <span style={{fontSize:11,color:"#E8EDF2",minWidth:160}}>{cl}</span>
+                          {isClDrilled&&<span style={{fontSize:9,color:clc,background:`${clc}22`,borderRadius:4,padding:"1px 5px"}}>no gráfico ↑</span>}
                           <div style={{flex:1,height:4,background:"#1E2D3D",borderRadius:3,overflow:"hidden"}}>
-                            <div style={{height:"100%",width:`${clPct}%`,background:"#3B6B8A",borderRadius:3}}/>
+                            <div style={{height:"100%",width:`${clPct}%`,background:clc,borderRadius:3}}/>
                           </div>
                           <span style={{fontSize:11,color:"#6B8299",minWidth:50,textAlign:"right"}}>{clPct.toFixed(1)}%</span>
                           <span style={{fontSize:11,fontWeight:600,color:clData.total>=0?"#2ECC71":"#E8445A",minWidth:110,textAlign:"right"}}>{fmt(clData.total)}</span>
@@ -2189,7 +2272,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.9.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.10.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2939,7 +3022,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.9.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.10.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3134,7 +3217,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.9.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.10.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
