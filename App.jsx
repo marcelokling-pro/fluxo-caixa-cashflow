@@ -620,6 +620,412 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ANÁLISE TAB — BI: KPIs, evolução mensal, hierarquia R/D→Classificação→Subcategoria
+// ══════════════════════════════════════════════════════════════════════════════
+const AnaliseTab = ({transactions, s, fmt}) => {
+  const now = new Date();
+  const [biMes, setBiMes] = useState("todos");
+  const [biAno, setBiAno] = useState(String(now.getFullYear()));
+  const [biRd,  setBiRd]  = useState("todos");
+  const [expanded, setExpanded] = useState({});
+
+  const DCOLORS = ["#4F8EF7","#F5A623","#E8445A","#00C9A7","#9B59B6","#E67E22","#1ABC9C","#E74C3C"];
+
+  const anos = [...new Set(transactions.map(t=>t.date?.split("/")?.[2]).filter(Boolean))].sort();
+
+  const filtrado = transactions.filter(t=>{
+    const p = t.date?.split("/");
+    if(!p||p.length<3) return false;
+    if(biAno!=="todos" && p[2]!==biAno) return false;
+    if(biMes!=="todos" && parseInt(p[1])!==parseInt(biMes)) return false;
+    if(biRd!=="todos" && t.rd!==biRd) return false;
+    return true;
+  });
+
+  const receita = filtrado.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
+  const despesa = filtrado.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+  const saldo   = receita - despesa;
+  const count   = filtrado.length;
+
+  // Previous year for % comparison
+  const prevFiltrado = transactions.filter(t=>{
+    const p = t.date?.split("/");
+    if(!p||p.length<3) return false;
+    if(biAno!=="todos"){ if(p[2]!==String(Number(biAno)-1)) return false; }
+    if(biMes!=="todos" && parseInt(p[1])!==parseInt(biMes)) return false;
+    if(biRd!=="todos" && t.rd!==biRd) return false;
+    return true;
+  });
+  const prevRec = prevFiltrado.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
+  const prevDes = prevFiltrado.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+  const prevSaldo = prevRec - prevDes;
+  const pctChg = (cur,prev) => prev===0?null:((cur-prev)/Math.abs(prev)*100);
+
+  // Monthly evolution — last 12 months
+  const evolucao = [];
+  for(let i=11;i>=0;i--){
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const a = String(d.getFullYear());
+    const lbl = d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+    const ts = transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
+    const rec = ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
+    const des = ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+    evolucao.push({lbl,rec,des,saldo:rec-des});
+  }
+
+  // Sparkline helper
+  const Spark = ({data,color,w=80,h=26})=>{
+    if(!data||data.length<2) return null;
+    const mx=Math.max(...data,0.01), mn=Math.min(...data);
+    const rng=mx-mn||1;
+    const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-mn)/rng)*(h-4)-2}`).join(" ");
+    const lx=pts.split(" ").pop().split(",");
+    return <svg width={w} height={h}><polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round"/><circle cx={lx[0]} cy={lx[1]} r={2.5} fill={color}/></svg>;
+  };
+
+  // SVG line chart
+  const CW=580,CH=160,PL=36,PR=8,PT=8,PB=4;
+  const cW=CW-PL-PR, cH=CH-PT-PB;
+  const allV=evolucao.flatMap(e=>[e.rec,e.des,e.saldo]);
+  const cMax=Math.max(...allV,1), cMin=Math.min(...allV,0), cRng=cMax-cMin||1;
+  const toX=i=>PL+(i/(evolucao.length-1))*cW;
+  const toY=v=>PT+cH-((v-cMin)/cRng)*cH;
+  const makePath=data=>{
+    const pts=data.map((v,i)=>({x:toX(i),y:toY(v)}));
+    let d=`M ${pts[0].x} ${pts[0].y}`;
+    for(let i=1;i<pts.length;i++){
+      const cp1x=pts[i-1].x+(pts[i].x-pts[i-1].x)/3;
+      const cp2x=pts[i].x-(pts[i].x-pts[i-1].x)/3;
+      d+=` C ${cp1x} ${pts[i-1].y}, ${cp2x} ${pts[i].y}, ${pts[i].x} ${pts[i].y}`;
+    }
+    return d;
+  };
+  const makeArea=data=>{
+    const p=makePath(data);
+    return p+` L ${toX(data.length-1)} ${toY(0)} L ${PL} ${toY(0)} Z`;
+  };
+  const recPath=makePath(evolucao.map(e=>e.rec));
+  const desPath=makePath(evolucao.map(e=>e.des));
+  const saldoPath=makePath(evolucao.map(e=>e.saldo));
+  const gridVals=[cMin,cMin+cRng*0.25,cMin+cRng*0.5,cMin+cRng*0.75,cMax];
+
+  // Category breakdown
+  const catMap={};
+  filtrado.forEach(t=>{
+    const cl=t.classificacao||"SEM CLASSIFICAÇÃO";
+    if(!catMap[cl]) catMap[cl]={total:0,count:0};
+    catMap[cl].total+=Number(t.value);
+    catMap[cl].count++;
+  });
+  const totalAbs=Object.values(catMap).reduce((s,c)=>s+Math.abs(c.total),0)||1;
+  const catSorted=Object.entries(catMap).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).slice(0,8);
+
+  // Donut
+  const DR=52, DS=22, DC=2*Math.PI*DR;
+  let dOff=0;
+  const donut=catSorted.map(([name,data],i)=>{
+    const pct=Math.abs(data.total)/totalAbs;
+    const sl={name,pct,color:DCOLORS[i%DCOLORS.length],off:DC*(1-dOff),len:DC*pct};
+    dOff+=pct; return sl;
+  });
+
+  // Destaques
+  const mediaRec=evolucao.reduce((s,e)=>s+e.rec,0)/evolucao.length;
+  const mediaDes=evolucao.reduce((s,e)=>s+e.des,0)/evolucao.length;
+  const melhor=[...evolucao].sort((a,b)=>b.saldo-a.saldo)[0];
+  const pior=[...evolucao].sort((a,b)=>a.saldo-b.saldo)[0];
+
+  // Hierarquia expandível
+  const hierarquia={};
+  filtrado.forEach(t=>{
+    const rd=t.rd||"SEM R/D", cl=t.classificacao||"SEM CLASSIFICAÇÃO", sub=t.subcategoria||"SEM SUBCATEGORIA";
+    if(!hierarquia[rd]) hierarquia[rd]={total:0,cls:{}};
+    hierarquia[rd].total+=Number(t.value);
+    if(!hierarquia[rd].cls[cl]) hierarquia[rd].cls[cl]={total:0,subs:{}};
+    hierarquia[rd].cls[cl].total+=Number(t.value);
+    if(!hierarquia[rd].cls[cl].subs[sub]) hierarquia[rd].cls[cl].subs[sub]={total:0};
+    hierarquia[rd].cls[cl].subs[sub].total+=Number(t.value);
+  });
+  const maxHier=Math.max(...Object.values(hierarquia).map(r=>Math.abs(r.total)),1);
+  const toggle=k=>setExpanded(e=>({...e,[k]:!e[k]}));
+
+  const PctBadge=({v})=>v===null?null:(
+    <span style={{fontSize:10,fontWeight:600,color:v>=0?"#2ECC71":"#E8445A",background:v>=0?"rgba(46,204,113,0.12)":"rgba(232,68,90,0.12)",borderRadius:4,padding:"1px 5px"}}>
+      {v>=0?"+":""}{v.toFixed(1)}%
+    </span>
+  );
+
+  return (
+    <>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:10}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:700,letterSpacing:-0.5}}>Análise</div>
+          <div style={{fontSize:12,color:"#6B8299",marginTop:2}}>Acompanhe o desempenho financeiro do período selecionado.</div>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <select style={s.sel} value={biAno} onChange={e=>setBiAno(e.target.value)}>
+            <option value="todos">Todos os anos</option>
+            {anos.map(a=><option key={a}>{a}</option>)}
+          </select>
+          <select style={s.sel} value={biMes} onChange={e=>setBiMes(e.target.value)}>
+            <option value="todos">Todos os meses</option>
+            {MONTHS.map((m,i)=><option key={i} value={String(i+1).padStart(2,"0")}>{m}</option>)}
+          </select>
+          <select style={s.sel} value={biRd} onChange={e=>setBiRd(e.target.value)}>
+            <option value="todos">Todos R/D</option>
+            {RD_TYPES.map(r=><option key={r}>{r}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+        {[
+          {l:"Receitas Totais",  v:fmt(receita), pct:pctChg(receita,prevRec),   c:"#2ECC71", bc:"rgba(46,204,113,0.15)",  icon:"📈", spark:evolucao.map(e=>e.rec),   sc:"#00C9A7"},
+          {l:"Despesas Totais",  v:fmt(despesa), pct:pctChg(despesa,prevDes),   c:"#E8445A", bc:"rgba(232,68,90,0.12)",   icon:"📉", spark:evolucao.map(e=>e.des),   sc:"#E8445A"},
+          {l:"Saldo do Período", v:fmt(saldo),   pct:pctChg(saldo,prevSaldo),   c:saldo>=0?"#00C9A7":"#E8445A", bc:"rgba(0,201,167,0.08)", icon:"⚖️", spark:evolucao.map(e=>e.saldo), sc:"#9B59B6"},
+          {l:"Lançamentos",      v:count,        pct:null,                       c:"#F5A623", bc:"rgba(245,166,35,0.08)",  icon:"📋", spark:null, sc:"#F5A623"},
+        ].map(k=>(
+          <div key={k.l} style={{...s.card,borderLeft:`3px solid ${k.c}`,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{k.l}</div>
+                <div style={{fontSize:19,fontWeight:700,color:"#E8EDF2",marginBottom:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.v}</div>
+                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                  <PctBadge v={k.pct}/>
+                  {k.pct!==null&&<span style={{fontSize:9,color:"#4A5E6D"}}>vs ano ant.</span>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,marginLeft:8}}>
+                <span style={{fontSize:22}}>{k.icon}</span>
+                {k.spark&&<Spark data={k.spark} color={k.sc}/>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart + Destaques */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:12,marginBottom:14}}>
+        {/* SVG Line Chart */}
+        <div style={s.card}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:13,fontWeight:600}}>Evolução Mensal</div>
+            <div style={{display:"flex",gap:14}}>
+              {[{l:"Receitas",c:"#4F8EF7"},{l:"Despesas",c:"#E8445A"},{l:"Saldo Acumulado",c:"#9B59B6",dashed:true}].map(lg=>(
+                <span key={lg.l} style={{fontSize:10,color:lg.c,display:"flex",alignItems:"center",gap:4}}>
+                  <svg width={20} height={4}><line x1={0} y1={2} x2={20} y2={2} stroke={lg.c} strokeWidth={2} strokeDasharray={lg.dashed?"4,2":undefined}/></svg>
+                  {lg.l}
+                </span>
+              ))}
+            </div>
+          </div>
+          <svg viewBox={`0 0 ${CW} ${CH+26}`} style={{width:"100%",overflow:"visible"}}>
+            <defs>
+              <linearGradient id="biRecGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4F8EF7" stopOpacity="0.25"/>
+                <stop offset="100%" stopColor="#4F8EF7" stopOpacity="0.02"/>
+              </linearGradient>
+              <linearGradient id="biDesGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#E8445A" stopOpacity="0.18"/>
+                <stop offset="100%" stopColor="#E8445A" stopOpacity="0.02"/>
+              </linearGradient>
+            </defs>
+            {/* Grid */}
+            {gridVals.map((v,i)=>{
+              const y=toY(v);
+              return (
+                <g key={i}>
+                  <line x1={PL} y1={y} x2={PL+cW} y2={y} stroke="rgba(107,130,153,0.1)" strokeWidth={1}/>
+                  <text x={PL-4} y={y+4} fontSize={8} fill="#4A5E6D" textAnchor="end">{v>=1000||v<=-1000?`${(v/1000).toFixed(0)}k`:v.toFixed(0)}</text>
+                </g>
+              );
+            })}
+            {/* Zero line */}
+            {cMin<0&&<line x1={PL} y1={toY(0)} x2={PL+cW} y2={toY(0)} stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>}
+            {/* Area fills */}
+            <path d={makeArea(evolucao.map(e=>e.rec))} fill="url(#biRecGrad)"/>
+            <path d={makeArea(evolucao.map(e=>e.des))} fill="url(#biDesGrad)"/>
+            {/* Lines */}
+            <path d={recPath}   fill="none" stroke="#4F8EF7" strokeWidth={2}   strokeLinejoin="round" strokeLinecap="round"/>
+            <path d={desPath}   fill="none" stroke="#E8445A" strokeWidth={2}   strokeLinejoin="round" strokeLinecap="round"/>
+            <path d={saldoPath} fill="none" stroke="#9B59B6" strokeWidth={1.5} strokeDasharray="5,3"  strokeLinejoin="round" strokeLinecap="round"/>
+            {/* Dots + Labels */}
+            {evolucao.map((e,i)=>(
+              <g key={i}>
+                <circle cx={toX(i)} cy={toY(e.rec)}   r={3}   fill="#4F8EF7" stroke="#162130" strokeWidth={1.5}/>
+                <circle cx={toX(i)} cy={toY(e.des)}   r={3}   fill="#E8445A" stroke="#162130" strokeWidth={1.5}/>
+                <circle cx={toX(i)} cy={toY(e.saldo)} r={2.5} fill="#9B59B6" stroke="#162130" strokeWidth={1}/>
+                <text x={toX(i)} y={CH+20} fontSize={9} fill="#4A5E6D" textAnchor="middle">{e.lbl}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+
+        {/* Destaques */}
+        <div style={s.card}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:12}}>Destaques do Período</div>
+          {[
+            {icon:"💰",l:"Economia do Período",    sub:"Receitas − Despesas",    v:fmt(saldo),    c:saldo>=0?"#2ECC71":"#E8445A", p:pctChg(saldo,prevSaldo)},
+            {icon:"📊",l:"Média Mensal de Receitas",sub:"Últimos 12 meses",       v:fmt(mediaRec), c:"#4F8EF7",  p:null},
+            {icon:"🧾",l:"Média Mensal de Despesas",sub:"Últimos 12 meses",       v:fmt(mediaDes), c:"#E8445A",  p:null},
+            {icon:"⬆️",l:"Melhor Mês",             sub:melhor?.lbl||"—",         v:fmt(melhor?.saldo||0), c:"#2ECC71", p:null},
+            {icon:"⬇️",l:"Pior Mês",               sub:pior?.lbl||"—",           v:fmt(pior?.saldo||0),   c:"#E8445A", p:null},
+          ].map((d,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<4?"1px solid rgba(255,255,255,0.04)":"none"}}>
+              <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{d.icon}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,color:"#E8EDF2",fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{d.l}</div>
+                <div style={{fontSize:10,color:"#6B8299"}}>{d.sub}</div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:d.c,whiteSpace:"nowrap"}}>{d.v}</div>
+                <PctBadge v={d.p}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom row */}
+      <div style={{display:"grid",gridTemplateColumns:"220px 1fr 210px",gap:12,marginBottom:14}}>
+        {/* Donut */}
+        <div style={s.card}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Composição</div>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:10}}>
+            <svg viewBox="0 0 140 140" width={110} height={110}>
+              {donut.map((sl,i)=>(
+                <circle key={i} cx={70} cy={70} r={DR} fill="none" stroke={sl.color} strokeWidth={DS}
+                  strokeDasharray={`${sl.len} ${DC-sl.len}`} strokeDashoffset={sl.off}
+                  style={{transform:"rotate(-90deg)",transformOrigin:"70px 70px"}}/>
+              ))}
+              <text x={70} y={65} textAnchor="middle" fontSize={9}  fill="#6B8299">Total</text>
+              <text x={70} y={78} textAnchor="middle" fontSize={10} fill="#E8EDF2" fontWeight="bold">{(totalAbs/1000).toFixed(0)}k</text>
+            </svg>
+          </div>
+          {donut.slice(0,6).map((sl,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+              <span style={{width:8,height:8,borderRadius:2,background:sl.color,flexShrink:0}}/>
+              <span style={{fontSize:10,color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sl.name}</span>
+              <span style={{fontSize:10,color:"#6B8299",flexShrink:0}}>{(sl.pct*100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Category table */}
+        <div style={s.card}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:10}}>Evolução por Categoria</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 110px 55px 45px",marginBottom:6}}>
+            {["Categoria","Valor (R$)","% Total","Lanç."].map(h=>(
+              <div key={h} style={{fontSize:9,color:"#4A5E6D",textTransform:"uppercase",padding:"0 4px 4px",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>{h}</div>
+            ))}
+          </div>
+          {catSorted.map(([name,data],i)=>{
+            const pct=Math.abs(data.total)/totalAbs*100;
+            const color=DCOLORS[i%DCOLORS.length];
+            return (
+              <div key={name} style={{display:"grid",gridTemplateColumns:"1fr 110px 55px 45px",padding:"5px 0",borderBottom:"1px solid rgba(255,255,255,0.04)",alignItems:"center"}}>
+                <div style={{padding:"0 4px"}}>
+                  <div style={{fontSize:11,color:"#E8EDF2",marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
+                  <div style={{height:3,background:"#1E2D3D",borderRadius:2,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:2}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:11,fontWeight:600,color:data.total>=0?"#2ECC71":"#E8445A",padding:"0 4px",textAlign:"right"}}>{fmt(data.total)}</div>
+                <div style={{fontSize:11,color:"#6B8299",padding:"0 4px",textAlign:"right"}}>{pct.toFixed(1)}%</div>
+                <div style={{fontSize:11,color:"#6B8299",padding:"0 4px",textAlign:"right"}}>{data.count}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Fluxo de Caixa */}
+        <div style={s.card}>
+          <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Fluxo de Caixa</div>
+          {[{l:"Receitas",v:receita,c:"#2ECC71"},{l:"Despesas",v:-despesa,c:"#E8445A"}].map((row,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+              <span style={{fontSize:12,color:"#A8B4C0"}}>{row.l}</span>
+              <span style={{fontSize:12,fontWeight:600,color:row.c}}>{fmt(row.v)}</span>
+            </div>
+          ))}
+          <div style={{marginTop:14,background:"rgba(0,201,167,0.07)",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:10,color:"#6B8299",marginBottom:4}}>Saldo Final</div>
+            <div style={{fontSize:19,fontWeight:700,color:saldo>=0?"#00C9A7":"#E8445A"}}>{fmt(saldo)}</div>
+          </div>
+          <div style={{marginTop:10}}>
+            <Spark data={evolucao.map(e=>e.saldo)} color={saldo>=0?"#00C9A7":"#E8445A"} w={186} h={38}/>
+            <div style={{display:"flex",justifyContent:"space-between",marginTop:2}}>
+              <span style={{fontSize:9,color:"#4A5E6D"}}>{evolucao[0]?.lbl}</span>
+              <span style={{fontSize:9,color:"#4A5E6D"}}>{evolucao[evolucao.length-1]?.lbl}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hierarquia expandível */}
+      <div style={s.card}>
+        <div style={{fontSize:13,fontWeight:600,marginBottom:14}}>Hierarquia R/D → Classificação → Subcategoria</div>
+        {Object.entries(hierarquia).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([rd,rdData])=>{
+          const rdPct=Math.abs(rdData.total)/maxHier*100;
+          const rdKey=`rd_${rd}`;
+          return (
+            <div key={rd} style={{marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:4}} onClick={()=>toggle(rdKey)}>
+                <span style={{fontSize:11,color:"#4A5E6D",width:12}}>{expanded[rdKey]?"▼":"▶"}</span>
+                <span style={{...s.badge(rd),fontSize:10,minWidth:160}}>{rd}</span>
+                <div style={{flex:1,height:6,background:"#1E2D3D",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${rdPct}%`,background:rdData.total>=0?"#00C9A7":"#E8445A",borderRadius:3}}/>
+                </div>
+                <span style={{fontSize:12,fontWeight:700,color:rdData.total>=0?"#2ECC71":"#E8445A",minWidth:110,textAlign:"right"}}>{fmt(rdData.total)}</span>
+              </div>
+              {expanded[rdKey]&&(
+                <div style={{paddingLeft:24}}>
+                  {Object.entries(rdData.cls).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([cl,clData])=>{
+                    const clPct=Math.abs(clData.total)/Math.abs(rdData.total)*100;
+                    const clKey=`cl_${rd}_${cl}`;
+                    return (
+                      <div key={cl} style={{marginBottom:5}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:2}} onClick={()=>toggle(clKey)}>
+                          <span style={{fontSize:11,color:"#4A5E6D",width:12}}>{expanded[clKey]?"▼":"▶"}</span>
+                          <span style={{fontSize:11,color:"#E8EDF2",minWidth:160}}>{cl}</span>
+                          <div style={{flex:1,height:4,background:"#1E2D3D",borderRadius:3,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${clPct}%`,background:"#3B6B8A",borderRadius:3}}/>
+                          </div>
+                          <span style={{fontSize:11,color:"#6B8299",minWidth:50,textAlign:"right"}}>{clPct.toFixed(1)}%</span>
+                          <span style={{fontSize:11,fontWeight:600,color:clData.total>=0?"#2ECC71":"#E8445A",minWidth:110,textAlign:"right"}}>{fmt(clData.total)}</span>
+                        </div>
+                        {expanded[clKey]&&(
+                          <div style={{paddingLeft:24}}>
+                            {Object.entries(clData.subs).sort((a,b)=>Math.abs(b[1].total)-Math.abs(a[1].total)).map(([sub,subData])=>{
+                              const subPct=Math.abs(subData.total)/Math.abs(clData.total)*100;
+                              return (
+                                <div key={sub} style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                                  <span style={{fontSize:10,color:"#6B8299",minWidth:172}}>{sub}</span>
+                                  <div style={{flex:1,height:3,background:"#1E2D3D",borderRadius:3,overflow:"hidden"}}>
+                                    <div style={{height:"100%",width:`${subPct}%`,background:"#2A4A5A",borderRadius:3}}/>
+                                  </div>
+                                  <span style={{fontSize:10,color:"#6B8299",minWidth:50,textAlign:"right"}}>{subPct.toFixed(1)}%</span>
+                                  <span style={{fontSize:10,color:subData.total>=0?"#2ECC71":"#E8445A",minWidth:110,textAlign:"right"}}>{fmt(subData.total)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+};
+
 // CLASSIFICAÇÕES TAB — unified, editable, searchable
 // ══════════════════════════════════════════════════════════════════════════════
 const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions, hiddenBaseCls, hideBaseClassification}) => {
@@ -1748,6 +2154,7 @@ export default function App() {
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
     {id:"agenda",       icon:"📅",label:"Agenda"},
     {id:"operacional",  icon:"⚙", label:"Operacional"},
+    {id:"analise",      icon:"📊", label:"Análise"},
   ];
 
   const rdColor={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#00C9A7","DESPESA FINANCEIRA":"#F5A623","SALDO INICIAL":"#6B8299"};
@@ -1782,7 +2189,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.7.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.9.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2532,7 +2939,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.7.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.9.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -2722,8 +3129,12 @@ export default function App() {
           </>
         )}
 
+        {tab==="analise"&&(
+          <AnaliseTab transactions={transactions} s={s} fmt={fmt}/>
+        )}
+
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.7.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.9.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
