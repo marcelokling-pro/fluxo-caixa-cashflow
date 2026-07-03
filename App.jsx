@@ -1499,6 +1499,7 @@ export default function App() {
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
   const [showDiaFilter,setShowDiaFilter] = useState(false);
   const [fluxoMonth,setFluxoMonth] = useState("todos");
+  const [showAtrasadosModal,setShowAtrasadosModal] = useState(false);
   const [importedHashes,setImportedHashes] = useState(new Set());
   // v3.0 — Transaction details
   const [detailModal,setDetailModal]       = useState(null); // {transaction}
@@ -1530,7 +1531,7 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
-    const handleEsc = (e) => { if(e.key==="Escape") setShowDiaFilter(false); };
+    const handleEsc = (e) => { if(e.key==="Escape"){ setShowDiaFilter(false); setShowAtrasadosModal(false); } };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   },[]);
@@ -1837,6 +1838,32 @@ export default function App() {
       console.error("Reconciliar erro:", e);
       showToast("Erro ao reconciliar: " + (e?.message||"verifique o console"), "error");
     }
+  };
+
+  // Espelha exatamente a lógica da edge function send-alerts (atrasados + a vencer)
+  const getAlertaItems = () => {
+    const today = new Date();
+    const mes = today.getMonth()+1, ano = today.getFullYear(), todayDay = today.getDate();
+    const DONE = ["pago","baixado"];
+    const map = new Map();
+    agendaOcorrencias.forEach(oc=>{
+      if(DONE.includes(oc.status)) return;
+      if(oc.ano>ano || (oc.ano===ano && oc.mes>=mes)) return;
+      const item = agenda.find(a=>a.id===oc.agenda_id);
+      if(!item) return;
+      const key = `${item.id}_${oc.mes}_${oc.ano}`;
+      if(!map.has(key)) map.set(key,{...item, checkMes:oc.mes, checkAno:oc.ano, retroativo:true});
+    });
+    agenda.filter(a=>a.ativo).forEach(item=>{
+      const oc = agendaOcorrencias.find(o=>o.agenda_id===item.id&&o.mes===mes&&o.ano===ano);
+      if(oc && DONE.includes(oc.status)) return;
+      const daysDiff = item.dia_vencimento - todayDay;
+      if(daysDiff<0 || daysDiff<=alertDaysAhead){
+        const key = `${item.id}_${mes}_${ano}`;
+        if(!map.has(key)) map.set(key,{...item, checkMes:mes, checkAno:ano, daysUntil:daysDiff});
+      }
+    });
+    return [...map.values()].sort((a,b)=>(a.daysUntil??-9999)-(b.daysUntil??-9999));
   };
 
   const saveAgendaItem = async () => {
@@ -2212,7 +2239,9 @@ export default function App() {
 
   const saveAlertDays = async (days) => {
     setAlertDaysAhead(days);
-    await supabase.from("settings").upsert({key:"alert_days_ahead",value:String(days)},{onConflict:"key"});
+    const {error} = await supabase.from("settings").upsert({key:"alert_days_ahead",value:String(days)},{onConflict:"key"});
+    if(error) showToast("Erro ao salvar antecedência: "+error.message,"error");
+    else showToast(`Antecedência atualizada: ${days} dia(s)`);
   };
 
   // Monta a expressão cron a partir da recorrência escolhida no Fluxo de Caixa — a origem da decisão é sempre aqui, nunca fixa no banco
@@ -2300,7 +2329,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.11.4 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.12.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2898,6 +2927,15 @@ export default function App() {
                   })()}
                 </select>
                 <button style={s.btn("ghost")} onClick={()=>reconcileAgenda(agendaMes,agendaAno)}>🔄 Reconciliar</button>
+                {(()=>{
+                  const items=getAlertaItems();
+                  return items.length>0&&(
+                    <button
+                      style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
+                      onClick={()=>setShowAtrasadosModal(true)}
+                    >⚠ {items.length} alerta(s)</button>
+                  );
+                })()}
                 {reconciliarModal&&reconciliarModal.items.length>0&&(
                   <button
                     style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
@@ -3038,6 +3076,33 @@ export default function App() {
               </table>
               </div>
             </div>
+            {showAtrasadosModal&&(()=>{
+              const items=getAlertaItems();
+              const label=(item)=>{
+                if(item.retroativo) return `ATRASADO desde ${MONTHS[item.checkMes-1]} de ${item.checkAno}`;
+                if(item.daysUntil<0) return `ATRASADO ${Math.abs(item.daysUntil)} dia(s)`;
+                if(item.daysUntil===0) return "HOJE";
+                if(item.daysUntil===1) return "AMANHÃ";
+                return `em ${item.daysUntil} dias`;
+              };
+              const isAtraso=(item)=>item.retroativo||item.daysUntil<0;
+              return (
+                <div style={s.modal} onClick={()=>setShowAtrasadosModal(false)}>
+                  <div style={{...s.card,maxWidth:420,width:"100%",maxHeight:"70vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"#E8445A"}}>⚠ Alertas de vencimento</div>
+                      <button style={{...s.btn("ghost"),padding:"3px 9px"}} onClick={()=>setShowAtrasadosModal(false)}>✕</button>
+                    </div>
+                    {items.map(item=>(
+                      <div key={item.id+"_"+item.checkMes+"_"+item.checkAno} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",borderRadius:6,background:"#0F1923",marginBottom:6}}>
+                        <span style={{fontSize:13,fontWeight:600}}>{item.nome}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:isAtraso(item)?"#E8445A":"#F5A623"}}>{label(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
 
@@ -3056,7 +3121,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.11.4</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.12.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3123,39 +3188,6 @@ export default function App() {
                   ))
                 }
               </div>
-
-              {/* Próximos vencimentos */}
-              {(()=>{
-                const today=new Date();
-                const upcoming=agenda.filter(item=>{
-                  for(let d=0;d<=alertDaysAhead;d++){
-                    const dt=new Date(today); dt.setDate(today.getDate()+d);
-                    if(dt.getDate()===item.dia_vencimento){
-                      const oc=agendaOcorrencias.find(o=>o.agenda_id===item.id&&o.mes===dt.getMonth()+1&&o.ano===dt.getFullYear());
-                      if(!oc||oc.status==="pendente") return true;
-                    }
-                  }
-                  return false;
-                });
-                if(!upcoming.length) return <div style={{fontSize:12,color:"#6B8299"}}>Nenhum vencimento nos próximos {alertDaysAhead} dias.</div>;
-                return (
-                  <div>
-                    <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>Próximos vencimentos ({alertDaysAhead} dias):</div>
-                    {upcoming.map(item=>{
-                      let daysUntil=0;
-                      for(let d=0;d<=alertDaysAhead;d++){ const c=new Date(today); c.setDate(today.getDate()+d); if(c.getDate()===item.dia_vencimento){daysUntil=d;break;} }
-                      return (
-                        <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderRadius:6,background:"#0F1923",marginBottom:4}}>
-                          <span style={{fontSize:12,color:"#E8EDF2"}}>{item.nome}</span>
-                          <span style={{fontSize:11,color:daysUntil===0?"#E8445A":daysUntil<=2?"#F5A623":"#6B8299"}}>
-                            {daysUntil===0?"Hoje":daysUntil===1?"Amanhã":`em ${daysUntil} dias`} — dia {item.dia_vencimento}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
             </div>
 
             {/* Histórico de arquivos importados */}
@@ -3251,7 +3283,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.11.4 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.12.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
