@@ -1487,6 +1487,9 @@ export default function App() {
   const [showAgendaModal,setShowAgendaModal] = useState(false);
   const [editingAgenda,setEditingAgenda] = useState(null);
   const [agendaForm,setAgendaForm]       = useState({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
+  const [kwSuggestions,setKwSuggestions] = useState([]);
+  const [reconciliarModal,setReconciliarModal] = useState(null); // {items:[...], mes, ano}
+  const [reconciliarSugs,setReconciliarSugs]   = useState({});  // {itemId: [{desc,id,value,date}]}
   const [reclassifyList,setReclassifyList]   = useState(null);
   const [applyingSimilar,setApplyingSimilar] = useState(false);
   const [reclassifySelected,setReclassifySelected] = useState([]);
@@ -1787,30 +1790,53 @@ export default function App() {
     agendaOcorrencias.find(o=>o.agenda_id===agendaId&&o.mes===mes&&o.ano===ano);
 
   const reconcileAgenda = async (mes, ano) => {
-    for (const item of agenda) {
-      if (!item.ativo) continue;
-      const oc = getOcorrencia(item.id, mes, ano);
-      if (oc?.status==="pago"||oc?.status==="baixado") continue;
-      const keywords = item.keywords||[];
-      const match = transactions.find(t=>{
-        const p=t.date?.split("/");
-        if(!p||p.length<3) return false;
-        if(parseInt(p[1])!==mes||parseInt(p[2])!==ano) return false;
-        return keywords.some(k=>
-          t.description?.toUpperCase().includes(k.toUpperCase()) ||
-          (t.subcategoria&&t.subcategoria.toUpperCase().includes(k.toUpperCase()))
-        );
-      });
-      await supabase.from("agenda_ocorrencias").upsert({
-        agenda_id:item.id, mes, ano,
-        status: match?"pago":"pendente",
-        transaction_id: match?.id||null,
-        data_pagamento: match?.date||null,
-        valor_pago: match?Math.abs(Number(match.value)):null,
-      },{onConflict:"agenda_id,mes,ano"});
+    showToast("Reconciliando...", "success");
+    try {
+      let reconciliados = 0, jaResolvidos = 0;
+      const semMatchItems = [];
+      for (const item of agenda) {
+        if (!item.ativo) continue;
+        const oc = getOcorrencia(item.id, mes, ano);
+        if (oc?.status==="pago"||oc?.status==="baixado") { jaResolvidos++; continue; }
+        const keywords = item.keywords||[];
+        const match = keywords.length>0 ? transactions.find(t=>{
+          const p=t.date?.split("/");
+          if(!p||p.length<3) return false;
+          if(parseInt(p[1])!==mes||parseInt(p[2])!==ano) return false;
+          return keywords.some(k=>
+            t.description?.toUpperCase().includes(k.toUpperCase()) ||
+            (t.subcategoria&&t.subcategoria.toUpperCase().includes(k.toUpperCase()))
+          );
+        }) : null;
+        const {error} = await supabase.from("agenda_ocorrencias").upsert({
+          agenda_id:item.id, mes, ano,
+          status: match?"pago":"pendente",
+          transaction_id: match?.id||null,
+          data_pagamento: match?.date||null,
+          valor_pago: match?Math.abs(Number(match.value)):null,
+        },{onConflict:"agenda_id,mes,ano"});
+        if (error) throw error;
+        if (match) reconciliados++; else semMatchItems.push(item);
+      }
+      await loadAgenda();
+      // Salva itens sem match para o botão lateral
+      if (semMatchItems.length>0) {
+        setReconciliarModal({items: semMatchItems, mes, ano});
+      } else {
+        setReconciliarModal(null);
+        setReconciliarSugs({});
+      }
+      const semMatch = semMatchItems.length;
+      const msg = reconciliados>0
+        ? `✅ ${reconciliados} reconciliado(s)${semMatch>0?` · ⚠️ ${semMatch} sem lançamento`:""}${jaResolvidos>0?` · ${jaResolvidos} já resolvidos`:""}`
+        : semMatch>0
+          ? `⚠️ ${semMatch} item(s) sem lançamento${jaResolvidos>0?` · ${jaResolvidos} já resolvidos`:""}`
+          : `ℹ️ Todos os ${jaResolvidos} itens já estavam resolvidos`;
+      showToast(msg, reconciliados>0?"success":"warning");
+    } catch(e) {
+      console.error("Reconciliar erro:", e);
+      showToast("Erro ao reconciliar: " + (e?.message||"verifique o console"), "error");
     }
-    await loadAgenda();
-    showToast("Reconciliação concluída!");
   };
 
   const saveAgendaItem = async () => {
@@ -2274,7 +2300,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.10.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.11.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2872,6 +2898,12 @@ export default function App() {
                   })()}
                 </select>
                 <button style={s.btn("ghost")} onClick={()=>reconcileAgenda(agendaMes,agendaAno)}>🔄 Reconciliar</button>
+                {reconciliarModal&&reconciliarModal.items.length>0&&(
+                  <button
+                    style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
+                    onClick={()=>setReconciliarModal(m=>({...m,open:true}))}
+                  >⚠️ {reconciliarModal.items.length} sem match</button>
+                )}
                 <button style={s.btn()} onClick={()=>{setEditingAgenda(null);setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});setShowAgendaModal(true);}}>+ Novo</button>
               </div>
             </div>
@@ -3024,7 +3056,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.10.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.11.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3219,7 +3251,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.10.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.11.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3290,15 +3322,58 @@ export default function App() {
 
       {/* Agenda Modal */}
       {showAgendaModal&&(
-        <div style={s.modal} onClick={()=>setShowAgendaModal(false)}>
+        <div style={s.modal} onClick={()=>{setShowAgendaModal(false);setKwSuggestions([]);}}>
           <div style={s.mbox} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:20}}>{editingAgenda?"Editar":"Novo"} Compromisso</div>
-            {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"},{l:"Keywords (separadas por vírgula)",k:"keywords",ph:"Ex: aluguel, locação"}].map(({l,k,ph})=>(
+            {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"}].map(({l,k,ph})=>(
               <div key={k} style={{marginBottom:14}}>
                 <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>{l}</div>
                 <input style={s.input} placeholder={ph} value={agendaForm[k]} onChange={e=>setAgendaForm(f=>({...f,[k]:e.target.value}))}/>
               </div>
             ))}
+            <div style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:12,color:"#6B8299"}}>Keywords (separadas por vírgula)</div>
+                <button style={{background:"transparent",border:"1px solid #00C9A7",color:"#00C9A7",borderRadius:6,fontSize:11,padding:"2px 10px",cursor:"pointer",fontWeight:600}} onClick={()=>{
+                  if(!agendaForm.nome.trim()) return;
+                  const words = agendaForm.nome.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+                  const now2 = new Date();
+                  const recentMonths = [0,1,2,3,4,5].map(i=>{
+                    const d=new Date(now2.getFullYear(),now2.getMonth()-i,1);
+                    return {m:String(d.getMonth()+1).padStart(2,"0"),a:String(d.getFullYear())};
+                  });
+                  const matches = transactions.filter(t=>{
+                    const p=t.date?.split("/");
+                    if(!p) return false;
+                    if(!recentMonths.some(rm=>rm.m===p[1]&&rm.a===p[2])) return false;
+                    return words.some(w=>t.description?.toLowerCase().includes(w));
+                  });
+                  const seen=new Set((agendaForm.keywords||"").split(",").map(k=>k.trim().toUpperCase()));
+                  const sugs=[...new Set(matches.map(t=>t.description?.toUpperCase().trim()).filter(Boolean))].filter(d=>!seen.has(d)).slice(0,10);
+                  setKwSuggestions(sugs);
+                }}>🔍 Sugerir</button>
+              </div>
+              <input style={s.input} placeholder="Ex: aluguel, locação" value={agendaForm.keywords} onChange={e=>{setAgendaForm(f=>({...f,keywords:e.target.value}));setKwSuggestions([]);}}/>
+              {kwSuggestions.length>0&&(
+                <div style={{marginTop:8,padding:"10px 12px",background:"rgba(0,201,167,0.06)",borderRadius:8,border:"1px solid rgba(0,201,167,0.15)"}}>
+                  <div style={{fontSize:10,color:"#6B8299",marginBottom:6}}>Clique para adicionar como keyword:</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {kwSuggestions.map((sug,i)=>(
+                      <span key={i} onClick={()=>{
+                        const cur=(agendaForm.keywords||"").split(",").map(k=>k.trim()).filter(Boolean);
+                        if(!cur.map(k=>k.toUpperCase()).includes(sug.toUpperCase())){
+                          setAgendaForm(f=>({...f,keywords:[...cur,sug].join(", ")}));
+                        }
+                        setKwSuggestions(prev=>prev.filter((_,j)=>j!==i));
+                      }} style={{fontSize:10,background:"#1E2D3D",border:"1px solid #2A3F52",borderRadius:4,padding:"3px 8px",cursor:"pointer",color:"#E8EDF2",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}}>
+                        + {sug}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {kwSuggestions.length===0&&agendaForm.nome&&<div style={{fontSize:10,color:"#4A5E6D",marginTop:4}}>Clique em "Sugerir" para buscar lançamentos dos últimos 6 meses.</div>}
+            </div>
             <div style={{marginBottom:14}}>
               <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>R/D</div>
               <select style={{...s.input}} value={agendaForm.rd} onChange={e=>setAgendaForm(f=>({...f,rd:e.target.value}))}>

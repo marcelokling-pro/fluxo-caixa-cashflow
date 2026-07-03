@@ -83,6 +83,8 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
 
+**Durante discussões de requisito:** se o usuário estiver descrevendo uma ideia ou solicitando algo sem ter chegado a um entendimento claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar quando o usuário confirmar explicitamente ou der o sinal de "pode ir".
+
 **Instruções de configuração externa:** sempre detalhar passo a passo com exatamente onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy". O usuário não conhece as particularidades de cada serviço.
 
 ## Lições do ciclo de Classificações (jun/2026)
