@@ -36,37 +36,67 @@ Deno.serve(async (req) => {
 
   const DONE_STATUSES = ["pago", "baixado"];
 
-  const upcoming = (agenda || []).filter((item: any) => {
+  const upcomingMap = new Map<string, any>();
+
+  // 1. Ocorrências de meses ANTERIORES em aberto (sem limite de retroatividade)
+  (ocorrencias || []).forEach((oc: any) => {
+    if (DONE_STATUSES.includes(oc.status)) return;
+    // Apenas meses antes do atual
+    if (oc.ano > ano || (oc.ano === ano && oc.mes >= mes)) return;
+
+    const item = (agenda || []).find((a: any) => a.id === oc.agenda_id);
+    if (!item) return;
+
+    const key = `${item.id}_${oc.mes}_${oc.ano}`;
+    if (!upcomingMap.has(key)) {
+      upcomingMap.set(key, { ...item, checkMes: oc.mes, checkAno: oc.ano, daysUntil: -9999 });
+    }
+  });
+
+  // 2. Mês atual: itens vencidos ou vencendo em breve sem baixa
+  (agenda || []).forEach((item: any) => {
     const oc = (ocorrencias || []).find(
       (o: any) => o.agenda_id === item.id && o.mes === mes && o.ano === ano
     );
-    if (oc && DONE_STATUSES.includes(oc.status)) return false;
+    if (oc && DONE_STATUSES.includes(oc.status)) return;
 
-    // já venceu este mês e ainda não foi quitado
-    if (item.dia_vencimento < todayDay) return true;
-
-    // vence nos próximos daysAhead dias
-    for (let d = 0; d <= daysAhead; d++) {
-      const dt = new Date(today);
-      dt.setDate(todayDay + d);
-      if (dt.getDate() === item.dia_vencimento) return true;
+    const daysDiff = item.dia_vencimento - todayDay;
+    if (daysDiff < 0 || daysDiff <= daysAhead) {
+      const key = `${item.id}_${mes}_${ano}`;
+      if (!upcomingMap.has(key)) {
+        upcomingMap.set(key, { ...item, checkMes: mes, checkAno: ano, daysUntil: daysDiff });
+      }
     }
-    return false;
-  }).map((item: any) => ({ ...item, daysUntil: item.dia_vencimento - todayDay }));
+  });
+
+  const upcoming = [...upcomingMap.values()].sort((a, b) => {
+    // Mais antigos primeiro, depois por dia de vencimento
+    if (a.checkAno !== b.checkAno) return a.checkAno - b.checkAno;
+    if (a.checkMes !== b.checkMes) return a.checkMes - b.checkMes;
+    return a.dia_vencimento - b.dia_vencimento;
+  });
 
   if (!upcoming.length) return new Response("Nenhum vencimento pendente", { status: 200, headers: corsHeaders });
 
-  const whenLabel = (d: number) =>
-    d < 0  ? `ATRASADO ${Math.abs(d)} dia(s)` :
-    d === 0 ? "HOJE" :
-    d === 1 ? "AMANHÃ" :
-              `em ${d} dias`;
+  const monthName = (m: number, y: number) =>
+    new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  const whenLabel = (i: any) => {
+    if (i.checkMes !== mes || i.checkAno !== ano)
+      return `ATRASADO desde ${monthName(i.checkMes, i.checkAno)}`;
+    return i.daysUntil < 0  ? `ATRASADO ${Math.abs(i.daysUntil)} dia(s)` :
+           i.daysUntil === 0 ? "HOJE" :
+           i.daysUntil === 1 ? "AMANHÃ" :
+                               `em ${i.daysUntil} dias`;
+  };
 
   const htmlRows = upcoming.map((i: any) => `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #eee">${i.nome}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">dia ${i.dia_vencimento}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #eee;color:${i.daysUntil<=0?"#E8445A":i.daysUntil<=2?"#F5A623":"#333"};font-weight:600">${whenLabel(i.daysUntil)}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center">
+        dia ${i.dia_vencimento}${i.checkMes !== mes ? ` <span style="color:#999;font-size:11px">(${i.checkMes}/${i.checkAno})</span>` : ""}
+      </td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;color:#E8445A;font-weight:600">${whenLabel(i)}</td>
     </tr>`).join("");
 
   const html = `
