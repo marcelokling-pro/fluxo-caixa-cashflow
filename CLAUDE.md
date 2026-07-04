@@ -85,7 +85,17 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Durante discussões de requisito:** se o usuário estiver descrevendo uma ideia ou solicitando algo sem ter chegado a um entendimento claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar quando o usuário confirmar explicitamente ou der o sinal de "pode ir".
 
+**Respostas mais objetivas.** Ir direto ao ponto, sem rodeios. Só oferecer mais detalhamento se o usuário pedir.
+
 **Instruções de configuração externa:** sempre detalhar passo a passo com exatamente onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy". O usuário não conhece as particularidades de cada serviço.
+
+## Lições do ciclo DEV/PROD (jul/2026)
+
+**Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), comparar CONFIGURAÇÃO antes de código.** Checklist de paridade entre os projetos Supabase (PROD `xioqemsshqxagvwdttte`, DEV `fhrulvdwkqhkyrwqnbet`): extensões (`pg_cron`, `pg_net`), publications/realtime (tabela `transactions` deve estar em `supabase_realtime` — sem isso a tela não atualiza após insert/delete), constraints UNIQUE (`agenda_ocorrencias(agenda_id,mes,ano)`, `extras_fluxo(tipo)`, `categories(name)`, `settings(key)`), functions SQL (`manage_alert_schedule` — recriar com URL/key do projeto), RLS policies, edge functions deployadas e secrets/settings (`resend_api_key`).
+
+**Não propor fix de código sem antes descartar diferença de ambiente.** Dois fixes desnecessários foram propostos por pular essa etapa (reload pós-importação e pós-exclusão — o realtime já cobria).
+
+**Não afirmar causa sem verificar.** Inferências erradas custaram tempo: "sessão expirada", "eu gerei os dados de teste". Verificar no banco/config antes de concluir.
 
 ## Lições do ciclo de Classificações (jun/2026)
 

@@ -1656,6 +1656,13 @@ export default function App() {
       else if(sortCol==="rd"){va=a.rd||"";vb=b.rd||"";}
       else if(sortCol==="classificacao"){va=a.classificacao||"";vb=b.classificacao||"";}
       else if(sortCol==="conta"){va=a.conta||"";vb=b.conta||"";}
+      else if(sortCol==="subcategoria"){
+        const ae=!a.subcategoria, be=!b.subcategoria;
+        if(ae&&be) return 0;
+        if(ae) return sortDir==="asc"?1:-1;
+        if(be) return sortDir==="asc"?-1:1;
+        va=a.subcategoria; vb=b.subcategoria;
+      }
       else{va=dateToSortable(a.date)||"";vb=dateToSortable(b.date)||"";}
       return sortDir==="asc"?va.localeCompare(vb):vb.localeCompare(va);
     });
@@ -2205,7 +2212,10 @@ export default function App() {
       await supabase.from("agenda").delete().eq("id",agendaId);
       await loadAgenda();
     } else {
-      await supabase.from("transactions").delete().eq("id",confirmDelete);
+      const {error} = await supabase.from("transactions").delete().eq("id",confirmDelete);
+      if(error){ showToast("Erro ao excluir: "+error.message,"error"); setConfirmDelete(null); return; }
+      setTransactions(prev=>prev.filter(t=>t.id!==confirmDelete));
+      showToast("Lançamento excluído!");
     }
     setConfirmDelete(null);
   };
@@ -2329,7 +2339,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.12.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.12.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3121,7 +3131,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.12.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.12.3</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3195,7 +3205,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Histórico de Importações</div>
               {(()=>{
                 const extratos = {};
-                transactions.filter(t=>t.origin==="extrato").forEach(t=>{
+                transactions.filter(t=>t.source_file).forEach(t=>{
                   const batchKey = t.created_at ? t.created_at.slice(0,16) : "unknown";
                   const key = (t.conta||"sem conta") + "__" + batchKey;
                   if(!extratos[key]) extratos[key]={conta:t.conta||"sem conta",importedAt:batchKey,fileName:t.source_file||"—",count:0,min:"",max:"",ids:[]};
@@ -3207,9 +3217,9 @@ export default function App() {
                 const rows = Object.values(extratos).sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
                 const fmtImport = iso => {
                   if(!iso||iso==="unknown") return "—";
-                  const [d,t] = iso.split("T");
-                  const [y,m,dd] = d.split("-");
-                  return `${dd}/${m}/${y} ${t}`;
+                  const dt = new Date(iso+":00Z");
+                  if(isNaN(dt)) return "—";
+                  return dt.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).replace(",","");
                 };
                 if(!rows.length) return <div style={{color:"#6B8299",fontSize:13}}>Nenhum extrato importado ainda.</div>;
                 return (
@@ -3283,7 +3293,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.12.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.12.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
