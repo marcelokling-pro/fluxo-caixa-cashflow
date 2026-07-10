@@ -137,7 +137,7 @@ const MONTHS = ["janeiro","fevereiro","março","abril","maio","junho","julho","a
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v) => new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v??0);
 
-const parseValue = (raw) => {
+export const parseValue = (raw) => {
   if (raw === null || raw === undefined || raw === "") return NaN;
   const s = String(raw).trim().replace(/\s/g,"").replace(/[^\d,.\-]/g,"");
   if (!s) return NaN;
@@ -177,7 +177,7 @@ const isCCTransaction = (t) => {
 };
 
 // Strip common bank prefixes to isolate merchant name
-const merchantKey = (desc) => String(desc).toUpperCase().trim()
+export const merchantKey = (desc) => String(desc).toUpperCase().trim()
   .replace(/^(BOLETO\s+PAGO|COMPRA\s+\S+|PIX\s+ENVIADO|PIX\s+RECEBIDO|PIX\s+|PAGAMENTO\s+|TED\s+|DOC\s+|TRANSFERENCIA\s+|DEBITO\s+|CREDITO\s+)\s*/,'')
   .replace(/\s\d[\d\s.\/-]*$/,'')
   .replace(/\s+/g,' ').trim();
@@ -192,7 +192,7 @@ const descSimilar = (a, b) => {
 };
 
 // Flexible description match: handles spaces ("J B" vs "JB") and bank truncation ("SANTOS" vs "SANT")
-const flexMatch = (desc, kw) => {
+export const flexMatch = (desc, kw) => {
   const d = String(desc).toUpperCase().trim();
   const k = String(kw).trim().toUpperCase();
   if (!k || !d) return false;
@@ -208,7 +208,7 @@ const flexMatch = (desc, kw) => {
 };
 
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
-const localClassify = (desc, customCats = []) => {
+export const localClassify = (desc, customCats = []) => {
   const d = String(desc).toUpperCase().trim();
   const sorted = [...customCats].sort((a,b) => b.name.length - a.name.length);
   // Pass 1: match by category name
