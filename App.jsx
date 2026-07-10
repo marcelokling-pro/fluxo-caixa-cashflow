@@ -1488,7 +1488,7 @@ export default function App() {
   const [showAgendaModal,setShowAgendaModal] = useState(false);
   const [editingAgenda,setEditingAgenda] = useState(null);
   const [agendaForm,setAgendaForm]       = useState({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
-  const [kwSuggestions,setKwSuggestions] = useState([]);
+  const [kwSuggestions,setKwSuggestions] = useState(null);
   const [reconciliarModal,setReconciliarModal] = useState(null); // {items:[...], mes, ano}
   const [reconciliarSugs,setReconciliarSugs]   = useState({});  // {itemId: [{desc,id,value,date}]}
   const [reclassifyList,setReclassifyList]   = useState(null);
@@ -2340,7 +2340,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.13.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-300626 V.6.13.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3132,7 +3132,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.13.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-300626 V.6.13.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3294,7 +3294,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.13.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-300626 V.6.13.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3365,7 +3365,7 @@ export default function App() {
 
       {/* Agenda Modal */}
       {showAgendaModal&&(
-        <div style={s.modal} onClick={()=>{setShowAgendaModal(false);setKwSuggestions([]);}}>
+        <div style={s.modal} onClick={()=>{setShowAgendaModal(false);setKwSuggestions(null);}}>
           <div style={s.mbox} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:20}}>{editingAgenda?"Editar":"Novo"} Compromisso</div>
             {[{l:"Nome",k:"nome",ph:"Ex: Aluguel"},{l:"Tipo (opcional)",k:"tipo",ph:"Ex: DP"},{l:"Dia de vencimento",k:"dia_vencimento",ph:"Ex: 5"}].map(({l,k,ph})=>(
@@ -3379,7 +3379,8 @@ export default function App() {
                 <div style={{fontSize:12,color:"#6B8299"}}>Keywords (separadas por vírgula)</div>
                 <button style={{background:"transparent",border:"1px solid #00C9A7",color:"#00C9A7",borderRadius:6,fontSize:11,padding:"2px 10px",cursor:"pointer",fontWeight:600}} onClick={()=>{
                   if(!agendaForm.nome.trim()) return;
-                  const words = agendaForm.nome.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+                  const norm=s=>s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+                  const words = norm(agendaForm.nome).split(/\s+/).filter(w=>w.length>2);
                   const now2 = new Date();
                   const recentMonths = [0,1,2,3,4,5].map(i=>{
                     const d=new Date(now2.getFullYear(),now2.getMonth()-i,1);
@@ -3389,25 +3390,28 @@ export default function App() {
                     const p=t.date?.split("/");
                     if(!p) return false;
                     if(!recentMonths.some(rm=>rm.m===p[1]&&rm.a===p[2])) return false;
-                    return words.some(w=>t.description?.toLowerCase().includes(w));
+                    return words.some(w=>norm(t.description||"").includes(w));
                   });
                   const seen=new Set((agendaForm.keywords||"").split(",").map(k=>k.trim().toUpperCase()));
-                  const sugs=[...new Set(matches.map(t=>t.description?.toUpperCase().trim()).filter(Boolean))].filter(d=>!seen.has(d)).slice(0,10);
-                  setKwSuggestions(sugs);
+                  const seenNorm=new Set((agendaForm.keywords||"").split(",").map(k=>norm(k.trim())));
+                  const allDescs=[...new Set(matches.map(t=>t.description?.toUpperCase().trim()).filter(Boolean))];
+                  const nomeWords=agendaForm.nome.trim().split(/\s+/).filter(w=>w.length>2&&!seenNorm.has(norm(w)));
+                  const sugs=[...new Set([...nomeWords,...allDescs.filter(d=>!seen.has(d))])].slice(0,10);
+                  setKwSuggestions({sugs,allKnown:allDescs.length>0&&sugs.length===0});
                 }}>🔍 Sugerir</button>
               </div>
-              <input style={s.input} placeholder="Ex: aluguel, locação" value={agendaForm.keywords} onChange={e=>{setAgendaForm(f=>({...f,keywords:e.target.value}));setKwSuggestions([]);}}/>
-              {kwSuggestions.length>0&&(
+              <input style={s.input} placeholder="Ex: aluguel, locação" value={agendaForm.keywords} onChange={e=>{setAgendaForm(f=>({...f,keywords:e.target.value}));setKwSuggestions(null);}}/>
+              {kwSuggestions&&kwSuggestions.sugs.length>0&&(
                 <div style={{marginTop:8,padding:"10px 12px",background:"rgba(0,201,167,0.06)",borderRadius:8,border:"1px solid rgba(0,201,167,0.15)"}}>
                   <div style={{fontSize:10,color:"#6B8299",marginBottom:6}}>Clique para adicionar como keyword:</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {kwSuggestions.map((sug,i)=>(
+                    {kwSuggestions.sugs.map((sug,i)=>(
                       <span key={i} onClick={()=>{
                         const cur=(agendaForm.keywords||"").split(",").map(k=>k.trim()).filter(Boolean);
                         if(!cur.map(k=>k.toUpperCase()).includes(sug.toUpperCase())){
                           setAgendaForm(f=>({...f,keywords:[...cur,sug].join(", ")}));
                         }
-                        setKwSuggestions(prev=>prev.filter((_,j)=>j!==i));
+                        setKwSuggestions(prev=>({...prev,sugs:prev.sugs.filter((_,j)=>j!==i)}));
                       }} style={{fontSize:10,background:"#1E2D3D",border:"1px solid #2A3F52",borderRadius:4,padding:"3px 8px",cursor:"pointer",color:"#E8EDF2",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}}>
                         + {sug}
                       </span>
@@ -3415,7 +3419,9 @@ export default function App() {
                   </div>
                 </div>
               )}
-              {kwSuggestions.length===0&&agendaForm.nome&&<div style={{fontSize:10,color:"#4A5E6D",marginTop:4}}>Clique em "Sugerir" para buscar lançamentos dos últimos 6 meses.</div>}
+              {kwSuggestions===null&&agendaForm.nome&&<div style={{fontSize:10,color:"#4A5E6D",marginTop:4}}>Clique em "Sugerir" para buscar lançamentos dos últimos 6 meses.</div>}
+              {kwSuggestions!==null&&kwSuggestions.sugs.length===0&&!kwSuggestions.allKnown&&<div style={{fontSize:10,color:"#4A5E6D",marginTop:4}}>Nenhuma sugestão encontrada nos últimos 6 meses.</div>}
+              {kwSuggestions?.allKnown&&<div style={{fontSize:10,color:"#00C9A7",marginTop:4}}>As descrições encontradas já constam nas keywords.</div>}
             </div>
             <div style={{marginBottom:14}}>
               <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>R/D</div>
