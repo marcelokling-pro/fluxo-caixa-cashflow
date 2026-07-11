@@ -1462,6 +1462,7 @@ export default function App() {
   const [modalMode,setModalMode] = useState("lancamento");
   const [form,setForm]         = useState({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
   const [editingId,setEditingId] = useState(null);
+  const [editingRazaoSocial,setEditingRazaoSocial] = useState("");
   const [saldoForm,setSaldoForm] = useState("");
   const [dragOver,setDragOver] = useState(false);
   const [pendingImport,setPendingImport] = useState(null);
@@ -1626,8 +1627,7 @@ export default function App() {
   const metrics = useMemo(()=>{
     const rec = transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0);
     const des = transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Math.abs(Number(t.value)),0);
-    const pen = transactions.filter(t=>t.needs_review||t.status==="pendente");
-    return {rec, des, saldo:saldoInicial+rec-des, pen};
+    return {rec, des, saldo:saldoInicial+rec-des};
   },[transactions,saldoInicial]);
 
   const forecast = useMemo(()=>generateForecast(transactions),[transactions]);
@@ -1643,7 +1643,6 @@ export default function App() {
       if(filter.rd!=="todos")           list=list.filter(t=>t.rd===filter.rd);
       if(filter.classificacao!=="todas") list=list.filter(t=>t.classificacao===filter.classificacao);
       if(filter.status==="nao_classificados") list=list.filter(t=>t.needs_review||!t.classificacao||!t.rd);
-      else if(filter.status!=="todos")    list=list.filter(t=>t.status===filter.status);
       if(filter.dateFrom)                list=list.filter(t=>dateToSortable(t.date)>=filter.dateFrom);
       if(filter.dateTo)                  list=list.filter(t=>dateToSortable(t.date)<=filter.dateTo);
     }
@@ -1655,6 +1654,7 @@ export default function App() {
       let va="", vb="";
       if(sortCol==="date"){va=dateToSortable(a.date)||"";vb=dateToSortable(b.date)||"";}
       else if(sortCol==="description"){va=a.description||"";vb=b.description||"";}
+      else if(sortCol==="razao_social"){va=a.razao_social||"";vb=b.razao_social||"";}
       else if(sortCol==="rd"){va=a.rd||"";vb=b.rd||"";}
       else if(sortCol==="classificacao"){va=a.classificacao||"";vb=b.classificacao||"";}
       else if(sortCol==="conta"){va=a.conta||"";vb=b.conta||"";}
@@ -1988,6 +1988,7 @@ export default function App() {
 
   const startEdit = (t) => {
     setForm({date:t.date,description:t.description,value:String(Number(t.value)).replace(".",","),rd:t.rd||"RECEITA",classificacao:t.classificacao||"",conta:t.conta||"",subcategoria:t.subcategoria||""});
+    setEditingRazaoSocial(t.razao_social||"");
     setEditingId(t.id); setModalMode("lancamento"); setShowModal(true);
   };
 
@@ -2044,14 +2045,16 @@ export default function App() {
       }
       headers = allRows[hi].map((c,i)=>String(c).trim()||`col ${i}`);
       preview = allRows.slice(hi+1,hi+4).map(r=>headers.map((_,i)=>String(r[i]||"")));
-      const guessCol = (aliases) => {
-        const idx = headers.findIndex(h=>aliases.some(a=>h.toUpperCase().includes(a.toUpperCase())));
-        return idx >= 0 ? idx : 0;
+      const normHeader = s=>String(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+      const guessCol = (aliases, fallback=0) => {
+        const idx = headers.findIndex(h=>aliases.some(a=>normHeader(h).includes(normHeader(a))));
+        return idx >= 0 ? idx : fallback;
       };
       const autoDate = guessCol(["DATA","DATE","DT","DT_MOV","DATA_MOV"]);
       const autoDesc = guessCol(["ESTABELECIMENTO","HISTORICO","DESCRICAO","DESCRIPTION","LANCAMENTO","COMPLEMENTO"]);
       const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"]);
       const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"]);
+      const autoRazaoSocial = guessCol(["RAZAO SOCIAL","RAZÃO SOCIAL","FAVORECIDO","NOME FAVORECIDO"], -1);
       let autoContaValue = "";
       for(let i=0;i<Math.min(hi,allRows.length);i++){
         const rowText = allRows[i].map(c=>String(c||"")).join(";");
@@ -2059,7 +2062,7 @@ export default function App() {
         if(m) { autoContaValue = m[1].trim(); break; }
       }
       setColumnMapper({file, headers, preview, allRows, headerIdx:hi, mode, transaction,
-        map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta},
+        map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta, razaoSocial:autoRazaoSocial},
         autoContaValue,
         isCartao: mode==="detalhe",
       });
@@ -2079,6 +2082,7 @@ export default function App() {
       const rawDesc = String(cols[map.desc]||"").trim();
       const rawVal  = cols[map.val];
       const rawConta= autoContaValue || "";
+      const rawRazaoSocial = map.razaoSocial>=0 ? String(cols[map.razaoSocial]||"").trim() : "";
       if(!rawDesc) return null;
       // Parse date: DD/MM, DD/MM/YYYY, or Excel serial
       let date = "";
@@ -2097,7 +2101,7 @@ export default function App() {
       if(isNaN(val)||val===0) return null;
       // Cartão: positivos viram negativos (despesas), negativos ficam positivos (estornos/créditos)
       if(isCartao) val = -val;
-      return {date, description:rawDesc, value:val, conta:rawConta};
+      return {date, description:rawDesc, value:val, conta:rawConta, razao_social:rawRazaoSocial||null};
     }).filter(Boolean);
 
     setColumnMapper(null);
@@ -2216,9 +2220,6 @@ export default function App() {
     setSaldoInicial(v); setSaldoForm(""); setShowModal(false); showToast("Registro Incluído com Sucesso");
   };
 
-  const toggleStatus = async (t) => {
-    await supabase.from("transactions").update({status:t.status==="pendente"?"confirmado":"pendente",needs_review:false}).eq("id",t.id);
-  };
   const deleteT = (id) => setConfirmDelete(id);
   const doDelete = async () => {
     if (!confirmDelete) return;
@@ -2311,7 +2312,6 @@ export default function App() {
     {id:"fluxo",        icon:"⊟", label:"Fluxo de Caixa"},
     {id:"lancamentos",  icon:"≡", label:"Lançamentos"},
     {id:"importar",     icon:"↑", label:"Importar Extrato"},
-    {id:"pendencias",   icon:"◎", label:"Pendências"},
     {id:"forecast",     icon:"∿", label:"Forecast"},
     {id:"projecao",     icon:"↗", label:"Projeção"},
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
@@ -2345,9 +2345,6 @@ export default function App() {
             <div key={n.id} style={s.nav(tab===n.id,sidebarOpen)} onClick={()=>setTab(n.id)} title={!sidebarOpen?n.label:""}>
               <span style={{fontSize:17,minWidth:20,textAlign:"center"}}>{n.icon}</span>
               {sidebarOpen&&<span>{n.label}</span>}
-              {n.id==="pendencias"&&metrics.pen.length>0&&(
-                <span style={{marginLeft:"auto",background:"#F5A623",color:"#0F1923",borderRadius:20,fontSize:10,padding:"1px 6px",fontWeight:700}}>{metrics.pen.length}</span>
-              )}
             </div>
           ))}
         </div>
@@ -2355,7 +2352,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.15.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.17.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2372,7 +2369,7 @@ export default function App() {
               <div><div style={{fontSize:21,fontWeight:700}}>Dashboard</div><div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{transactions.length} lançamentos</div></div>
               <div style={{display:"flex",gap:10}}>
                 <button style={s.btn("ghost")} onClick={()=>{setModalMode("saldo");setSaldoForm(String(saldoInicial));setShowModal(true)}}>Saldo Inicial</button>
-                <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Lançamento</button>
+                <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setEditingRazaoSocial("");setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Lançamento</button>
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
@@ -2439,7 +2436,7 @@ export default function App() {
                   {drillDown?.dateFrom&&<span> · {drillDown.dateFrom.split("-").reverse().join("/")} até {drillDown.dateTo.split("-").reverse().join("/")}</span>}
                 </div>
               </div>
-              <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Novo</button>
+              <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setEditingRazaoSocial("");setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Novo</button>
             </div>
             <div style={{marginBottom:10,position:"relative"}}>
               <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:16,pointerEvents:"none"}}>🔍</div>
@@ -2454,7 +2451,7 @@ export default function App() {
                 <option value="todas">Todas Classificações</option>{allClassificacoes.map(c=><option key={c}>{c}</option>)}
               </select>
               <select style={s.sel} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
-                <option value="todos">Todos Status</option><option value="confirmado">Confirmado</option><option value="pendente">Pendente</option><option value="nao_classificados">Não classificados</option>
+                <option value="todos">Todos</option><option value="nao_classificados">Não classificados</option>
               </select>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
@@ -2467,7 +2464,7 @@ export default function App() {
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 280px)"}}>
               <table style={s.table}>
                 <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
-                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"Status",k:""},{l:"",k:""}].map(({l,k})=>(
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"Razão Social",k:"razao_social"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"",k:""}].map(({l,k})=>(
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
@@ -2488,6 +2485,7 @@ export default function App() {
                         )}
                         {t.description}
                       </td>
+                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.razao_social||"—"}</td>
                       <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.subcategoria||"—"}</td>
@@ -2498,12 +2496,10 @@ export default function App() {
                           : fmt(Number(t.value))
                         }
                       </td>
-                      <td style={s.td}><span style={{fontSize:11,color:t.needs_review?"#F5A623":t.status==="confirmado"?"#2ECC71":"#6B8299"}}>{t.needs_review?"⚠ revisar":t.status}</span></td>
                       <td style={s.td}>
                         <div style={{display:"flex",gap:4}}>
                           <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} title="Detalhamento" onClick={()=>openDetailModal(t)}>📎</button>
                           <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} onClick={()=>startEdit(t)}>✏</button>
-                          <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} onClick={()=>toggleStatus(t)}>{t.status==="pendente"||t.needs_review?"✓":"⏳"}</button>
                           <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}} onClick={()=>deleteT(t.id)}>✕</button>
                         </div>
                       </td>
@@ -2835,46 +2831,6 @@ export default function App() {
         )}
 
         {/* PENDÊNCIAS */}
-        {tab==="pendencias"&&(
-          <>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div><div style={{fontSize:21,fontWeight:700}}>Pendências</div><div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{metrics.pen.length} itens aguardando</div></div>
-            </div>
-            {metrics.pen.length===0?(
-              <div style={{...s.card,textAlign:"center",padding:60}}>
-                <div style={{fontSize:40,marginBottom:10}}>✓</div>
-                <div style={{fontSize:16,fontWeight:600,color:"#2ECC71"}}>Sem pendências!</div>
-                <div style={{fontSize:13,color:"#6B8299",marginTop:6}}>Todos os lançamentos estão confirmados.</div>
-              </div>
-            ):(
-              <div style={s.card}>
-                <table style={s.table}>
-                  <thead><tr>{["Data","Descrição","R/D","Classificação","Valor","Ação"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {metrics.pen.map(t=>(
-                      <tr key={t.id} style={{background:"rgba(245,166,35,0.04)"}}>
-                        <td style={s.td}>{t.date}</td>
-                        <td style={{...s.td,maxWidth:240}}>{t.description}</td>
-                        <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
-                        <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
-                        <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</td>
-                        <td style={s.td}>
-                          <div style={{display:"flex",gap:6}}>
-                            <button style={{...s.btn(),padding:"5px 12px",fontSize:12}} onClick={()=>toggleStatus(t)}>✓ Confirmar</button>
-                            <button style={{...s.btn("ghost"),padding:"5px 8px",fontSize:12}} onClick={()=>startEdit(t)}>✏</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{marginTop:14,padding:"10px 14px",background:"rgba(245,166,35,0.08)",borderRadius:8,fontSize:13,color:"#F5A623"}}>
-                  Total pendente: {fmt(metrics.pen.reduce((s,t)=>s+Math.abs(Number(t.value)),0))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
 
         {/* FORECAST */}
         {tab==="forecast"&&(
@@ -3154,7 +3110,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.15.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.17.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3316,7 +3272,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.15.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.17.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3337,29 +3293,41 @@ export default function App() {
               </>
             ):(
               <>
-                <div style={{fontSize:17,fontWeight:700,marginBottom:20}}>{editingId?"Editar":"Novo"} Lançamento</div>
-                {[{l:"Data",k:"date",ph:"DD/MM/AAAA"},{l:"Descrição",k:"description",ph:"Ex: RECEBIMENTO REDE VISA"},{l:"Valor (R$)",k:"value",ph:"Ex: 1.234,56"},{l:"Conta (opcional)",k:"conta",ph:"Ex: 1618994634"}].map(({l,k,ph})=>(
-                  <div key={k} style={{marginBottom:14}}>
-                    <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>{l}</div>
-                    <input style={s.input} placeholder={ph} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}/>
+                <div style={{fontSize:16,fontWeight:700,marginBottom:12}}>{editingId?"Editar":"Novo"} Lançamento</div>
+                {[{l:"Data",k:"date",ph:"DD/MM/AAAA"},{l:"Descrição",k:"description",ph:"Ex: RECEBIMENTO REDE VISA"}].map(({l,k,ph})=>(
+                  <div key={k} style={{marginBottom:8}}>
+                    <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>{l}</div>
+                    <input style={{...s.input,padding:"7px 12px"}} placeholder={ph} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}/>
                   </div>
                 ))}
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>R/D</div>
-                  <select style={{...s.input}} value={form.rd} onChange={e=>setForm(f=>({...f,rd:e.target.value}))}>
+                {editingRazaoSocial&&(
+                  <div style={{marginBottom:8}}>
+                    <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Razão Social</div>
+                    <div style={{...s.input,padding:"7px 12px",color:"#8E7CC3",background:"#0F1923"}}>{editingRazaoSocial}</div>
+                  </div>
+                )}
+                {[{l:"Valor (R$)",k:"value",ph:"Ex: 1.234,56"},{l:"Conta (opcional)",k:"conta",ph:"Ex: 1618994634"}].map(({l,k,ph})=>(
+                  <div key={k} style={{marginBottom:8}}>
+                    <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>{l}</div>
+                    <input style={{...s.input,padding:"7px 12px"}} placeholder={ph} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}/>
+                  </div>
+                ))}
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>R/D</div>
+                  <select style={{...s.input,padding:"7px 12px"}} value={form.rd} onChange={e=>setForm(f=>({...f,rd:e.target.value}))}>
                     {RD_TYPES.map(r=><option key={r}>{r}</option>)}
                   </select>
                 </div>
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Classificação</div>
-                  <select style={{...s.input}} value={form.classificacao} onChange={e=>setForm(f=>({...f,classificacao:e.target.value}))}>
+                <div style={{marginBottom:8}}>
+                  <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Classificação</div>
+                  <select style={{...s.input,padding:"7px 12px"}} value={form.classificacao} onChange={e=>setForm(f=>({...f,classificacao:e.target.value}))}>
                     <option value="">Selecione...</option>
                     {allClassificacoes.map(c=><option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div style={{marginBottom:18}}>
-                  <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Subcategoria</div>
-                  <input style={s.input} placeholder="Ex: PAGAMENTOS TRIB" value={form.subcategoria||""} onChange={e=>setForm(f=>({...f,subcategoria:e.target.value}))}/>
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Subcategoria</div>
+                  <input style={{...s.input,padding:"7px 12px"}} placeholder="Ex: PAGAMENTOS TRIB" value={form.subcategoria||""} onChange={e=>setForm(f=>({...f,subcategoria:e.target.value}))}/>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowModal(false)}>Cancelar</button>
@@ -3824,7 +3792,8 @@ export default function App() {
                     <th key={i} style={{...s.th,background:
                       columnMapper.map.date===i?"rgba(0,201,167,0.15)":
                       columnMapper.map.desc===i?"rgba(46,204,113,0.1)":
-                      columnMapper.map.val===i?"rgba(232,68,90,0.1)":"transparent"
+                      columnMapper.map.val===i?"rgba(232,68,90,0.1)":
+                      columnMapper.map.razaoSocial===i?"rgba(142,124,195,0.15)":"transparent"
                     }}>{h}</th>
                   ))}</tr>
                 </thead>
@@ -3834,7 +3803,8 @@ export default function App() {
                       <td key={ci} style={{...s.td,background:
                         columnMapper.map.date===ci?"rgba(0,201,167,0.07)":
                         columnMapper.map.desc===ci?"rgba(46,204,113,0.05)":
-                        columnMapper.map.val===ci?"rgba(232,68,90,0.05)":"transparent"
+                        columnMapper.map.val===ci?"rgba(232,68,90,0.05)":
+                        columnMapper.map.razaoSocial===ci?"rgba(142,124,195,0.07)":"transparent"
                       ,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cell}</td>
                     ))}</tr>
                   ))}
@@ -3849,6 +3819,7 @@ export default function App() {
                 {label:"📝 Descrição",key:"desc",required:true,color:"#2ECC71"},
                 {label:"💰 Valor",key:"val",required:true,color:"#E8445A"},
                 {label:"🏦 Conta",key:"conta",required:false,color:"#6B8299"},
+                {label:"🏢 Razão Social",key:"razaoSocial",required:false,color:"#8E7CC3"},
               ].map(({label,key,required,color})=>(
                 <div key={key} style={{background:"#0F1923",borderRadius:8,padding:"10px 14px",border:`1px solid ${color}22`}}>
                   <div style={{fontSize:11,color,marginBottom:6,fontWeight:600}}>{label} {required&&<span style={{color:"#E8445A"}}>*</span>}</div>
