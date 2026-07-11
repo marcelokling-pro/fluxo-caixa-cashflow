@@ -1533,7 +1533,7 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
-    const handleEsc = (e) => { if(e.key==="Escape"){ setShowDiaFilter(false); setShowAtrasadosModal(false); } };
+    const handleEsc = (e) => { if(e.key==="Escape"){ setShowDiaFilter(false); setShowAtrasadosModal(false); setShowSemMatchModal(false); } };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   },[]);
@@ -2355,7 +2355,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.15.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.15.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2941,10 +2941,10 @@ export default function App() {
                 <div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{agenda.filter(a=>a.ativo).length} compromissos ativos</div>
               </div>
               <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                <select style={s.sel} value={agendaMes} onChange={e=>setAgendaMes(Number(e.target.value))}>
+                <select style={s.sel} value={agendaMes} onChange={e=>{setAgendaMes(Number(e.target.value));setReconciliarModal(null);}}>
                   {MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
                 </select>
-                <select style={s.sel} value={agendaAno} onChange={e=>setAgendaAno(Number(e.target.value))}>
+                <select style={s.sel} value={agendaAno} onChange={e=>{setAgendaAno(Number(e.target.value));setReconciliarModal(null);}}>
                   {(()=>{
                     const cur = new Date().getFullYear();
                     const fromData = transactions.map(t=>parseInt(t.date?.split("/")?.[2])).filter(y=>y>2000);
@@ -2962,12 +2962,19 @@ export default function App() {
                     >⚠ {items.length} alerta(s)</button>
                   );
                 })()}
-                {reconciliarModal&&reconciliarModal.items.length>0&&(
-                  <button
-                    style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
-                    onClick={()=>setShowSemMatchModal(true)}
-                  >⚠️ {reconciliarModal.items.length} sem match</button>
-                )}
+                {(()=>{
+                  if(!reconciliarModal) return null;
+                  const pendentesCount = reconciliarModal.items.filter(item=>{
+                    const oc=getOcorrencia(item.id,reconciliarModal.mes,reconciliarModal.ano);
+                    return oc?.status!=="pago"&&oc?.status!=="baixado";
+                  }).length;
+                  return pendentesCount>0&&(
+                    <button
+                      style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
+                      onClick={()=>setShowSemMatchModal(true)}
+                    >⚠️ {pendentesCount} sem match</button>
+                  );
+                })()}
                 <button style={s.btn()} onClick={()=>{setEditingAgenda(null);setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});setShowAgendaModal(true);}}>+ Novo</button>
               </div>
             </div>
@@ -3147,7 +3154,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.15.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.15.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3309,7 +3316,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.15.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.15.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3502,7 +3509,10 @@ export default function App() {
             <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Itens sem match</div>
             <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Compromissos de {MONTHS[reconciliarModal.mes-1]}/{reconciliarModal.ano} sem lançamento correspondente. Clique em 🔗 para associar manualmente.</div>
             <div style={{maxHeight:400,overflowY:"auto"}}>
-              {reconciliarModal.items.map(item=>(
+              {reconciliarModal.items.filter(item=>{
+                const oc=getOcorrencia(item.id,reconciliarModal.mes,reconciliarModal.ano);
+                return oc?.status!=="pago"&&oc?.status!=="baixado";
+              }).map(item=>(
                 <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D"}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:600}}>{item.nome}</div>
