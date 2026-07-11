@@ -1490,6 +1490,7 @@ export default function App() {
   const [agendaForm,setAgendaForm]       = useState({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});
   const [kwSuggestions,setKwSuggestions] = useState(null);
   const [reconciliarModal,setReconciliarModal] = useState(null); // {items:[...], mes, ano}
+  const [showSemMatchModal,setShowSemMatchModal] = useState(false);
   const [reconciliarSugs,setReconciliarSugs]   = useState({});  // {itemId: [{desc,id,value,date}]}
   const [reclassifyList,setReclassifyList]   = useState(null);
   const [applyingSimilar,setApplyingSimilar] = useState(false);
@@ -1801,8 +1802,8 @@ export default function App() {
   const reconcileAgenda = async (mes, ano) => {
     showToast("Reconciliando...", "success");
     try {
-      let reconciliados = 0, jaResolvidos = 0;
-      const semMatchItems = [];
+      let jaResolvidos = 0;
+      const pendentes = [];
       for (const item of agenda) {
         if (!item.ativo) continue;
         const oc = getOcorrencia(item.id, mes, ano);
@@ -1817,16 +1818,22 @@ export default function App() {
             (t.subcategoria&&t.subcategoria.toUpperCase().includes(k.toUpperCase()))
           );
         }) : null;
-        const {error} = await supabase.from("agenda_ocorrencias").upsert({
+        pendentes.push({item, match});
+      }
+      const results = await Promise.all(pendentes.map(({item, match}) =>
+        supabase.from("agenda_ocorrencias").upsert({
           agenda_id:item.id, mes, ano,
           status: match?"pago":"pendente",
           transaction_id: match?.id||null,
           data_pagamento: match?.date||null,
           valor_pago: match?Math.abs(Number(match.value)):null,
-        },{onConflict:"agenda_id,mes,ano"});
-        if (error) throw error;
-        if (match) reconciliados++; else semMatchItems.push(item);
-      }
+        },{onConflict:"agenda_id,mes,ano"})
+      ));
+      const firstError = results.find(r=>r.error);
+      if (firstError) throw firstError.error;
+      let reconciliados = 0;
+      const semMatchItems = [];
+      pendentes.forEach(({item, match})=>{ if(match) reconciliados++; else semMatchItems.push(item); });
       await loadAgenda();
       // Salva itens sem match para o botão lateral
       if (semMatchItems.length>0) {
@@ -1930,8 +1937,10 @@ export default function App() {
     if(isNaN(val)){ showToast("Valor inválido — use vírgula para decimais (ex: 1.234,56).","error"); return; }
     setSaving(true);
     const payload={date:form.date,description:form.description,value:val,type:val>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
+    try{
     if(editingId){
-      await supabase.from("transactions").update(payload).eq("id",editingId);
+      const {error:updErr} = await supabase.from("transactions").update(payload).eq("id",editingId);
+      if(updErr) throw updErr;
       // After editing, find other transactions with similar description that have different classification
       const {data:all} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
       const editedMerchant = merchantKey(form.description);
@@ -1964,10 +1973,16 @@ export default function App() {
         showToast("Lançamento atualizado!");
       }
     } else {
-      await supabase.from("transactions").insert(payload);
+      const {error:insErr} = await supabase.from("transactions").insert(payload);
+      if(insErr) throw insErr;
       showToast("Lançamento adicionado!");
       setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
       setEditingId(null); setShowModal(false); setSaving(false);
+    }
+    } catch(e){
+      console.error("saveManual erro:",e);
+      showToast("Erro ao salvar: "+(e?.message||"verifique o console"),"error");
+      setSaving(false);
     }
   };
 
@@ -2340,7 +2355,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.13.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.15.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2950,7 +2965,7 @@ export default function App() {
                 {reconciliarModal&&reconciliarModal.items.length>0&&(
                   <button
                     style={{background:"#2A1A1A",border:"1px solid #E8445A",color:"#E8445A",borderRadius:6,fontSize:12,padding:"4px 12px",cursor:"pointer",fontWeight:700}}
-                    onClick={()=>setReconciliarModal(m=>({...m,open:true}))}
+                    onClick={()=>setShowSemMatchModal(true)}
                   >⚠️ {reconciliarModal.items.length} sem match</button>
                 )}
                 <button style={s.btn()} onClick={()=>{setEditingAgenda(null);setAgendaForm({nome:"",tipo:"",dia_vencimento:"",keywords:"",rd:"DESPESAS FIXAS",classificacao:""});setShowAgendaModal(true);}}>+ Novo</button>
@@ -3132,7 +3147,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.13.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.15.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3294,7 +3309,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.13.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.15.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3476,6 +3491,34 @@ export default function App() {
                 Aplicar em {reclassifySelected.length} lançamento(s)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sem Match Modal */}
+      {showSemMatchModal&&reconciliarModal&&(
+        <div style={s.modal} onClick={()=>setShowSemMatchModal(false)}>
+          <div style={{...s.mbox,maxWidth:560}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Itens sem match</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Compromissos de {MONTHS[reconciliarModal.mes-1]}/{reconciliarModal.ano} sem lançamento correspondente. Clique em 🔗 para associar manualmente.</div>
+            <div style={{maxHeight:400,overflowY:"auto"}}>
+              {reconciliarModal.items.map(item=>(
+                <div key={item.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{item.nome}</div>
+                    <div style={{fontSize:11,color:"#6B8299"}}>Dia {item.dia_vencimento} · {item.tipo||"—"}</div>
+                  </div>
+                  <button style={{...s.btn("ghost"),fontSize:12,padding:"4px 10px"}}
+                    onClick={()=>{
+                      const oc=getOcorrencia(item.id,reconciliarModal.mes,reconciliarModal.ano);
+                      if(!oc) return;
+                      setShowSemMatchModal(false);
+                      setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:reconciliarModal.mes,ano:reconciliarModal.ano});
+                    }}>🔗 Associar</button>
+                </div>
+              ))}
+            </div>
+            <button style={{...s.btn("ghost"),width:"100%",marginTop:14}} onClick={()=>setShowSemMatchModal(false)}>Fechar</button>
           </div>
         </div>
       )}
