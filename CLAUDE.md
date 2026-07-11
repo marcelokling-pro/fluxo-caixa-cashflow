@@ -97,6 +97,8 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Não afirmar causa sem verificar.** Inferências erradas custaram tempo: "sessão expirada", "eu gerei os dados de teste". Verificar no banco/config antes de concluir.
 
+**Toda migration de schema precisa rodar em DEV e PROD antes/junto do `git push`.** O `git push` já dispara deploy automático do código em produção via Vercel — não existe um passo manual de "publicar" separado. Se uma migration (ex: `alter table ... add column ...`) só for aplicada em DEV e o código correspondente for commitado, o app em PROD passa a referenciar uma coluna inexistente. Isso pode não gerar erro visível se o código tiver fallback (`campo||"—"`), mascarando o problema — o campo simplesmente não salva/exibe em produção até a migration ser aplicada lá também. Regra: ao fazer qualquer `alter table`, aplicar nos dois bancos (PROD `xioqemsshqxagvwdttte`, DEV `fhrulvdwkqhkyrwqnbet`) antes de finalizar a demanda — não considerar concluído só porque funcionou em DEV/localhost.
+
 ## Lições do ciclo de Classificações (jun/2026)
 
 **Keywords devem ser texto manual exato, sem fuzzy match.** Já existiu um recurso de "Popular Keywords" (auto-geração a partir de transações) e uma lógica de match parcial no `flexMatch` (aceitava bater só pelas 4 primeiras letras de uma palavra). Ambos foram removidos por causarem contaminação cruzada entre categorias (ex: "transporte" classificando como "transferência", "BEM MAIS GES" pegando lançamentos de "BOLETO PAGO" genérico). Não reintroduzir fuzzy matching nas keywords — `flexMatch` deve continuar fazendo apenas substring exata (com ou sem espaços).
