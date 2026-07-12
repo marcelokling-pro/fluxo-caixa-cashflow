@@ -62,7 +62,7 @@ const BASE_CLASSIFICATIONS = [
   {d:"IPTU",              r:"DESPESAS FIXAS",     c:"DESPESA OPERACIONAL LOJA"},
   {d:"IR ",               r:"DESPESAS FIXAS",     c:"IMPOSTOS"},
   {d:"IRRF",              r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
-  {d:"JUROS DE APLICAÇÃO",r:"INVESTIMENTOS",      c:"RECEITA DE INVESTIMENTOS"},
+  {d:"JUROS DE APLICAÇÃO",r:"RECEITA",            c:"RECEITA DE INVESTIMENTOS"},
   {d:"JUROS",             r:"DESPESAS VARIÁVEIS", c:"DESPESA BANCÁRIA"},
   {d:"LUZ",               r:"DESPESAS FIXAS",     c:"DESPESA OPERACIONAL LOJA"},
   {d:"MANUTENÇÃO",        r:"DESPESAS VARIÁVEIS", c:"DESPESA OPERACIONAL LOJA"},
@@ -216,11 +216,11 @@ export const localClassify = (desc, customCats = []) => {
     if (cat.rd && cat.classificacao && d.includes(cat.name.toUpperCase()))
       return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null, catId: cat.id, matchedKw: cat.name };
   }
-  // Pass 2: match by keywords[]
+  // Pass 2: match by keywords[] — flexMatch protege keywords curtas (<=4) de bater dentro de outras palavras
   for (const cat of sorted) {
     if (!cat.rd || !cat.classificacao) continue;
     for (const kw of (cat.keywords||[])) {
-      if (kw && d.includes(kw.toUpperCase()))
+      if (kw && flexMatch(d, kw))
         return { r: cat.rd, c: cat.classificacao, sub: cat.subcategoria||null, catId: cat.id, matchedKw: kw };
     }
   }
@@ -1194,9 +1194,24 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
     }
     const affected = await findAffected([editingRow.detalhe, ...editKws]);
+    // Keywords removidas: re-avaliar lançamentos que eram classificados por elas
+    const removedKws = (editingRow.keywords||[]).map(k=>k.toLowerCase()).filter(k=>!mergedKws.includes(k));
+    let reeval = [];
+    if (removedKws.length > 0) {
+      const {data:freshCats} = await supabase.from("categories").select("*");
+      const matched = await findAffected(removedKws);
+      reeval = matched.map(t=>{
+        const local = localClassify(t.description, freshCats||[]);
+        const sugRd = local?.r||null, sugClass = local?.c||null;
+        return (sugRd!==t.rd||sugClass!==t.classificacao) ? {...t, suggestedRd:sugRd, suggestedClass:sugClass, suggestedSub:local?.sub||null} : null;
+      }).filter(Boolean);
+    }
     await loadCustomCats(); setEditingRow(null); setSaving(false);
+    const reevalPayload = reeval.length > 0 ? {ruleName:editingRow.detalhe.trim().toUpperCase(), reeval:true, trans:reeval} : null;
     if (affected.length > 0) {
-      setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, subcategoria:editingRow.subcategoria||null, trans:affected});
+      setPendingApply({ruleName:editingRow.detalhe.trim().toUpperCase(), rd:editingRow.rd, classificacao:editingRow.classificacao, subcategoria:editingRow.subcategoria||null, trans:affected, next:reevalPayload});
+    } else if (reevalPayload) {
+      setPendingApply(reevalPayload);
     } else {
       showToast("Classificação salva!");
     }
@@ -1275,44 +1290,63 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             } catch(err){ showToast("Erro: "+err.message,"error"); }
           }}/>
           <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
-            if(!window.confirm("Reclassificar lançamentos SEM classificação ou marcados para revisão?")) return;
-            const {data:trans} = await supabase.from("transactions").select("id,description,classificacao,needs_review");
+            const {data:trans} = await supabase.from("transactions").select("id,date,description,rd,classificacao,subcategoria,conta,origin");
+            const {data:freshCats} = await supabase.from("categories").select("*");
             if(!trans) return;
-            let count=0;
-            for(const t of trans){
-              if(t.classificacao && !t.needs_review) continue;
-              const local = localClassify(t.description, customCats);
-              if(local){ await supabase.from("transactions").update({rd:local.r,classificacao:local.c,needs_review:false}).eq("id",t.id); count++; }
-            }
-            showToast(`${count} lançamentos reclassificados!`);
+            const diffs = trans.filter(t=>!isCCTransaction(t)).map(t=>{
+              const local = localClassify(t.description, freshCats||[]);
+              if(!local) return null;
+              return (local.r!==t.rd||local.c!==t.classificacao||(local.sub||null)!==(t.subcategoria||null))
+                ? {...t, suggestedRd:local.r, suggestedClass:local.c, suggestedSub:local.sub||null} : null;
+            }).filter(Boolean);
+            if(diffs.length===0){ showToast("Tudo já está conforme as regras."); return; }
+            setPendingApply({ruleName:"Reclassificação geral", reeval:true, trans:diffs});
           }}>🔄 Reclassificar</button>
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
+
 
       {pendingApply&&(
         <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7",padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
             <div>
               <div style={{fontSize:13,fontWeight:700,color:"#00C9A7",marginBottom:3}}>
-                Regra "{pendingApply.ruleName}" salva — {pendingApply.trans.length} lançamento(s) encontrado(s)
+                {pendingApply.reeval
+                  ? `${pendingApply.ruleName} — ${pendingApply.trans.length} lançamento(s) divergem das regras atuais`
+                  : `Regra "${pendingApply.ruleName}" salva — ${pendingApply.trans.length} lançamento(s) encontrado(s)`}
               </div>
               <div style={{fontSize:11,color:"#6B8299"}}>
-                Deseja aplicar <strong style={{color:"#E8EDF2"}}>{pendingApply.rd} / {pendingApply.classificacao}</strong> em todos?
+                {pendingApply.reeval
+                  ? "Revise as mudanças sugeridas abaixo e aplique se estiverem corretas."
+                  : <>Deseja aplicar <strong style={{color:"#E8EDF2"}}>{pendingApply.rd} / {pendingApply.classificacao}</strong> em todos?</>}
               </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0,marginLeft:16}}>
               <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} disabled={applyingRule} onClick={async()=>{
                 setApplyingRule(true);
-                const ids = pendingApply.trans.map(t=>t.id);
-                const {error} = await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,subcategoria:pendingApply.subcategoria||null,needs_review:false}).in("id",ids);
+                let error = null;
+                if (pendingApply.reeval) {
+                  const groups = {};
+                  for (const t of pendingApply.trans) {
+                    const key = `${t.suggestedRd}|${t.suggestedClass}|${t.suggestedSub||""}`;
+                    (groups[key] ||= {rd:t.suggestedRd, classificacao:t.suggestedClass, subcategoria:t.suggestedSub||null, ids:[]}).ids.push(t.id);
+                  }
+                  for (const g of Object.values(groups)) {
+                    const {error:e} = await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:!g.rd}).in("id",g.ids);
+                    if(e) error = e;
+                  }
+                } else {
+                  const ids = pendingApply.trans.map(t=>t.id);
+                  ({error} = await supabase.from("transactions").update({rd:pendingApply.rd,classificacao:pendingApply.classificacao,subcategoria:pendingApply.subcategoria||null,needs_review:false}).in("id",ids));
+                }
                 await loadTransactions?.();
                 setApplyingRule(false);
-                setPendingApply(null);
+                setPendingApply(pendingApply.next||null);
                 if(error) showToast("Erro: "+error.message,"error");
-                else showToast(`✓ ${ids.length} lançamento(s) atualizados`);
+                else showToast(`✓ ${pendingApply.trans.length} lançamento(s) atualizados`);
               }}>{applyingRule?"Aplicando...":"Aplicar em todos"}</button>
-              <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} disabled={applyingRule} onClick={()=>{setPendingApply(null);showToast("Classificação salva.");}}>Pular</button>
+              <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} disabled={applyingRule} onClick={()=>{setPendingApply(pendingApply.next||null);if(!pendingApply.next)showToast("Classificação salva.");}}>Pular</button>
             </div>
           </div>
           <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
@@ -1322,8 +1356,20 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                 <span style={{marginLeft:12,whiteSpace:"nowrap",flexShrink:0}}>
                   <span style={{color:"#F5A623"}}>{t.rd||"—"} / {t.classificacao||"—"}</span>
                   <span style={{color:"#6B8299",margin:"0 6px"}}>→</span>
-                  <span style={{color:"#00C9A7"}}>{pendingApply.rd} / {pendingApply.classificacao}</span>
+                  <span style={{color:"#00C9A7"}}>{pendingApply.reeval?`${t.suggestedRd||"⚠ revisar"} / ${t.suggestedClass||"—"}`:`${pendingApply.rd} / ${pendingApply.classificacao}`}</span>
                 </span>
+                <button title="Aceitar só este" style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11,marginLeft:8,flexShrink:0}}
+                  onClick={async()=>{
+                    const rd = pendingApply.reeval?t.suggestedRd:pendingApply.rd;
+                    const classificacao = pendingApply.reeval?t.suggestedClass:pendingApply.classificacao;
+                    const subcategoria = pendingApply.reeval?(t.suggestedSub||null):(pendingApply.subcategoria||null);
+                    const {error} = await supabase.from("transactions").update({rd,classificacao,subcategoria,needs_review:!rd}).eq("id",t.id);
+                    if(error){ showToast("Erro: "+error.message,"error"); return; }
+                    const remaining = pendingApply.trans.filter(x=>x.id!==t.id);
+                    await loadTransactions?.();
+                    if(remaining.length>0) setPendingApply({...pendingApply, trans:remaining});
+                    else { setPendingApply(pendingApply.next||null); showToast("Lançamento atualizado!"); }
+                  }}>✓</button>
               </div>
             ))}
           </div>
@@ -2356,7 +2402,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.17.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2560,11 +2606,13 @@ export default function App() {
                   {(()=>{
                     const lastInv=Object.values(extrasMonthly.investimentos||{}).filter(v=>v>0).at(-1)||0;
                     const lastRec=Object.values(extrasMonthly.contasReceber||{}).filter(v=>v>0).at(-1)||0;
-                    const hasExtras=lastInv>0||lastRec>0;
                     const grandTotal=fluxoData.reduce((acc,[,d])=>acc+d.total,0)+lastInv+lastRec;
-                    const txItems=fluxoData.map(([g,d])=>({group:g,data:{...d,isExtra:false},nameColor:"#00C9A7",rowStyle:{}}));
+                    const monthFiltered = fluxoMonth!=="todos" ? transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&parseInt(p[1])===parseInt(fluxoMonth);}) : transactions;
+                    const geracaoTotal = monthFiltered.filter(t=>t.rd!=="MOVIMENTAÇÃO"&&t.rd!=="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
+                    const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#E8445A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3"};
+                    const txItems=fluxoData.map(([g,d])=>({group:g,data:{...d,isExtra:false},nameColor:grupoNameColors[g]||"#00C9A7",rowStyle:{}}));
                     const extraItems=[
-                      ...(lastInv>0?[{group:"INVESTIMENTOS",data:{total:lastInv,count:null,isExtra:true},nameColor:"#00C9A7",rowStyle:{background:"rgba(0,201,167,0.04)",borderTop:"1px dashed #1E2D3D"}}]:[]),
+                      ...(lastInv>0?[{group:"INVESTIMENTOS",data:{total:lastInv,count:null,isExtra:true},nameColor:"#8E7CC3",rowStyle:{background:"rgba(142,124,195,0.04)",borderTop:"1px dashed #1E2D3D"}}]:[]),
                       ...(lastRec>0?[{group:"CONTAS A RECEBER",data:{total:lastRec,count:null,isExtra:true},nameColor:"#2ECC71",rowStyle:{background:"rgba(46,204,113,0.04)"}}]:[]),
                     ];
                     const allItems=[...txItems,...extraItems];
@@ -2573,50 +2621,60 @@ export default function App() {
                     const notInOrder=allItems.filter(r=>!order.includes(r.group));
                     const sortedRows=[...inOrder,...notInOrder];
                     const maxAbs=Math.max(...sortedRows.map(r=>Math.abs(r.data.total)),1);
+                    const isNaoOperacional = g => g==="MOVIMENTAÇÃO"||g==="INVESTIMENTOS"||g==="CONTAS A RECEBER";
+                    const renderRow=(row,idx)=>{
+                      const {group,data,nameColor,rowStyle}=row;
+                      const pct=Math.round((Math.abs(data.total)/maxAbs)*100);
+                      const handleGroupClick=()=>{
+                        if(data.isExtra) return;
+                        if(fluxoGroupBy==="rd") setFilter({rd:group,classificacao:"todas",status:"todos",dateFrom:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-01`:"",dateTo:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-${new Date(new Date().getFullYear(),fluxoMonth,0).getDate()}`:"" });
+                        else if(fluxoGroupBy==="classificacao") setFilter({rd:"todos",classificacao:group,status:"todos",dateFrom:"",dateTo:""});
+                        else setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
+                        setTab("lancamentos");
+                      };
+                      return (
+                        <tr key={group} style={{cursor:data.isExtra?"default":"pointer",...rowStyle}}
+                          draggable={true}
+                          onDragStart={()=>setDragGroupIdx(idx)}
+                          onDragOver={e=>e.preventDefault()}
+                          onDrop={()=>{
+                            if(dragGroupIdx===null||dragGroupIdx===idx){setDragGroupIdx(null);return;}
+                            const names=sortedRows.map(r=>r.group);
+                            const [dragged]=names.splice(dragGroupIdx,1);
+                            names.splice(idx,0,dragged);
+                            setDragGroupIdx(null);
+                            saveFluxoGroupOrder(names);
+                          }}
+                          onClick={handleGroupClick}>
+                          <td style={{...s.td,fontWeight:600,color:nameColor}}>
+                            <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
+                            {group}
+                          </td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
+                          <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
+                          <td style={{...s.td,width:200}}>
+                            {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
+                          </td>
+                        </tr>
+                      );
+                    };
                     return (<>
-                      {sortedRows.map((row,idx)=>{
-                        const {group,data,nameColor,rowStyle}=row;
-                        const pct=Math.round((Math.abs(data.total)/maxAbs)*100);
-                        const handleGroupClick=()=>{
-                          if(data.isExtra) return;
-                          if(fluxoGroupBy==="rd") setFilter({rd:group,classificacao:"todas",status:"todos",dateFrom:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-01`:"",dateTo:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-${new Date(new Date().getFullYear(),fluxoMonth,0).getDate()}`:"" });
-                          else if(fluxoGroupBy==="classificacao") setFilter({rd:"todos",classificacao:group,status:"todos",dateFrom:"",dateTo:""});
-                          else setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
-                          setTab("lancamentos");
-                        };
-                        return (
-                          <tr key={group} style={{cursor:data.isExtra?"default":"pointer",...rowStyle}}
-                            draggable={true}
-                            onDragStart={()=>setDragGroupIdx(idx)}
-                            onDragOver={e=>e.preventDefault()}
-                            onDrop={()=>{
-                              if(dragGroupIdx===null||dragGroupIdx===idx){setDragGroupIdx(null);return;}
-                              const names=sortedRows.map(r=>r.group);
-                              const [dragged]=names.splice(dragGroupIdx,1);
-                              names.splice(idx,0,dragged);
-                              setDragGroupIdx(null);
-                              saveFluxoGroupOrder(names);
-                            }}
-                            onClick={handleGroupClick}>
-                            <td style={{...s.td,fontWeight:600,color:nameColor}}>
-                              <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
-                              {group}
-                            </td>
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
-                            <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
-                            <td style={{...s.td,width:200}}>
-                              {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {hasExtras&&(
-                        <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
-                          <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
-                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:grandTotal>=0?"#2ECC71":"#E8445A"}}>{fmt(grandTotal)}</td>
+                      {fluxoGroupBy==="rd"?(<>
+                        {sortedRows.map((row,idx)=>isNaoOperacional(row.group)?null:renderRow(row,idx))}
+                        <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.06)"}}>
+                          <td style={{...s.td,fontWeight:700,color:"#00C9A7"}}>GERAÇÃO DE CAIXA</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:geracaoTotal>=0?"#2ECC71":"#E8445A"}}>{fmt(geracaoTotal)}</td>
                           <td colSpan={2}/>
                         </tr>
+                        {sortedRows.map((row,idx)=>isNaoOperacional(row.group)?renderRow(row,idx):null)}
+                      </>):(
+                        sortedRows.map((row,idx)=>renderRow(row,idx))
                       )}
+                      <tr>
+                        <td style={{...s.td,fontWeight:700}}>SALDO DE CAIXA TOTAL</td>
+                        <td style={{...s.td,textAlign:"right",fontWeight:700,color:grandTotal>=0?"#2ECC71":"#E8445A"}}>{fmt(grandTotal)}</td>
+                        <td colSpan={2}/>
+                      </tr>
                     </>);
                   })()}
                 </tbody>
@@ -2640,11 +2698,22 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {RD_TYPES.map(rd=>{
+                      {["RECEITA","DESPESAS FIXAS","DESPESAS VARIÁVEIS","DESPESA FINANCEIRA","SALDO INICIAL","__GERACAO__","MOVIMENTAÇÃO","INVESTIMENTOS"].map(rd=>{
+                        if(rd==="__GERACAO__"){
+                          const tots=activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd!=="INVESTIMENTOS"&&t.rd!=="MOVIMENTAÇÃO";}).reduce((s,t)=>s+Number(t.value),0));
+                          const grand=tots.reduce((s,v)=>s+v,0);
+                          return (
+                            <tr key="geracao" style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.06)"}}>
+                              <td style={{...s.td,fontWeight:700,color:"#00C9A7"}}>GERAÇÃO DE CAIXA</td>
+                              {tots.map((v,i)=><td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:v>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(v)}</td>)}
+                              <td style={{...s.td,textAlign:"right",fontWeight:700,color:grand>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(grand)}</td>
+                            </tr>
+                          );
+                        }
                         const vals=activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd===rd;}).reduce((s,t)=>s+Number(t.value),0));
                         const total=vals.reduce((s,v)=>s+v,0);
                         if(vals.every(v=>v===0)) return null;
-                        const rdColor2={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#00C9A7"};
+                        const rdColor2={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3"};
                         return (
                           <tr key={rd}>
                             <td style={{...s.td,fontWeight:600,color:rdColor2[rd]||"#E8EDF2"}}>{rd}</td>
@@ -2679,48 +2748,18 @@ export default function App() {
                           </tr>
                         );
                       })}
-                      {(()=>{
-                        const tots=activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m;}).reduce((s,t)=>s+Number(t.value),0));
-                        const grand=tots.reduce((s,v)=>s+v,0);
-                        return (
-                          <tr style={{borderTop:"2px solid #1E2D3D"}}>
-                            <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
-                            {tots.map((v,i)=>{
-                              const mName=activeMths[i];
-                              const mIdx=MONTHS.indexOf(mName)+1;
-                              const txYear=transactions.find(t=>{const p=t.date?.split("/");return p?.length===3&&parseInt(p[1])===mIdx;})?.date?.split("/")?.[2]||"2026";
-                              const mm=String(mIdx).padStart(2,"0");
-                              const lastDay=new Date(Number(txYear),mIdx,0).getDate();
-                              return (
-                                <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:v>=0?"#2ECC71":"#E8445A"}}>
-                                  {v!==0?(
-                                    <button
-                                      onClick={()=>{setDrillDown({rd:null,dateFrom:`${txYear}-${mm}-01`,dateTo:`${txYear}-${mm}-${String(lastDay).padStart(2,"0")}`,label:mName});setTab("lancamentos");}}
-                                      style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontSize:13,fontWeight:700,padding:0}}>
-                                      {fmt(v)}
-                                    </button>
-                                  ):fmt(v)}
-                                </td>
-                              );
-                            })}
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:grand>=0?"#2ECC71":"#E8445A"}}>
-                              <button
-                                onClick={()=>{setDrillDown(null);setTab("lancamentos");}}
-                                style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontSize:13,fontWeight:700,padding:0}}>
-                                {fmt(grand)}
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })()}
                       {/* INVESTIMENTOS mensal */}
                       {(()=>{
                         const invVals = activeMths.map(m=>((extrasMonthly.investimentos||{})[String(MONTHS.indexOf(m)+1)])||0);
                         const recVals = activeMths.map(m=>((extrasMonthly.contasReceber||{})[String(MONTHS.indexOf(m)+1)])||0);
-                        const tots = activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m;}).reduce((s,t)=>s+Number(t.value),0));
+                        const investRdVals = activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd==="INVESTIMENTOS";}).reduce((s,t)=>s+Number(t.value),0));
+                        const movimentacaoVals = activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd==="MOVIMENTAÇÃO";}).reduce((s,t)=>s+Number(t.value),0));
+                        const tots = activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd!=="INVESTIMENTOS"&&t.rd!=="MOVIMENTAÇÃO";}).reduce((s,t)=>s+Number(t.value),0));
                         const hasInv = invVals.some(v=>v!==0);
                         const hasRec = recVals.some(v=>v!==0);
-                        if(!hasInv&&!hasRec) return null;
+                        const hasInvestRd = investRdVals.some(v=>v!==0);
+                        const hasMovimentacao = movimentacaoVals.some(v=>v!==0);
+                        if(!hasInv&&!hasRec&&!hasInvestRd&&!hasMovimentacao) return null;
                         // Last month with value
                         const lastInv = invVals.filter(v=>v!==0).at(-1)||0;
                         const lastRec = recVals.filter(v=>v!==0).at(-1)||0;
@@ -2743,13 +2782,13 @@ export default function App() {
                               <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#2ECC71"}}>{fmt(lastRec)}</td>
                             </tr>
                           )}
-                          <tr style={{borderTop:"2px solid #1E2D3D",background:"rgba(0,201,167,0.05)"}}>
-                            <td style={{...s.td,fontWeight:700}}>TOTAL GERAL</td>
+                          <tr style={{borderTop:"2px solid #1E2D3D"}}>
+                            <td style={{...s.td,fontWeight:700}}>SALDO DE CAIXA TOTAL</td>
                             {tots.map((v,i)=>{
-                              const total = v + invVals[i] + recVals[i];
-                              return <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>{fmt(total)}</td>;
+                              const total = v + invVals[i] + recVals[i] + investRdVals[i] + movimentacaoVals[i];
+                              return <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(total)}</td>;
                             })}
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec)>=0?"#2ECC71":"#E8445A"}}>{fmt(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec)}</td>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+investRdVals.reduce((s,v)=>s+v,0)+movimentacaoVals.reduce((s,v)=>s+v,0))>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+investRdVals.reduce((s,v)=>s+v,0)+movimentacaoVals.reduce((s,v)=>s+v,0))}</td>
                           </tr>
                         </>);
                       })()}
@@ -3114,7 +3153,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.17.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3276,7 +3315,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.17.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(

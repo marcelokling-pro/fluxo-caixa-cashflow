@@ -21,13 +21,28 @@ supabase functions deploy send-alerts --project-ref xioqemsshqxagvwdttte
 
 O push para o GitHub **não** faz o deploy automático da edge function.
 
-No test suite is configured (`npm test` exits with error).
+`npm run test` roda testes unitários (Vitest) — ver seção "Testes automatizados" abaixo.
 
 ## Architecture
 
-**Single-file React SPA** — the entire application lives in `App.jsx` (~2700 lines). There is no routing library; navigation is tab-based via a `tab` state variable in the root `App` component. All state is managed in `App` with `useState`/`useMemo`/`useCallback`.
+**Single-file React SPA** — the entire application lives in `App.jsx` (~3400 lines). There is no routing library; navigation is tab-based via a `tab` state variable in the root `App` component. All state is managed in `App` with `useState`/`useMemo`/`useCallback`.
 
-**Tabs**: `fluxo`, `lancamentos`, `importar`, `pendencias`, `forecast`, `projecao`, `classificacoes`, `agenda`, `operacional`.
+**Tabs**: `fluxo`, `lancamentos`, `importar`, `forecast`, `projecao`, `classificacoes`, `agenda`, `operacional`, `analise`. (A aba `pendencias` foi removida na v6.17.0 — ver Backlog/Lições.)
+
+## Conceito: Geração de Caixa vs. Saldo de Caixa Total (jul/2026)
+
+**Este é um conceito central da aplicação — não confundir os dois indicadores.**
+
+- **Geração de Caixa** = `RECEITA − DESPESAS FIXAS − DESPESAS VARIÁVEIS`. Mede a saúde pura da operação (o negócio de verdade). **Não inclui** Movimentação nem Investimentos.
+- **Saldo de Caixa Total** = Geração de Caixa + Movimentação + Investimentos (R/D real e "extras" manuais) + Contas a Receber (extras). É o valor que **bate com o extrato do banco**.
+
+**Por que Movimentação e Investimentos ficam fora da Geração de Caixa:** são dinheiro trocando de lugar (transferências, aplicações, resgates) — não criam nem destroem riqueza, então não representam o resultado operacional. Incluí-los na Geração de Caixa distorceria o indicador que existe justamente para mostrar "quanto a operação gerou de verdade".
+
+**JUROS DE APLICAÇÃO é a exceção** — é rendimento real (receita), por isso tem R/D "RECEITA" (não "INVESTIMENTOS"), e conta na Geração de Caixa. APLICAÇÃO FINANC e RESGATE continuam R/D "INVESTIMENTOS" (mudança de lugar do dinheiro, não receita/despesa).
+
+**Onde isso está implementado:** aba Fluxo de Caixa — painel "GRUPO" (topo, agrupamento livre) e tabela "Resumo Mensal por R/D". Em ambos, ao agrupar por R/D, a ordem visual separa: grupos operacionais → linha **GERAÇÃO DE CAIXA** → Movimentação/Investimentos → linha **SALDO DE CAIXA TOTAL**. Essa ordem importa — não é só cor, é sequência lógica.
+
+**Se adicionar um novo R/D no futuro:** decidir explicitamente se ele é operacional (entra na Geração) ou é movimentação de capital (fica de fora, só no Saldo Total) — nunca assumir por padrão.
 
 **Backend**: Supabase (auth + PostgreSQL + realtime). Credentials are hardcoded at the top of `App.jsx` (lines 4–8) — no `.env` file. Tables used:
 
