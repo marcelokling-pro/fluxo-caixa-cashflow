@@ -20,6 +20,7 @@ const BASE_CLASSIFICATIONS = [
   {d:"AIR FRANCE",        r:"DESPESAS VARIÁVEIS", c:"VIAGENS"},
   {d:"ALUGUEL",           r:"DESPESAS FIXAS",     c:"DESPESA OPERACIONAL LOJA"},
   {d:"ALIMENTAÇÃO",       r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS"},
+  {d:"ANUIDADE",          r:"DESPESAS FIXAS",     c:"DESPESA BANCÁRIA"},
   {d:"APLICAÇÃO FINANC",  r:"INVESTIMENTOS",      c:"INVESTIMENTOS"},
   {d:"APLICATIVOS",       r:"DESPESAS VARIÁVEIS", c:"TECNOLOGIA E SISTEMAS"},
   {d:"BILHETE ÚNICO",     r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
@@ -64,6 +65,7 @@ const BASE_CLASSIFICATIONS = [
   {d:"IRRF",              r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
   {d:"JUROS DE APLICAÇÃO",r:"RECEITA",            c:"RECEITA DE INVESTIMENTOS"},
   {d:"JUROS",             r:"DESPESAS VARIÁVEIS", c:"DESPESA BANCÁRIA"},
+  {d:"KIWIFY",            r:"DESPESAS FIXAS",     c:"TECNOLOGIA E SISTEMAS"},
   {d:"LUZ",               r:"DESPESAS FIXAS",     c:"DESPESA OPERACIONAL LOJA"},
   {d:"MANUTENÇÃO",        r:"DESPESAS VARIÁVEIS", c:"DESPESA OPERACIONAL LOJA"},
   {d:"MATERIAL DE ESCRIT",r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS"},
@@ -72,6 +74,7 @@ const BASE_CLASSIFICATIONS = [
   {d:"MOTOBOY",           r:"DESPESAS VARIÁVEIS", c:"DESPESA COM PRODUTOS"},
   {d:"MULTAS E ENCARGOS", r:"DESPESAS VARIÁVEIS", c:"DESPESA FINANCEIRA"},
   {d:"OMIEXPERIENCE",     r:"DESPESAS FIXAS",     c:"TECNOLOGIA E SISTEMAS"},
+  {d:"OPENAI",            r:"DESPESAS FIXAS",     c:"TECNOLOGIA E SISTEMAS"},
   {d:"PAGSEGURO",         r:"RECEITA",            c:"RECEITA DE VENDAS"},
   {d:"PASSAGENS",         r:"DESPESAS VARIÁVEIS", c:"VIAGENS"},
   {d:"PDV",               r:"DESPESAS FIXAS",     c:"TECNOLOGIA E SISTEMAS"},
@@ -2521,7 +2524,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.1.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.1.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3288,7 +3291,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.1.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.1.3</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3451,7 +3454,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.1.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.1.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
