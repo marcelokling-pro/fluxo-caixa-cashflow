@@ -98,6 +98,8 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
 
+**Ao confirmar que algo "está funcionando" ou "resolvido", sempre especificar o ambiente (DEV ou PROD).** Testes e verificações via browser automatizado só acontecem em DEV (localhost). Nunca dar a entender que algo está pronto de forma geral quando só foi validado em DEV — dados de PROD são um banco separado e não são tocados pelos testes. Se a mudança envolve dados (não só código), o código publicado via push não replica automaticamente os dados de DEV para PROD — isso exige uma ação manual do usuário em PROD.
+
 **Durante discussões de requisito:** se o usuário estiver descrevendo uma ideia ou solicitando algo sem ter chegado a um entendimento claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar quando o usuário confirmar explicitamente ou der o sinal de "pode ir".
 
 **Respostas mais objetivas.** Ir direto ao ponto, sem rodeios. Só oferecer mais detalhamento se o usuário pedir.
