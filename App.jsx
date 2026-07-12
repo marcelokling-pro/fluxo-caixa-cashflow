@@ -2356,15 +2356,18 @@ export default function App() {
   };
 
   const deleteT = (id) => setConfirmDelete(id);
-  // v7.0.5 — remocao centralizada de um detalhamento: itens + anulacao (formatos novo e legado) + transaction_details
+  // v7.0.5/v7.1.0 — remocao centralizada de um detalhamento: itens + anulacao (formatos novo e legado) + transaction_details
+  // lanca erro se qualquer delete falhar, para o chamador nao reportar sucesso falso
   const purgeDetalhamento = async (parentId) => {
     const {data:novo} = await supabase.from("transactions").select("id").ilike("source_file",`%(detalhe:${parentId})`);
     const {data:legado} = await supabase.from("transactions").select("id").eq("source_file",`detalhe_${parentId}`);
     const ids = [...new Set([...(novo||[]),...(legado||[])].map(t=>t.id))];
     for(let i=0;i<ids.length;i+=50){
-      await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
+      const {error} = await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
+      if(error) throw error;
     }
-    await supabase.from("transaction_details").delete().eq("transaction_id",parentId);
+    const {error:detErr} = await supabase.from("transaction_details").delete().eq("transaction_id",parentId);
+    if(detErr) throw detErr;
     return ids;
   };
 
@@ -2377,12 +2380,16 @@ export default function App() {
       await loadAgenda();
     } else {
       // exclui o conjunto completo do detalhamento vinculado, para nao ficarem orfaos
-      const linkedIds = await purgeDetalhamento(confirmDelete);
-      const {error} = await supabase.from("transactions").delete().eq("id",confirmDelete);
-      if(error){ showToast("Erro ao excluir: "+error.message,"error"); setConfirmDelete(null); return; }
-      setTransactions(prev=>prev.filter(t=>t.id!==confirmDelete&&!linkedIds.includes(t.id)));
-      await loadDetailsMap();
-      showToast(linkedIds.length>0?`Lançamento excluído (com ${linkedIds.length} vinculado(s))!`:"Lançamento excluído!");
+      try {
+        const linkedIds = await purgeDetalhamento(confirmDelete);
+        const {error} = await supabase.from("transactions").delete().eq("id",confirmDelete);
+        if(error) throw error;
+        setTransactions(prev=>prev.filter(t=>t.id!==confirmDelete&&!linkedIds.includes(t.id)));
+        await loadDetailsMap();
+        showToast(linkedIds.length>0?`Lançamento excluído (com ${linkedIds.length} vinculado(s))!`:"Lançamento excluído!");
+      } catch(e) {
+        showToast("Erro ao excluir: "+(e?.message||"verifique o console"),"error"); setConfirmDelete(null); return;
+      }
     }
     setConfirmDelete(null);
   };
@@ -2394,7 +2401,11 @@ export default function App() {
       const m=(t.source_file||"").match(/\(detalhe:([^)]+)\)$/)||(t.source_file||"").match(/^detalhe_(.+)$/);
       return m?m[1]:null;
     }).filter(Boolean))];
-    for(const pid of parentIds) await purgeDetalhamento(pid);
+    try {
+      for(const pid of parentIds) await purgeDetalhamento(pid);
+    } catch(e) {
+      showToast("Erro ao desfazer: "+(e?.message||"verifique o console"),"error"); setConfirmDeleteBatch(null); return;
+    }
     for(let i=0;i<ids.length;i+=50){
       await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
     }
@@ -2509,7 +2520,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.0.9 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.1.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3276,7 +3287,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.0.9</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.1.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3439,7 +3450,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.0.9 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.1.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3727,8 +3738,13 @@ export default function App() {
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDeleteDetail(null)}>Cancelar</button>
               <button style={{...s.btn("danger"),flex:1}} onClick={async()=>{
-                // v7.0.5 — remocao centralizada: itens + anulacao + transaction_details
-                await purgeDetalhamento(confirmDeleteDetail.id);
+                // v7.0.5/v7.1.0 — remocao centralizada: itens + anulacao + transaction_details
+                try {
+                  await purgeDetalhamento(confirmDeleteDetail.id);
+                } catch(e) {
+                  showToast("Erro ao remover: "+(e?.message||"verifique o console"),"error");
+                  return;
+                }
                 await loadTransactions();
                 await loadDetailsMap();
                 showToast("Detalhamento removido.");
@@ -3739,18 +3755,27 @@ export default function App() {
         </div>
       )}
 
-      {confirmDelete&&(
+      {confirmDelete&&(()=>{
+        const t = transactions.find(x=>x.id===confirmDelete);
+        const isExtrato = t?.origin==="extrato";
+        return (
         <div style={s.modal} onClick={()=>setConfirmDelete(null)}>
           <div style={{...s.mbox,maxWidth:380}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Confirmar exclusão</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:24}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:isExtrato?12:24}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+            {isExtrato&&(
+              <div style={{background:"#2A1A1A",border:"1px solid #E8445A66",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#E8445A",marginBottom:20}}>
+                ⚠ Este lançamento veio do <strong>extrato bancário</strong>. Excluí-lo altera o saldo reconciliado com o banco — só faça isso se tiver certeza de que é um ajuste correto.
+              </div>
+            )}
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button>
               <button style={{...s.btn("danger"),flex:1}} onClick={doDelete}>Sim, excluir</button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Review modal */}
       {reviewItems&&(
