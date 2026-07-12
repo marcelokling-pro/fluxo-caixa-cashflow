@@ -1583,6 +1583,7 @@ export default function App() {
   // v3.0 — Transaction details
   const [detailModal,setDetailModal]       = useState(null); // {transaction}
   const [detailItems,setDetailItems]       = useState([]); // items for current detail modal
+  const [detailFileName,setDetailFileName] = useState(""); // nome do arquivo de fatura enviado
   const [detailLoading,setDetailLoading]   = useState(false);
   const [detailSaving,setDetailSaving]     = useState(false);
   const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
@@ -1709,15 +1710,17 @@ export default function App() {
     const rec = transactions.filter(t=>Number(t.value)>0).reduce((s,t)=>s+Number(t.value),0);
     const des = transactions.filter(t=>Number(t.value)<0).reduce((s,t)=>s+Math.abs(Number(t.value)),0);
     const naoOperacional = t=>t.rd==="MOVIMENTAÇÃO"||t.rd==="INVESTIMENTOS";
-    const recOperacional = transactions.filter(t=>Number(t.value)>0&&!naoOperacional(t)).reduce((s,t)=>s+Number(t.value),0);
-    const desOperacional = transactions.filter(t=>Number(t.value)<0&&!naoOperacional(t)).reduce((s,t)=>s+Math.abs(Number(t.value)),0);
+    // v7.0.7 — soma por grupo de R/D (nao por sinal), para nao ser distorcido por anulacoes/estornos positivos dentro de um grupo de despesa
+    const operacionais = transactions.filter(t=>!naoOperacional(t));
+    const recOperacional = operacionais.filter(t=>t.rd==="RECEITA").reduce((s,t)=>s+Number(t.value),0);
+    const desOperacional = Math.abs(operacionais.filter(t=>t.rd!=="RECEITA").reduce((s,t)=>s+Number(t.value),0));
     return {rec, des, recOperacional, desOperacional, saldo:saldoInicial+rec-des};
   },[transactions,saldoInicial]);
 
   const forecast = useMemo(()=>generateForecast(transactions),[transactions]);
 
   const filtered = useMemo(()=>{
-    let list=transactions.filter(t=>!isCCTransaction(t));
+    let list=[...transactions]; // v7.0.6 — itens de cartao aparecem na lista, com badge identificando
     // drillDown overrides filter when set
     if(drillDown){
       if(drillDown.rd) list=list.filter(t=>t.rd===drillDown.rd);
@@ -1754,14 +1757,25 @@ export default function App() {
     });
     if(searchText.trim()){
       const q=searchText.toLowerCase();
-      list=list.filter(t=>
+      const baseMatch = t=>
         (t.description||"").toLowerCase().includes(q)||
         (t.rd||"").toLowerCase().includes(q)||
         (t.classificacao||"").toLowerCase().includes(q)||
+        (t.subcategoria||"").toLowerCase().includes(q)||
         (t.conta||"").toLowerCase().includes(q)||
         (t.date||"").includes(q)||
-        String(Math.abs(Number(t.value))).includes(q)
-      );
+        String(Math.abs(Number(t.value))).includes(q);
+      const matchedIds = new Set(list.filter(baseMatch).map(t=>t.id));
+      // v7.0.0/v7.0.4 — correlaciona pai <-> anulacao: achar um traz o outro junto
+      list.forEach(t=>{
+        const m = t.origin==="anulacao_cartao" ? (t.source_file||"").match(/\(detalhe:([^)]+)\)$/) : null;
+        if(m){
+          const parentId=m[1];
+          if(matchedIds.has(t.id)) matchedIds.add(parentId);
+          else if(matchedIds.has(parentId)) matchedIds.add(t.id);
+        }
+      });
+      list=list.filter(t=>matchedIds.has(t.id));
     }
     return list;
   },[transactions,filter,sortDir,sortCol,drillDown,searchText]);
@@ -1774,7 +1788,7 @@ export default function App() {
     const groups={};
     list.forEach(t=>{
       let key;
-      if(fluxoGroupBy==="rd") key=t.rd||"Não classificado";
+      if(fluxoGroupBy==="rd") key=t.rd||(/ANUIDADE|SUBSCR|ASSINATURA|MENSALIDADE|KIWIFY\s+\*curso\d/i.test(t.description||"")?"DESPESAS FIXAS - NÃO CLASSIFICADAS":"DESPESAS VARIÁVEIS - NÃO CLASSIFICADAS");
       else if(fluxoGroupBy==="classificacao") key=t.classificacao||"Não classificado";
       else { const p=t.date?.split("/"); key=p?.length===3?MONTHS[parseInt(p[1])-1]:"Sem data"; }
       if(!groups[key]) groups[key]={total:0,count:0,rdCounts:{}};
@@ -1875,8 +1889,36 @@ export default function App() {
       const {error} = await supabase.from("transaction_details").insert(toInsert.slice(i,i+50));
       if(error){ showToast("Erro ao salvar: "+error.message,"error"); setDetailSaving(false); return; }
     }
+    // v7.0.0 — itens do detalhamento tambem viram lancamentos reais, com uma anulacao do pai para nao duplicar
+    // v7.0.4 — source_file guarda o nome real do arquivo enviado, com o vinculo ao pai embutido no final
+    const sourceTag = `${detailFileName||"Detalhamento"} (detalhe:${detailModal.id})`;
+    // limpa qualquer versao anterior (formatos novo e legado) antes de recriar
+    await supabase.from("transactions").delete().ilike("source_file",`%(detalhe:${detailModal.id})`);
+    await supabase.from("transactions").delete().eq("source_file",`detalhe_${detailModal.id}`);
+    const cardMatch = String(detailModal.description||"").match(/(\d[\d\-]{3,})/);
+    const cardConta = "CC/"+(cardMatch?cardMatch[1]:(detailModal.conta||"cartao"));
+    const anulacao = {
+      date:detailModal.date, description:"ANULAÇÃO FATURA - "+detailModal.description,
+      value:-Number(detailModal.value), type:-Number(detailModal.value)>=0?"entrada":"saída",
+      rd:detailModal.rd, classificacao:detailModal.classificacao, subcategoria:detailModal.subcategoria||null,
+      conta:detailModal.conta, status:"confirmado", origin:"anulacao_cartao",
+      ai_classified:false, needs_review:false, created_by:user.id, source_file:sourceTag,
+    };
+    const itemTx = toInsert.map(it=>({
+      date:it.date, description:it.description, value:it.value, type:Number(it.value)>=0?"entrada":"saída",
+      rd:it.rd||null, classificacao:it.classificacao||null, subcategoria:it.subcategoria||null,
+      conta:cardConta, status:"confirmado", origin:"fatura",
+      ai_classified:it.ai_classified||false, needs_review:!it.rd, created_by:user.id, source_file:sourceTag,
+    }));
+    const {error:anulErr} = await supabase.from("transactions").insert(anulacao);
+    if(anulErr){ showToast("Erro ao criar anulação: "+anulErr.message,"error"); setDetailSaving(false); return; }
+    for(let i=0;i<itemTx.length;i+=50){
+      const {error} = await supabase.from("transactions").insert(itemTx.slice(i,i+50));
+      if(error){ showToast("Erro ao criar lançamentos do detalhamento: "+error.message,"error"); setDetailSaving(false); return; }
+    }
+    await loadTransactions();
     await loadDetailsMap();
-    showToast(`${toInsert.length} itens salvos!`);
+    showToast(`${toInsert.length} itens salvos e lançados no Fluxo de Caixa!`);
     setDetailSaving(false);
     setDetailModal(null);
   };
@@ -2030,6 +2072,9 @@ export default function App() {
     if(editingId){
       const {error:updErr} = await supabase.from("transactions").update(payload).eq("id",editingId);
       if(updErr) throw updErr;
+      // v7.0.0/v7.0.4 — propaga R/D/Classificacao/Subcategoria/Conta para a anulacao vinculada, se existir
+      await supabase.from("transactions").update({rd:form.rd,classificacao:form.classificacao,subcategoria:form.subcategoria||null,conta:form.conta})
+        .ilike("source_file",`%(detalhe:${editingId})`).eq("origin","anulacao_cartao");
       // After editing, find other transactions with similar description that have different classification
       const {data:all} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
       const editedMerchant = merchantKey(form.description);
@@ -2203,6 +2248,7 @@ export default function App() {
     } else {
       // detalhe
       if(!parsed.length){showToast("Nenhum item encontrado.","error");return;}
+      setDetailFileName(file.name);
       setDetailLoading(true);
       const items = parsed.map(row=>{
         const local = localClassify(row.description, customCats);
@@ -2310,6 +2356,18 @@ export default function App() {
   };
 
   const deleteT = (id) => setConfirmDelete(id);
+  // v7.0.5 — remocao centralizada de um detalhamento: itens + anulacao (formatos novo e legado) + transaction_details
+  const purgeDetalhamento = async (parentId) => {
+    const {data:novo} = await supabase.from("transactions").select("id").ilike("source_file",`%(detalhe:${parentId})`);
+    const {data:legado} = await supabase.from("transactions").select("id").eq("source_file",`detalhe_${parentId}`);
+    const ids = [...new Set([...(novo||[]),...(legado||[])].map(t=>t.id))];
+    for(let i=0;i<ids.length;i+=50){
+      await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
+    }
+    await supabase.from("transaction_details").delete().eq("transaction_id",parentId);
+    return ids;
+  };
+
   const doDelete = async () => {
     if (!confirmDelete) return;
     if (String(confirmDelete).startsWith("agenda_")) {
@@ -2318,20 +2376,30 @@ export default function App() {
       await supabase.from("agenda").delete().eq("id",agendaId);
       await loadAgenda();
     } else {
+      // exclui o conjunto completo do detalhamento vinculado, para nao ficarem orfaos
+      const linkedIds = await purgeDetalhamento(confirmDelete);
       const {error} = await supabase.from("transactions").delete().eq("id",confirmDelete);
       if(error){ showToast("Erro ao excluir: "+error.message,"error"); setConfirmDelete(null); return; }
-      setTransactions(prev=>prev.filter(t=>t.id!==confirmDelete));
-      showToast("Lançamento excluído!");
+      setTransactions(prev=>prev.filter(t=>t.id!==confirmDelete&&!linkedIds.includes(t.id)));
+      await loadDetailsMap();
+      showToast(linkedIds.length>0?`Lançamento excluído (com ${linkedIds.length} vinculado(s))!`:"Lançamento excluído!");
     }
     setConfirmDelete(null);
   };
   const doDeleteBatch = async () => {
     if(!confirmDeleteBatch) return;
     const ids = confirmDeleteBatch.ids;
+    // v7.0.5 — se o lote desfeito e um detalhamento, remove o conjunto completo (anulacao no outro lote + details)
+    const parentIds = [...new Set(transactions.filter(t=>ids.includes(t.id)).map(t=>{
+      const m=(t.source_file||"").match(/\(detalhe:([^)]+)\)$/)||(t.source_file||"").match(/^detalhe_(.+)$/);
+      return m?m[1]:null;
+    }).filter(Boolean))];
+    for(const pid of parentIds) await purgeDetalhamento(pid);
     for(let i=0;i<ids.length;i+=50){
       await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
     }
-    setTransactions(prev=>prev.filter(t=>!ids.includes(t.id)));
+    await loadTransactions();
+    await loadDetailsMap();
     setConfirmDeleteBatch(null);
     showToast(`${ids.length} lançamentos removidos.`);
   };
@@ -2441,7 +2509,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.11 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.0.9 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2572,6 +2640,12 @@ export default function App() {
                             📎{transDetailsMap[t.id]}
                           </span>
                         )}
+                        {t.origin==="fatura"&&(
+                          <span title="Item de detalhamento de cartão"
+                            style={{marginRight:4,fontSize:10,background:"rgba(142,124,195,0.15)",color:"#8E7CC3",borderRadius:10,padding:"1px 6px",fontWeight:700}}>
+                            💳 CARTÃO
+                          </span>
+                        )}
                         {t.description}
                       </td>
                       <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.razao_social||"—"}</td>
@@ -2634,11 +2708,11 @@ export default function App() {
                   {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
                   {l:"Total Receitas", v:metrics.recOperacional, c:"#2ECC71"},
                   {l:"Total Despesas", v:metrics.desOperacional, c:"#E8445A"},
-                  {l:"Resultado",      v:metrics.recOperacional-metrics.desOperacional, c:(metrics.recOperacional-metrics.desOperacional)>=0?"#00C9A7":"#E8445A"},
+                  {l:"Resultado",      v:metrics.recOperacional-metrics.desOperacional, c:(metrics.recOperacional-metrics.desOperacional)>=0?"#00C9A7":"#E8445A", noSign:true},
                   {l:"Saldo Atual",    v:metrics.saldo, c:metrics.saldo>=0?"#00C9A7":"#E8445A"},
                   {l:"Disponibilidade",v:disponibilidade, c:disponibilidade>=0?"#00C9A7":"#E8445A"},
                 ].map(m=>(
-                  <div key={m.l} style={{...s.card,padding:"10px 12px"}}><div style={{fontSize:10,color:"#6B8299",marginBottom:4,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:16,fontWeight:700,color:m.c}}>{fmt(m.v)}</div></div>
+                  <div key={m.l} style={{...s.card,padding:"10px 12px"}}><div style={{fontSize:10,color:"#6B8299",marginBottom:4,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:16,fontWeight:700,color:m.c}}>{fmt(m.noSign?Math.abs(m.v):m.v)}</div></div>
                 ));
               })()}
             </div>
@@ -2652,7 +2726,7 @@ export default function App() {
                     const grandTotal=fluxoData.reduce((acc,[,d])=>acc+d.total,0)+lastInv+lastRec;
                     const monthFiltered = fluxoMonth!=="todos" ? transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&parseInt(p[1])===parseInt(fluxoMonth);}) : transactions;
                     const geracaoTotal = monthFiltered.filter(t=>t.rd!=="MOVIMENTAÇÃO"&&t.rd!=="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
-                    const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#E8445A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3"};
+                    const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#E8445A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3","DESPESAS VARIÁVEIS - NÃO CLASSIFICADAS":"#F5A623","DESPESAS FIXAS - NÃO CLASSIFICADAS":"#F5A623"};
                     const colorForGroup=(g,d)=>{
                       if(fluxoGroupBy==="rd") return grupoNameColors[g]||"#00C9A7";
                       if(fluxoGroupBy==="classificacao") return grupoNameColors[d.dominantRd]||"#00C9A7";
@@ -2675,7 +2749,7 @@ export default function App() {
                       const pct=Math.round((Math.abs(data.total)/maxAbs)*100);
                       const handleGroupClick=()=>{
                         if(data.isExtra) return;
-                        if(group==="Não classificado") setFilter({rd:"todos",classificacao:"todas",status:"nao_classificados",dateFrom:"",dateTo:""});
+                        if(group==="DESPESAS VARIÁVEIS - NÃO CLASSIFICADAS"||group==="DESPESAS FIXAS - NÃO CLASSIFICADAS") setFilter({rd:"todos",classificacao:"todas",status:"nao_classificados",dateFrom:"",dateTo:""});
                         else if(fluxoGroupBy==="rd") setFilter({rd:group,classificacao:"todas",status:"todos",dateFrom:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-01`:"",dateTo:fluxoMonth!=="todos"?`${new Date().getFullYear()}-${String(fluxoMonth).padStart(2,"0")}-${new Date(new Date().getFullYear(),fluxoMonth,0).getDate()}`:"" });
                         else if(fluxoGroupBy==="classificacao") setFilter({rd:"todos",classificacao:group,status:"todos",dateFrom:"",dateTo:""});
                         else setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
@@ -3202,7 +3276,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.11</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.0.9</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3276,10 +3350,11 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Histórico de Importações</div>
               {(()=>{
                 const extratos = {};
-                transactions.filter(t=>t.source_file).forEach(t=>{
+                const fileLabel = t => (t.source_file||"").replace(/ \(detalhe:[^)]+\)$/,"");
+                transactions.filter(t=>t.source_file&&t.origin!=="anulacao_cartao").forEach(t=>{
                   const batchKey = t.created_at ? t.created_at.slice(0,16) : "unknown";
                   const key = (t.conta||"sem conta") + "__" + batchKey;
-                  if(!extratos[key]) extratos[key]={conta:t.conta||"sem conta",importedAt:batchKey,fileName:t.source_file||"—",count:0,min:"",max:"",ids:[]};
+                  if(!extratos[key]) extratos[key]={conta:t.conta||"sem conta",importedAt:batchKey,fileName:fileLabel(t),count:0,min:"",max:"",ids:[]};
                   extratos[key].count++;
                   extratos[key].ids.push(t.id);
                   if(!extratos[key].min||dateToSortable(t.date)<dateToSortable(extratos[key].min)) extratos[key].min=t.date;
@@ -3364,7 +3439,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.11 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.0.9 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3652,8 +3727,9 @@ export default function App() {
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDeleteDetail(null)}>Cancelar</button>
               <button style={{...s.btn("danger"),flex:1}} onClick={async()=>{
-                const {error} = await supabase.from("transaction_details").delete().eq("transaction_id",confirmDeleteDetail.id);
-                if(error){showToast("Erro: "+error.message,"error");setConfirmDeleteDetail(null);return;}
+                // v7.0.5 — remocao centralizada: itens + anulacao + transaction_details
+                await purgeDetalhamento(confirmDeleteDetail.id);
+                await loadTransactions();
                 await loadDetailsMap();
                 showToast("Detalhamento removido.");
                 setConfirmDeleteDetail(null);
