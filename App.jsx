@@ -2438,7 +2438,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.7 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.8 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2650,7 +2650,11 @@ export default function App() {
                     const monthFiltered = fluxoMonth!=="todos" ? transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&parseInt(p[1])===parseInt(fluxoMonth);}) : transactions;
                     const geracaoTotal = monthFiltered.filter(t=>t.rd!=="MOVIMENTAÇÃO"&&t.rd!=="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
                     const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#E8445A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3"};
-                    const colorForGroup=(g,d)=>fluxoGroupBy==="rd" ? (grupoNameColors[g]||"#00C9A7") : (grupoNameColors[d.dominantRd]||"#00C9A7");
+                    const colorForGroup=(g,d)=>{
+                      if(fluxoGroupBy==="rd") return grupoNameColors[g]||"#00C9A7";
+                      if(fluxoGroupBy==="classificacao") return grupoNameColors[d.dominantRd]||"#00C9A7";
+                      return "#00C9A7";
+                    };
                     const txItems=fluxoData.map(([g,d])=>({group:g,data:{...d,isExtra:false},nameColor:colorForGroup(g,d),rowStyle:{}}));
                     const extraItems=[
                       ...(lastInv>0?[{group:"INVESTIMENTOS",data:{total:lastInv,count:null,isExtra:true},nameColor:"#8E7CC3",rowStyle:{background:"rgba(142,124,195,0.04)",borderTop:"1px dashed #1E2D3D"}}]:[]),
@@ -3195,7 +3199,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.7</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.8</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3357,7 +3361,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.7 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.8 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
