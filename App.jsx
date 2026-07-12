@@ -1125,6 +1125,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [applyingRule, setApplyingRule] = useState(false);
   const [sortCol, setSortCol] = useState("detalhe");
   const [sortDir, setSortDir] = useState("asc");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -1239,10 +1240,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     }
   };
 
-  const deleteCustom = async (id) => {
+  const deleteCustom = async (id, msg) => {
     const {error} = await supabase.from("categories").delete().eq("id",id);
     if (error) { showToast("Erro ao remover: "+error.message,"error"); return; }
-    await loadCustomCats(); showToast("Removida.");
+    await loadCustomCats(); showToast(msg||"Removida.");
   };
 
   const II = {background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"5px 8px",color:"#E8EDF2",fontSize:12,width:"100%",boxSizing:"border-box"};
@@ -1306,6 +1307,31 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
         </div>
       </div>
 
+
+      {confirmDelete&&(
+        <div style={s.modal} onClick={()=>setConfirmDelete(null)}>
+          <div style={{...s.mbox,maxWidth:440}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Remover classificação?</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:12}}>Remover <strong style={{color:"#E8EDF2"}}>"{confirmDelete.row.detalhe}"</strong> da lista de classificações?</div>
+            {confirmDelete.count>0?(
+              <div style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#F5A623",marginBottom:20}}>
+                ⚠ <strong>{confirmDelete.count} lançamento(s)</strong> usam esta classificação hoje. Eles não serão alterados, mas deixarão de ser reconhecidos automaticamente por esta regra em futuras importações.
+              </div>
+            ):(
+              <div style={{fontSize:12,color:"#6B8299",marginBottom:20}}>Nenhum lançamento usa esta classificação atualmente.</div>
+            )}
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDelete(null)}>Cancelar</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={()=>{
+                const {row,count}=confirmDelete;
+                const msg = count>0 ? `Removida. ${count} lançamento(s) não foram alterados.` : "Removida. Nenhum lançamento foi impactado.";
+                row.isCustom ? deleteCustom(row.id, msg) : hideBaseClassification(row.detalhe, msg);
+                setConfirmDelete(null);
+              }}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingApply&&(
         <div style={{...s.card,marginBottom:16,border:"1px solid #00C9A7",padding:16}}>
@@ -1470,9 +1496,9 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row,keywordsText:(row.keywords||[]).join(", ")})}>✏</button>
-                        <button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={()=>{
-                          if(!window.confirm(`Remover "${row.detalhe}" da lista de classificações?`)) return;
-                          row.isCustom ? deleteCustom(row.id) : hideBaseClassification(row.detalhe);
+                        <button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={async()=>{
+                          const affected = await findAffected([row.detalhe, ...(row.keywords||[])]);
+                          setConfirmDelete({row, count:affected.length});
                         }}>✕</button>
                       </div>
                     </td>
@@ -1655,11 +1681,12 @@ export default function App() {
     }
   };
 
-  const hideBaseClassification = async (name) => {
+  const hideBaseClassification = async (name, msg) => {
     const next = [...new Set([...hiddenBaseCls, name])];
+    const {error} = await supabase.from("settings").upsert({key:"hidden_base_classifications",value:JSON.stringify(next)},{onConflict:"key"});
+    if (error) { console.error("hideBaseClassification erro:", error); showToast("Erro ao remover: "+error.message,"error"); return; }
     setHiddenBaseCls(next);
-    await supabase.from("settings").upsert({key:"hidden_base_classifications",value:JSON.stringify(next)},{onConflict:"key"});
-    showToast("Removida.");
+    showToast(msg||"Removida.");
   };
 
   const saveFluxoGroupOrder = async (newNames) => {
@@ -2402,7 +2429,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.6.19.4 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3154,7 +3181,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.6.19.4</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3316,7 +3343,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.6.19.4 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
