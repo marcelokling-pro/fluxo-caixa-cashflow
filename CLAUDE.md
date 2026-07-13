@@ -7,54 +7,95 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev      # Start Vite dev server
 npm run build    # Production build
+npm run test     # Vitest — ver "Testes automatizados"
 ```
 
-O servidor Vite atualiza o browser automaticamente ao salvar arquivos. Após reiniciar o computador, é necessário um F5 manual uma única vez para reconectar — depois disso volta automático.
+O servidor Vite recarrega sozinho ao salvar. Após reiniciar o computador, um F5 manual é necessário uma única vez para reconectar — depois volta automático.
 
-### Deploy da Edge Function
-
-Após qualquer alteração em `supabase/functions/send-alerts/index.ts`, fazer o deploy via CLI:
-
+**Deploy da Edge Function**: após qualquer alteração em `supabase/functions/send-alerts/index.ts`, rodar:
 ```bash
 supabase functions deploy send-alerts --project-ref xioqemsshqxagvwdttte
 ```
+O `git push` **não** publica a edge function automaticamente.
 
-O push para o GitHub **não** faz o deploy automático da edge function.
+## Regras de trabalho (ler antes de editar)
 
-`npm run test` roda testes unitários (Vitest) — ver seção "Testes automatizados" abaixo.
+**Antes de qualquer alteração**: informar a próxima versão, as linhas que serão modificadas e o total de linhas do arquivo após a alteração (ex: "v7.9.0, ~10 linhas em `App.jsx:2650-2660`, total 4190 linhas").
+
+**Formato de versão** `MAJOR.MINOR.PATCH`:
+
+| Dígito | Quando bumpar |
+|---|---|
+| MAJOR | Mudança significativa na aplicação (nova seção, redesign, mudança estrutural) |
+| MINOR | Demanda nova concluída e funcionando completamente |
+| PATCH | Ajuste/correção em uma demanda que ainda não estava completa |
+
+Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-`) antes de reportar o trabalho como feito.
+
+**Commit e push**: só depois de testar em DEV (localhost) **e perguntar explicitamente se o usuário também testou** — nunca assumir que um "commita"/"confirma" isolado já cobre isso. Commit e push sempre no mesmo passo, sem esperar o usuário pedir o push separadamente. Mensagem sempre começando com a versão (`v7.9.0 descrição do que foi feito`); se o commit reunir mais de uma versão num único push, listar cada uma no **corpo** da mensagem (não só resumir na linha de título) — fica registrado no `git show`/histórico do GitHub.
+
+**Nunca recriar arquivos do zero.** Editar o original com Edit ou pequenas substituições. Nunca `git show ... > arquivo` ou Write para sobrescrever — corrompe o estado do Vite e do git. Sempre partir do último commit do GitHub antes de alterar.
+
+**Ambiente**: ao confirmar que algo "funciona" ou "está resolvido", especificar DEV ou PROD. Testes automatizados via browser só rodam em DEV (localhost). Mudança de **dado** (não só código) não propaga de DEV pra PROD via push — exige ação manual do usuário em PROD.
+
+**Discussão de requisito**: se o pedido não estiver claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar com confirmação explícita ("pode ir", "sim") ou instrução já direta e específica.
+
+**Menor raio de impacto**: ao corrigir uma funcionalidade isolada (ex: BI), não tocar em código de outras (Fluxo de Caixa, Operacional, Agenda, Dashboard) só por estar "por perto" — a menos que o usuário peça explicitamente. Confirmar ao final que as outras telas não foram afetadas.
+
+**Respostas objetivas.** Direto ao ponto, sem rodeios. Só detalhar mais se o usuário pedir.
+
+**Configuração externa** (Supabase, Vercel etc.): detalhar passo a passo com onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy".
 
 ## Architecture
 
-**Single-file React SPA** — the entire application lives in `App.jsx` (~3400 lines). There is no routing library; navigation is tab-based via a `tab` state variable in the root `App` component. All state is managed in `App` with `useState`/`useMemo`/`useCallback`.
+**Single-file React SPA** — toda a aplicação vive em `App.jsx` (~4200 linhas e crescendo). Sem router; navegação por aba via state `tab` no componente raiz `App`. Estado gerenciado com `useState`/`useMemo`/`useCallback`.
 
-**Tabs**: `fluxo`, `lancamentos`, `importar`, `forecast`, `projecao`, `classificacoes`, `agenda`, `operacional`, `analise`. (A aba `pendencias` foi removida na v6.17.0 — ver Backlog/Lições.)
+**Abas**: `fluxo`, `lancamentos`, `importar`, `forecast`, `projecao`, `classificacoes`, `agenda`, `operacional`, `analise` (exibida como **"BI"** desde jul/2026 — o id interno continua `analise`, só o label/título mudou). (`pendencias` foi removida na v6.17.0.)
 
-## Conceito: Geração de Caixa vs. Saldo de Caixa Total (jul/2026)
-
-**Este é um conceito central da aplicação — não confundir os dois indicadores.**
-
-- **Geração de Caixa** = `RECEITA − DESPESAS FIXAS − DESPESAS VARIÁVEIS`. Mede a saúde pura da operação (o negócio de verdade). **Não inclui** Movimentação nem Investimentos.
-- **Saldo de Caixa Total** = Geração de Caixa + Movimentação + Investimentos (R/D real e "extras" manuais) + Contas a Receber (extras). É o valor que **bate com o extrato do banco**.
-
-**Por que Movimentação e Investimentos ficam fora da Geração de Caixa:** são dinheiro trocando de lugar (transferências, aplicações, resgates) — não criam nem destroem riqueza, então não representam o resultado operacional. Incluí-los na Geração de Caixa distorceria o indicador que existe justamente para mostrar "quanto a operação gerou de verdade".
-
-**JUROS DE APLICAÇÃO é a exceção** — é rendimento real (receita), por isso tem R/D "RECEITA" (não "INVESTIMENTOS"), e conta na Geração de Caixa. APLICAÇÃO FINANC e RESGATE continuam R/D "INVESTIMENTOS" (mudança de lugar do dinheiro, não receita/despesa).
-
-**Onde isso está implementado:** aba Fluxo de Caixa — painel "GRUPO" (topo, agrupamento livre) e tabela "Resumo Mensal por R/D". Em ambos, ao agrupar por R/D, a ordem visual separa: grupos operacionais → linha **GERAÇÃO DE CAIXA** → Movimentação/Investimentos → linha **SALDO DE CAIXA TOTAL**. Essa ordem importa — não é só cor, é sequência lógica.
-
-**Se adicionar um novo R/D no futuro:** decidir explicitamente se ele é operacional (entra na Geração) ou é movimentação de capital (fica de fora, só no Saldo Total) — nunca assumir por padrão.
-
-**Backend**: Supabase (auth + PostgreSQL + realtime). Credentials are hardcoded at the top of `App.jsx` (lines 4–8) — no `.env` file. Tables used:
+**Backend**: Supabase (auth + PostgreSQL + realtime). Credenciais hardcoded no topo do `App.jsx` (linhas 4–8) — sem `.env`.
 
 | Table | Purpose |
 |---|---|
-| `transactions` | All financial entries |
-| `categories` | User-defined classification overrides |
-| `settings` | Key-value store (e.g. `saldo_inicial`) |
-| `agenda` | Recurring payment schedules |
-| `agenda_ocorrencias` | Per-month status of each agenda item |
-| `transaction_details` | Sub-items for a transaction (e.g. credit card line items) |
-| `extras_fluxo` | Manual investment/receivables totals per month |
+| `transactions` | Todos os lançamentos financeiros |
+| `categories` | Overrides de classificação definidos pelo usuário |
+| `settings` | Key-value (ex: `saldo_inicial`, `hidden_base_classifications`) |
+| `agenda` | Compromissos recorrentes |
+| `agenda_ocorrencias` | Status por mês de cada compromisso |
+| `transaction_details` | Itens de um lançamento (ex: linhas da fatura de cartão) — referência/auditoria, nunca conta no Fluxo de Caixa/BI |
+| `extras_fluxo` | Totais manuais de investimento/contas a receber por mês |
+
+**R/D types** (`RD_TYPES`): `RECEITA`, `DESPESAS FIXAS`, `DESPESAS VARIÁVEIS`, `MOVIMENTAÇÃO`, `INVESTIMENTOS`, `DESPESA FINANCEIRA`, `SALDO INICIAL`.
+
+## Conceitos centrais
+
+### Geração de Caixa vs. Saldo de Caixa Total
+
+**Não confundir os dois indicadores — é o conceito mais importante da aplicação.**
+
+- **Geração de Caixa** = `RECEITA − DESPESAS FIXAS − DESPESAS VARIÁVEIS`. Mede a saúde da operação. **Exclui** Movimentação e Investimentos.
+- **Saldo de Caixa Total** = Geração de Caixa + Movimentação + Investimentos + Contas a Receber (extras). É o valor que bate com o extrato do banco.
+
+Movimentação/Investimentos ficam fora da Geração de Caixa porque são dinheiro trocando de lugar (transferências, aplicações, resgates) — não representam resultado operacional. **Exceção**: JUROS DE APLICAÇÃO é R/D "RECEITA" (rendimento real) e conta na Geração; APLICAÇÃO FINANC/RESGATE continuam "INVESTIMENTOS".
+
+**Regra de ouro para qualquer tela que somar dinheiro: somar por grupo de R/D (`t.rd`), nunca por sinal do valor (`Number(t.value)>0`).** Uma anulação/estorno de fatura de cartão é positiva mas continua pertencendo ao grupo de despesa — somar por sinal conta isso como receita e distorce o resultado. Essa regra já corrigiu dois bugs reais: `metrics.recOperacional/desOperacional` no Fluxo de Caixa (v7.0.7) e as métricas do BI (v7.5.0). Qualquer nova tela/indicador que some valores deve seguir essa mesma regra desde o início.
+
+**Implementado em**: aba Fluxo de Caixa (painel GRUPO + tabela Resumo Mensal por R/D) e aba BI (Receitas/Despesas Totais, Evolução Mensal, Destaques). Ao adicionar um novo R/D, decidir explicitamente se é operacional (entra na Geração) ou movimentação de capital (só no Saldo Total) — nunca assumir por padrão.
+
+### BI (ex-Análise)
+
+Componente `AnaliseTab`, **autocontido** — filtros próprios (`biMes`/`biAno`/`biRd`), sem depender do `metrics` do componente principal. Segue a mesma regra de ouro acima; quando "Todos R/D" está selecionado, exclui Movimentação/Investimentos pra bater com a Geração de Caixa do Fluxo de Caixa.
+
+**Cuidado ao mexer aqui**: é isolado por design — ajustes no BI não devem tocar `metrics`, `navItems` (além do label) ou qualquer código do Fluxo de Caixa/Operacional/Dashboard. Confirmar ao final que essas telas continuam idênticas.
+
+Badge "vs ano ant." fica oculto quando não há base de comparação válida (filtro "Todos os anos" comparado consigo mesmo, ou variação >999% por base histórica pequena demais). "Melhor Mês"/"Pior Mês" ignoram meses sem nenhum lançamento (evita mês vazio vencer por padrão com saldo zero).
+
+### Detalhamento de Fatura de Cartão
+
+Ao detalhar uma fatura (`saveDetailItems`), cada item vira um lançamento real em `transactions` (não só uma linha em `transaction_details`), e uma transação "ANULAÇÃO FATURA" (mesmo valor do pai, sinal invertido) é criada pra zerar o lançamento-pai original — que **continua existindo como registro próprio** em `transactions`, só que cancelado pela anulação.
+
+**Pegadinha comum**: buscar/filtrar por texto ou por sinal (ex: "Só saídas") pode esconder a anulação (positiva) e mostrar o pai como se fosse uma despesa real não cancelada — parece duplicar o gasto. Antes de estranhar uma diferença, olhar pai + anulação juntos (mesma data, mesmo valor absoluto, sinais opostos).
+
+**Data (desde v7.6.0)**: cada item usa a data de cobrança do pai (`detailModal.date` — data real do extrato bancário), não a data da compra original do arquivo da fatura — importante pra parcelas, que senão caem no mês da compra em vez do mês da cobrança real. A data de compra original fica só na descrição (`"... (compra: DD/MM/AAAA)"`) quando diferente da data de cobrança, e integralmente em `transaction_details` (referência/auditoria, nunca conta no Fluxo de Caixa/BI). Detalhamentos já salvos antes da v7.6.0 só corrigem a data ao serem reabertos e salvos de novo — não é retroativo automaticamente.
 
 ## Classification Pipeline
 
@@ -74,75 +115,43 @@ Duplicate detection uses a hash of `date|description|value` stored in `importedH
 
 XLSX parsing uses the `xlsx` library loaded dynamically from CDN at runtime (`window.XLSX`) — it is not a bundled dependency. The Itaú bank Excel format has a special parser (`parseExcelItau`) that reads fixed column positions (row 27+, cols 0/2/10).
 
-## Versionamento
+## Lançamentos — filtros
 
-A versão atual está hardcoded no `App.jsx` em 3 locais (buscar por `Fluxo de Caixa-`).
+Filtros disponíveis: R/D, Classificação, Status (Todos/Não classificados/💳 Cartão), sinal do valor (Todos valores/Só saídas/Só entradas — desde v7.8.0), intervalo de data, busca livre por texto. O cabeçalho mostra contagem + **total do valor filtrado** (soma simples de `t.value` respeitando todos os filtros ativos, incluindo a busca de texto).
 
-Formato: `MAJOR.MINOR.PATCH`
+## Lições aprendidas
 
-| Dígito | Quando bumpar |
-|---|---|
-| MAJOR | Mudança significativa na aplicação (nova seção, redesign, mudança estrutural) |
-| MINOR | Demanda nova concluída e funcionando completamente |
-| PATCH | Ajuste/correção em uma demanda que ainda não estava completa |
+### DEV vs PROD (jul/2026)
 
-**Regra:** ao concluir qualquer demanda, bumpar a versão e atualizar a string na sidebar antes de reportar o trabalho como feito. **Antes de aplicar qualquer alteração, informar ao usuário qual será a próxima versão** (ex: "esta alteração será a v6.7.0") para que ele saiba o que esperar.
+Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), checklist de paridade entre os projetos Supabase (PROD `xioqemsshqxagvwdttte`, DEV `fhrulvdwkqhkyrwqnbet`): extensões (`pg_cron`, `pg_net`), publications/realtime (tabela `transactions` precisa estar em `supabase_realtime` — sem isso a tela não atualiza após insert/delete), constraints UNIQUE (`agenda_ocorrencias(agenda_id,mes,ano)`, `extras_fluxo(tipo)`, `categories(name)`, `settings(key)`), functions SQL (`manage_alert_schedule` — recriar com URL/key do projeto), RLS policies, edge functions deployadas e secrets/settings (`resend_api_key`).
 
-**Commit e push:** após confirmação do teste no localhost, fazer o commit E o push para o GitHub na mesma etapa, sem precisar que o usuário solicite o push separadamente. Nunca commitar sem fazer o push logo em seguida — o GitHub deve sempre refletir o último commit local.
+**Toda migration de schema precisa rodar em DEV e PROD antes/junto do `git push`.** O push já dispara deploy automático do código em PROD via Vercel — não existe um passo manual de "publicar" separado. Se uma migration (`alter table ... add column ...`) só for aplicada em DEV e o código correspondente for commitado, o app em PROD passa a referenciar uma coluna inexistente — pode não gerar erro visível se o código tiver fallback (`campo||"—"`), mascarando o problema até a migration ser aplicada lá também.
 
-**Nunca recriar arquivos existentes do zero.** Sempre editar o arquivo original com as ferramentas Edit ou pequenas substituições. Nunca usar `git show ... > arquivo` ou Write para sobrescrever — isso pode corromper o estado do Vite e do git.
+### Classificações (jun/2026)
 
-**Sempre partir da última versão do GitHub.** Antes de qualquer alteração, confirmar que o arquivo local está em sincronia com o último commit do repositório. Fazer incrementos sobre o que existe — nunca reescrever do zero.
+**Keywords devem ser texto manual exato, sem fuzzy match.** Já existiu "Popular Keywords" (auto-geração a partir de transações) e um match parcial no `flexMatch` (batia só pelas 4 primeiras letras). Ambos foram removidos por causarem contaminação cruzada entre categorias (ex: "transporte" classificando como "transferência"). Não reintroduzir fuzzy matching — `flexMatch` faz só substring exata (com ou sem espaços).
 
-**Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
+**Exclusão de classificações "base"** (fixas em `BASE_CLASSIFICATIONS`, sem registro no banco) funciona via lista de ocultação em `settings` (`hidden_base_classifications`) — não existe exclusão real pra essas, só ocultação. Categorias custom (tabela `categories`) excluem de verdade via `deleteCustom`.
 
-**Commit reunindo mais de uma versão (ex: v7.4.0-v7.4.2 num único push):** usar a descrição do commit (corpo, após a linha de título) para listar cada versão/mudança separadamente, não só resumir tudo na linha de título. Isso fica registrado no `git show`/histórico do GitHub.
+**Não existe undo/lixeira.** Toda exclusão é definitiva no banco. Sempre confirmar antes de excluir, nunca implementar exclusão em massa sem confirmação explícita.
 
-**Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
+**Acesso ao Supabase fora do app é bloqueado por RLS.** A chave anônima não lê/escreve nas tabelas via curl/script externo — só dentro do app com o usuário logado. Pra inspecionar dados reais, pedir para o usuário rodar SQL no Supabase Studio ou colar print/texto da tela.
 
-**Ao confirmar que algo "está funcionando" ou "resolvido", sempre especificar o ambiente (DEV ou PROD).** Testes e verificações via browser automatizado só acontecem em DEV (localhost). Nunca dar a entender que algo está pronto de forma geral quando só foi validado em DEV — dados de PROD são um banco separado e não são tocados pelos testes. Se a mudança envolve dados (não só código), o código publicado via push não replica automaticamente os dados de DEV para PROD — isso exige uma ação manual do usuário em PROD.
-
-**Durante discussões de requisito:** se o usuário estiver descrevendo uma ideia ou solicitando algo sem ter chegado a um entendimento claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar quando o usuário confirmar explicitamente ou der o sinal de "pode ir".
-
-**Respostas mais objetivas.** Ir direto ao ponto, sem rodeios. Só oferecer mais detalhamento se o usuário pedir.
-
-**Instruções de configuração externa:** sempre detalhar passo a passo com exatamente onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy". O usuário não conhece as particularidades de cada serviço.
-
-## Lições do ciclo DEV/PROD (jul/2026)
-
-**Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), comparar CONFIGURAÇÃO antes de código.** Checklist de paridade entre os projetos Supabase (PROD `xioqemsshqxagvwdttte`, DEV `fhrulvdwkqhkyrwqnbet`): extensões (`pg_cron`, `pg_net`), publications/realtime (tabela `transactions` deve estar em `supabase_realtime` — sem isso a tela não atualiza após insert/delete), constraints UNIQUE (`agenda_ocorrencias(agenda_id,mes,ano)`, `extras_fluxo(tipo)`, `categories(name)`, `settings(key)`), functions SQL (`manage_alert_schedule` — recriar com URL/key do projeto), RLS policies, edge functions deployadas e secrets/settings (`resend_api_key`).
-
-**Não propor fix de código sem antes descartar diferença de ambiente.** Dois fixes desnecessários foram propostos por pular essa etapa (reload pós-importação e pós-exclusão — o realtime já cobria).
-
-**Não afirmar causa sem verificar.** Inferências erradas custaram tempo: "sessão expirada", "eu gerei os dados de teste". Verificar no banco/config antes de concluir.
-
-**Toda migration de schema precisa rodar em DEV e PROD antes/junto do `git push`.** O `git push` já dispara deploy automático do código em produção via Vercel — não existe um passo manual de "publicar" separado. Se uma migration (ex: `alter table ... add column ...`) só for aplicada em DEV e o código correspondente for commitado, o app em PROD passa a referenciar uma coluna inexistente. Isso pode não gerar erro visível se o código tiver fallback (`campo||"—"`), mascarando o problema — o campo simplesmente não salva/exibe em produção até a migration ser aplicada lá também. Regra: ao fazer qualquer `alter table`, aplicar nos dois bancos (PROD `xioqemsshqxagvwdttte`, DEV `fhrulvdwkqhkyrwqnbet`) antes de finalizar a demanda — não considerar concluído só porque funcionou em DEV/localhost.
-
-## Lições do ciclo de Classificações (jun/2026)
-
-**Keywords devem ser texto manual exato, sem fuzzy match.** Já existiu um recurso de "Popular Keywords" (auto-geração a partir de transações) e uma lógica de match parcial no `flexMatch` (aceitava bater só pelas 4 primeiras letras de uma palavra). Ambos foram removidos por causarem contaminação cruzada entre categorias (ex: "transporte" classificando como "transferência", "BEM MAIS GES" pegando lançamentos de "BOLETO PAGO" genérico). Não reintroduzir fuzzy matching nas keywords — `flexMatch` deve continuar fazendo apenas substring exata (com ou sem espaços).
-
-**Exclusão de classificações "base"** (as fixas em `BASE_CLASSIFICATIONS` no código, sem registro no banco) funciona via lista de ocultação salva em `settings` (chave `hidden_base_classifications`) — não existe exclusão real para essas, só ocultação. Categorias custom (tabela `categories`) excluem de verdade via `deleteCustom`.
-
-**Não existe undo/lixeira.** Toda exclusão é definitiva no banco. Sempre confirmar com o usuário antes de excluir, e nunca implementar ações de exclusão em massa sem confirmação explícita.
-
-**Acesso ao Supabase fora do app é bloqueado por RLS.** A chave anônima não consegue ler/escrever nas tabelas (`categories`, `transactions`, etc.) via curl ou script externo — só funciona dentro do app com o usuário logado. Para inspecionar dados reais, pedir para o usuário rodar SQL no Supabase Studio (SQL Editor) ou colar print/texto da tela.
-
-**R/D e Classificação são obrigatórios em qualquer categoria.** Sem os dois preenchidos, a categoria fica "inerte" — o `localClassify` pula qualquer categoria com `rd` ou `classificacao` vazios, mesmo que tenha keywords boas cadastradas. Validação obrigatória já existe em `saveEdit`/`saveNew` na aba Classificações.
+**R/D e Classificação são obrigatórios em qualquer categoria.** Sem os dois preenchidos, a categoria fica "inerte" — `localClassify` pula qualquer categoria com `rd` ou `classificacao` vazios. Validação já existe em `saveEdit`/`saveNew`.
 
 ## Backlog v8 (roadmap futuro)
 
-**Unificar keywords de classificação e agenda num único cadastro.** Hoje as keywords da aba Classificações (usadas por `localClassify` na importação) e as keywords da agenda (usadas só pelo botão Sugerir e por `saveAgendaItem` para reclassificação em massa) são cadastros separados e desconectados. Avaliar um cadastro único de keywords referenciado por ambos os fluxos.
+**Unificar keywords de classificação e agenda num único cadastro.** Hoje as keywords da aba Classificações (usadas por `localClassify` na importação) e as da agenda (usadas só pelo botão Sugerir e por `saveAgendaItem`) são cadastros separados e desconectados.
 
-**Modularizar `App.jsx` em estrutura não monolítica.** O arquivo tem ~3.400 linhas com toda a lógica (UI, classificação, agenda, importação, reconciliação) num único componente. Dividir por domínio (ex: `lib/classify.js`, `lib/format.js`, `components/Agenda.jsx`, `components/Lancamentos.jsx`) mantendo o comportamento idêntico. Fazer aos poucos, começando pelas funções puras já cobertas por teste (`parseValue`, `merchantKey`, `flexMatch`, `localClassify`) — menor risco — antes de separar componentes de UI.
+**Modularizar `App.jsx` em estrutura não monolítica.** Dividir por domínio (ex: `lib/classify.js`, `lib/format.js`, `components/Agenda.jsx`, `components/Lancamentos.jsx`) mantendo o comportamento idêntico. Fazer aos poucos, começando pelas funções puras já cobertas por teste (`parseValue`, `merchantKey`, `flexMatch`, `localClassify`) antes de separar componentes de UI.
 
 ## Testes automatizados
 
-`npm run test` roda testes unitários (Vitest) sobre funções puras críticas em `App.test.jsx` — cobre bugs já documentados neste arquivo (`merchantKey` números finais, `flexMatch` keyword curta, `localClassify` categoria sem rd/classificacao). `.env.test` usa as credenciais DEV apenas para o `createClient` não quebrar no import — os testes não fazem chamadas reais ao Supabase.
+`npm run test` roda testes unitários (Vitest) sobre funções puras críticas em `App.test.jsx` — cobre bugs já documentados neste arquivo (`merchantKey` números finais, `flexMatch` keyword curta, `localClassify` categoria sem rd/classificacao). `.env.test` usa as credenciais DEV só pra `createClient` não quebrar no import — os testes não fazem chamadas reais ao Supabase.
 
-**Nunca rodar o teste sem perguntar antes** — mesmo quando o Claude julgar necessário (ex: após alterar uma das funções cobertas). Sempre perguntar primeiro, seja por demanda do usuário ou iniciativa do Claude. Apresentar o resultado sempre em tabela (função testada, caso, esperado, status).
+**Nunca rodar o teste sem perguntar antes** — mesmo quando o Claude julgar necessário. Sempre perguntar primeiro. Apresentar o resultado em tabela (função testada, caso, esperado, status).
 
-Testes E2E (Playwright, contra o banco DEV) ainda não implementados — parte 2 do plano de testes, cobriria telas e fluxos completos (import, edição, agenda).
+Testes E2E (Playwright, contra o banco DEV) ainda não implementados.
 
 ## Styles
 
