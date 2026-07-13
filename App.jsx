@@ -649,8 +649,11 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     return true;
   });
 
-  const receita = filtrado.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
-  const despesa = filtrado.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+  // v7.5.0 — soma por grupo de R/D (nao por sinal), consistente com "Geracao de Caixa" do Fluxo de Caixa
+  const naoOperacional = t=>t.rd==="MOVIMENTAÇÃO"||t.rd==="INVESTIMENTOS";
+  const opFiltrado = biRd==="todos" ? filtrado.filter(t=>!naoOperacional(t)) : filtrado;
+  const receita = opFiltrado.filter(t=>t.rd==="RECEITA").reduce((acc,t)=>acc+Number(t.value),0);
+  const despesa = Math.abs(opFiltrado.filter(t=>t.rd!=="RECEITA").reduce((acc,t)=>acc+Number(t.value),0));
   const saldo   = receita - despesa;
   const count   = filtrado.length;
 
@@ -663,10 +666,16 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     if(biRd!=="todos" && t.rd!==biRd) return false;
     return true;
   });
-  const prevRec = prevFiltrado.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
-  const prevDes = prevFiltrado.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
+  const opPrevFiltrado = biRd==="todos" ? prevFiltrado.filter(t=>!naoOperacional(t)) : prevFiltrado;
+  const prevRec = opPrevFiltrado.filter(t=>t.rd==="RECEITA").reduce((acc,t)=>acc+Number(t.value),0);
+  const prevDes = Math.abs(opPrevFiltrado.filter(t=>t.rd!=="RECEITA").reduce((acc,t)=>acc+Number(t.value),0));
   const prevSaldo = prevRec - prevDes;
-  const pctChg = (cur,prev) => prev===0?null:((cur-prev)/Math.abs(prev)*100);
+  // v7.5.0 — sem base valida (mesmo periodo comparado consigo mesmo, ou variacao absurda por base historica pequena) nao mostra %
+  const pctChg = (cur,prev) => {
+    if(biAno==="todos"||!prev) return null;
+    const v=(cur-prev)/Math.abs(prev)*100;
+    return Math.abs(v)>999?null:v;
+  };
 
   // Base filtered (sem filtro de R/D — usado no drill down do gráfico)
   const baseFiltered = transactions.filter(t=>{
@@ -677,6 +686,15 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     return true;
   });
 
+  // v7.5.0 — mes/ano respeitando filtro de R/D, soma por grupo (nao por sinal)
+  const monthRecDes = (m,a) => {
+    const tsAll=transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
+    const ts = biRd==="todos" ? tsAll.filter(t=>!naoOperacional(t)) : tsAll.filter(t=>t.rd===biRd);
+    const rec=ts.filter(t=>t.rd==="RECEITA").reduce((acc,t)=>acc+Number(t.value),0);
+    const des=Math.abs(ts.filter(t=>t.rd!=="RECEITA").reduce((acc,t)=>acc+Number(t.value),0));
+    return {rec,des,count:ts.length};
+  };
+
   // Monthly evolution — meses do ano selecionado (ou últimos 12 se "todos")
   const evolucao = [];
   if(biAno!=="todos"){
@@ -685,10 +703,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     for(let mi=0;mi<=maxM;mi++){
       const m=String(mi+1).padStart(2,"0"), a=String(year);
       const lbl=new Date(year,mi,1).toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
-      const ts=transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
-      const rec=ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
-      const des=ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
-      evolucao.push({lbl,rec,des,saldo:rec-des,m,a});
+      const {rec,des,count}=monthRecDes(m,a);
+      evolucao.push({lbl,rec,des,saldo:rec-des,count,m,a});
     }
     // Remove meses sem dados no início
     while(evolucao.length>1&&evolucao[0].rec===0&&evolucao[0].des===0) evolucao.shift();
@@ -697,10 +713,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
       const d=new Date(now.getFullYear(),now.getMonth()-i,1);
       const m=String(d.getMonth()+1).padStart(2,"0"),a=String(d.getFullYear());
       const lbl=d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
-      const ts=transactions.filter(t=>{const p=t.date?.split("/");return p&&p[1]===m&&p[2]===a;});
-      const rec=ts.filter(t=>Number(t.value)>0).reduce((acc,t)=>acc+Number(t.value),0);
-      const des=ts.filter(t=>Number(t.value)<0).reduce((acc,t)=>acc+Math.abs(Number(t.value)),0);
-      evolucao.push({lbl,rec,des,saldo:rec-des,m,a});
+      const {rec,des,count}=monthRecDes(m,a);
+      evolucao.push({lbl,rec,des,saldo:rec-des,count,m,a});
     }
   }
 
@@ -781,7 +795,7 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   // Category breakdown
   const catMap={};
   filtrado.forEach(t=>{
-    const cl=t.classificacao||"SEM CLASSIFICAÇÃO";
+    const cl=t.classificacao||"NÃO CLASSIFICADAS";
     if(!catMap[cl]) catMap[cl]={total:0,count:0};
     catMap[cl].total+=Number(t.value);
     catMap[cl].count++;
@@ -799,15 +813,17 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   });
 
   // Destaques
+  const mediaLabel = biAno==="todos" ? "Últimos 12 meses" : `Meses de ${biAno}`;
   const mediaRec=evolucao.reduce((s,e)=>s+e.rec,0)/evolucao.length;
   const mediaDes=evolucao.reduce((s,e)=>s+e.des,0)/evolucao.length;
-  const melhor=[...evolucao].sort((a,b)=>b.saldo-a.saldo)[0];
-  const pior=[...evolucao].sort((a,b)=>a.saldo-b.saldo)[0];
+  const evolucaoComDados=evolucao.filter(e=>e.count>0);
+  const melhor=[...evolucaoComDados].sort((a,b)=>b.saldo-a.saldo)[0];
+  const pior=[...evolucaoComDados].sort((a,b)=>a.saldo-b.saldo)[0];
 
   // Hierarquia expandível
   const hierarquia={};
   filtrado.forEach(t=>{
-    const rd=t.rd||"SEM R/D", cl=t.classificacao||"SEM CLASSIFICAÇÃO", sub=t.subcategoria||"SEM SUBCATEGORIA";
+    const rd=t.rd||"SEM R/D", cl=t.classificacao||"NÃO CLASSIFICADAS", sub=t.subcategoria||"SEM SUBCATEGORIA";
     if(!hierarquia[rd]) hierarquia[rd]={total:0,cls:{}};
     hierarquia[rd].total+=Number(t.value);
     if(!hierarquia[rd].cls[cl]) hierarquia[rd].cls[cl]={total:0,subs:{}};
@@ -829,7 +845,7 @@ const AnaliseTab = ({transactions, s, fmt}) => {
       {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:10}}>
         <div>
-          <div style={{fontSize:22,fontWeight:700,letterSpacing:-0.5}}>Análise</div>
+          <div style={{fontSize:22,fontWeight:700,letterSpacing:-0.5}}>BI</div>
           <div style={{fontSize:12,color:"#6B8299",marginTop:2}}>Acompanhe o desempenho financeiro do período selecionado.</div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -950,8 +966,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
           <div style={{fontSize:13,fontWeight:600,marginBottom:12}}>Destaques do Período</div>
           {[
             {icon:"💰",l:"Economia do Período",    sub:"Receitas − Despesas",    v:fmt(saldo),    c:saldo>=0?"#2ECC71":"#E8445A", p:pctChg(saldo,prevSaldo)},
-            {icon:"📊",l:"Média Mensal de Receitas",sub:"Últimos 12 meses",       v:fmt(mediaRec), c:"#4F8EF7",  p:null},
-            {icon:"🧾",l:"Média Mensal de Despesas",sub:"Últimos 12 meses",       v:fmt(mediaDes), c:"#E8445A",  p:null},
+            {icon:"📊",l:"Média Mensal de Receitas",sub:mediaLabel,               v:fmt(mediaRec), c:"#4F8EF7",  p:null},
+            {icon:"🧾",l:"Média Mensal de Despesas",sub:mediaLabel,               v:fmt(mediaDes), c:"#E8445A",  p:null},
             {icon:"⬆️",l:"Melhor Mês",             sub:melhor?.lbl||"—",         v:fmt(melhor?.saldo||0), c:"#2ECC71", p:null},
             {icon:"⬇️",l:"Pior Mês",               sub:pior?.lbl||"—",           v:fmt(pior?.saldo||0),   c:"#E8445A", p:null},
           ].map((d,i)=>(
@@ -2494,7 +2510,7 @@ export default function App() {
     {id:"classificacoes",icon:"⊞",label:"Classificações"},
     {id:"agenda",       icon:"📅",label:"Agenda"},
     {id:"operacional",  icon:"⚙", label:"Operacional"},
-    {id:"analise",      icon:"📊", label:"Análise"},
+    {id:"analise",      icon:"📊", label:"BI"},
   ];
 
   const rdColor={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#00C9A7","DESPESA FINANCEIRA":"#F5A623","SALDO INICIAL":"#6B8299"};
@@ -2529,7 +2545,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.4.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.5.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3305,7 +3321,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.4.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.5.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3469,7 +3485,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.4.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.5.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
