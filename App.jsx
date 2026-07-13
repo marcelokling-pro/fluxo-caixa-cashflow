@@ -1929,8 +1929,11 @@ export default function App() {
       conta:detailModal.conta, status:"confirmado", origin:"anulacao_cartao",
       ai_classified:false, needs_review:false, created_by:user.id, source_file:sourceTag,
     };
+    // v7.6.0 — lancamento real usa a data de cobranca da fatura (data do pai), nao a data da compra
+    // a data de compra original fica preservada na descricao quando diferente, e integralmente na transaction_details
     const itemTx = toInsert.map(it=>({
-      date:it.date, description:it.description, value:it.value, type:Number(it.value)>=0?"entrada":"saída",
+      date:detailModal.date, description: it.date!==detailModal.date ? `${it.description} (compra: ${it.date})` : it.description,
+      value:it.value, type:Number(it.value)>=0?"entrada":"saída",
       rd:it.rd||null, classificacao:it.classificacao||null, subcategoria:it.subcategoria||null,
       conta:cardConta, status:"confirmado", origin:"fatura",
       ai_classified:it.ai_classified||false, needs_review:!it.rd, created_by:user.id, source_file:sourceTag,
@@ -2545,7 +2548,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.5.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.6.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3321,7 +3324,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.5.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.6.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3485,7 +3488,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.5.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.6.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
