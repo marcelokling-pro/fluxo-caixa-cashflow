@@ -96,6 +96,8 @@ Formato: `MAJOR.MINOR.PATCH`
 
 **Formato do commit:** iniciar sempre com a versão: `v4.6.4 descrição do que foi feito`.
 
+**Commit reunindo mais de uma versão (ex: v7.4.0-v7.4.2 num único push):** usar a descrição do commit (corpo, após a linha de título) para listar cada versão/mudança separadamente, não só resumir tudo na linha de título. Isso fica registrado no `git show`/histórico do GitHub.
+
 **Ao aplicar qualquer alteração:** informar previamente a versão, o número de linhas que serão modificadas e o total de linhas do arquivo após a alteração.
 
 **Ao confirmar que algo "está funcionando" ou "resolvido", sempre especificar o ambiente (DEV ou PROD).** Testes e verificações via browser automatizado só acontecem em DEV (localhost). Nunca dar a entender que algo está pronto de forma geral quando só foi validado em DEV — dados de PROD são um banco separado e não são tocados pelos testes. Se a mudança envolve dados (não só código), o código publicado via push não replica automaticamente os dados de DEV para PROD — isso exige uma ação manual do usuário em PROD.
