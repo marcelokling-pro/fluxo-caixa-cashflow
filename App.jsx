@@ -1576,6 +1576,10 @@ export default function App() {
   const [applyingSimilar,setApplyingSimilar] = useState(false);
   const [reclassifySelected,setReclassifySelected] = useState([]);
   const [associating,setAssociating]     = useState(null);
+  const [assocFiltroMes,setAssocFiltroMes] = useState(null);
+  const [assocFiltroAno,setAssocFiltroAno] = useState(null);
+  const [assocSortCol,setAssocSortCol]   = useState(null);
+  const [assocSortDir,setAssocSortDir]   = useState("asc");
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
   const [agendaSortDir,setAgendaSortDir] = useState("asc");
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
@@ -2524,7 +2528,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.1.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.3.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3233,9 +3237,20 @@ export default function App() {
                                   showToast("Baixa desfeita!");
                                 }}>↩</button>
                             )}
+                            {status==="pago"&&(
+                              <button title="Desfazer associação" style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
+                                onClick={async()=>{
+                                  await supabase.from("agenda_ocorrencias").upsert({
+                                    agenda_id:item.id, mes:agendaMes, ano:agendaAno,
+                                    status:"pendente", transaction_id:null, data_pagamento:null, valor_pago:null
+                                  },{onConflict:"agenda_id,mes,ano"});
+                                  await loadAgenda();
+                                  showToast("Associação desfeita!");
+                                }}>↩</button>
+                            )}
                             {status==="pendente"&&oc&&(
                               <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
-                                onClick={()=>setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno})}>🔗</button>
+                                onClick={()=>{setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno});setAssocFiltroMes(agendaMes);setAssocFiltroAno(agendaAno);}}>🔗</button>
                             )}
                           </div>
                         </td>
@@ -3291,7 +3306,7 @@ export default function App() {
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
                 <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.1.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.3.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3454,7 +3469,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.1.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.3.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3674,6 +3689,7 @@ export default function App() {
                       if(!oc) return;
                       setShowSemMatchModal(false);
                       setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:reconciliarModal.mes,ano:reconciliarModal.ano});
+                      setAssocFiltroMes(reconciliarModal.mes);setAssocFiltroAno(reconciliarModal.ano);
                     }}>🔗 Associar</button>
                 </div>
               ))}
@@ -3689,20 +3705,52 @@ export default function App() {
           <div style={{...s.mbox,maxWidth:640}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Associar Lançamento</div>
             <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Selecione o lançamento que quitou: <strong style={{color:"#E8EDF2"}}>{associating.nome}</strong> em {MONTHS[associating.mes-1]}/{associating.ano}</div>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <select style={s.sel} value={assocFiltroMes} onChange={e=>setAssocFiltroMes(Number(e.target.value))}>
+                {MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
+              </select>
+              <select style={s.sel} value={assocFiltroAno} onChange={e=>setAssocFiltroAno(Number(e.target.value))}>
+                {(()=>{
+                  const cur = new Date().getFullYear();
+                  const fromData = transactions.map(t=>parseInt(t.date?.split("/")?.[2])).filter(y=>y>2000);
+                  const min = Math.min(...fromData, cur);
+                  return Array.from({length: cur+2-min+1}, (_,i)=>min+i).map(y=><option key={y}>{y}</option>);
+                })()}
+              </select>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"0 0 6px",borderBottom:"1px solid #1E2D3D",fontSize:11,color:"#6B8299"}}>
+              <span style={{cursor:"pointer",userSelect:"none"}} onClick={()=>{
+                if(assocSortCol==="nome") setAssocSortDir(d=>d==="asc"?"desc":"asc");
+                else{setAssocSortCol("nome");setAssocSortDir("asc");}
+              }}>Nome{assocSortCol==="nome"?(assocSortDir==="asc"?" ↑":" ↓"):""}</span>
+              <span style={{cursor:"pointer",userSelect:"none"}} onClick={()=>{
+                if(assocSortCol==="valor") setAssocSortDir(d=>d==="asc"?"desc":"asc");
+                else{setAssocSortCol("valor");setAssocSortDir("asc");}
+              }}>Valor{assocSortCol==="valor"?(assocSortDir==="asc"?" ↑":" ↓"):""}</span>
+            </div>
             <div style={{maxHeight:350,overflowY:"auto"}}>
               {transactions.filter(t=>{
                 const p=t.date?.split("/");
-                return p?.length===3&&parseInt(p[1])===associating.mes&&parseInt(p[2])===associating.ano&&Number(t.value)<0;
-              }).map(t=>(
-                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:"pointer"}}
-                  onClick={()=>associateTransaction(associating.ocId,t.id)}>
+                return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
+              }).sort((a,b)=>{
+                if(!assocSortCol) return 0;
+                const dir=assocSortDir==="asc"?1:-1;
+                if(assocSortCol==="nome") return (a.description||"").localeCompare(b.description||"")*dir;
+                return (Number(a.value)-Number(b.value))*dir;
+              }).map(t=>{
+                const usedOc=agendaOcorrencias.find(o=>o.transaction_id===t.id);
+                const usedNome=usedOc?agenda.find(a=>a.id===usedOc.agenda_id)?.nome:null;
+                return (
+                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:usedNome?"not-allowed":"pointer",opacity:usedNome?0.4:1}}
+                  onClick={()=>{if(!usedNome) associateTransaction(associating.ocId,t.id);}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:600}}>{t.description}</div>
-                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}</div>
+                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}{usedNome?` · já associado a ${usedNome}`:""}</div>
                   </div>
                   <span style={{fontSize:13,fontWeight:700,color:"#E8445A"}}>{fmt(Number(t.value))}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <button style={{...s.btn("ghost"),width:"100%",marginTop:14}} onClick={()=>setAssociating(null)}>Cancelar</button>
           </div>
