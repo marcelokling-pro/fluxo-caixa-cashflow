@@ -1551,6 +1551,7 @@ export default function App() {
   const [aiLoading,setAiLoading] = useState(false);
   const [saving,setSaving]     = useState(false);
   const [showConfirmClear,setShowConfirmClear] = useState(false);
+  const [clearConfirmText,setClearConfirmText] = useState("");
   const [confirmDeleteBatch,setConfirmDeleteBatch] = useState(null);
   const [confirmDeleteDetail,setConfirmDeleteDetail] = useState(null); // {id, description, count}
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
@@ -2477,7 +2478,7 @@ export default function App() {
   const clearAll = async () => {
     await supabase.from("transactions").delete().neq("id","00000000-0000-0000-0000-000000000000");
     await supabase.from("settings").upsert({key:"saldo_inicial",value:"0"});
-    setSaldoInicial(0); setShowConfirmClear(false); showToast("Todos os dados apagados.");
+    setSaldoInicial(0); setShowConfirmClear(false); setClearConfirmText(""); showToast("Todos os dados apagados.");
   };
 
   // ── Render guard ──────────────────────────────────────────────────────────
@@ -2528,7 +2529,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.3.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.4.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2704,7 +2705,6 @@ export default function App() {
                   style={{fontSize:12,width:18,height:18,borderRadius:"50%",border:"1px solid #6B8299",color:"#6B8299",display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600}}>?</span>
               </div><div style={{fontSize:13,color:"#6B8299",marginTop:2}}>Agrupado por {fluxoGroupBy==="rd"?"R/D":fluxoGroupBy==="classificacao"?"Classificação":"Mês"}</div></div>
               <div style={{display:"flex",gap:8}}>
-                <button style={s.btn("ghost")} onClick={()=>{setModalMode("saldo");setSaldoForm(String(saldoInicial));setShowModal(true)}}>Incluir Registro</button>
                 <button style={s.btn("ghost")} onClick={()=>exportFluxoCSV(transactions)}>⬇ CSV</button>
               </div>
             </div>
@@ -3305,12 +3305,12 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>☁ Tempo real ativo</div>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.3.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.4.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
                 <button style={{...s.btn("ghost"),fontSize:12,padding:"7px 14px"}} onClick={()=>exportFluxoCSV(transactions)}>⬇ Exportar CSV</button>
+                <button style={{...s.btn("ghost"),fontSize:12,padding:"7px 14px"}} onClick={()=>{setModalMode("saldo");setSaldoForm(String(saldoInicial));setShowModal(true)}}>Registrar Saldo Inicial</button>
                 <button style={{...s.btn("danger"),fontSize:12,padding:"7px 14px"}} onClick={()=>setShowConfirmClear(true)}>🗑 Apagar todos os dados</button>
               </div>
             </div>
@@ -3469,7 +3469,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.3.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.4.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3477,7 +3477,7 @@ export default function App() {
           <div style={s.mbox} onClick={e=>e.stopPropagation()}>
             {modalMode==="saldo"?(
               <>
-                <div style={{fontSize:17,fontWeight:700,marginBottom:6}}>Incluir Registro</div>
+                <div style={{fontSize:17,fontWeight:700,marginBottom:6}}>Registrar Saldo Inicial</div>
                 <div style={{fontSize:13,color:"#6B8299",marginBottom:20}}>Informe o saldo inicial de abertura.</div>
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Saldo Inicial (R$)</div>
@@ -3538,13 +3538,15 @@ export default function App() {
 
       {/* Confirm clear */}
       {showConfirmClear&&(
-        <div style={s.modal} onClick={()=>setShowConfirmClear(false)}>
+        <div style={s.modal} onClick={()=>{setShowConfirmClear(false);setClearConfirmText("");}}>
           <div style={s.mbox} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Limpar todos os dados?</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:24}}>Apaga <strong style={{color:"#E8EDF2"}}>todos os lançamentos</strong> do banco para todos os usuários. Irreversível.</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Apaga <strong style={{color:"#E8EDF2"}}>todos os lançamentos</strong> do banco para todos os usuários. Irreversível.</div>
+            <div style={{fontSize:12,color:"#6B8299",marginBottom:6}}>Digite <strong style={{color:"#E8EDF2"}}>APAGAR TUDO</strong> para confirmar:</div>
+            <input style={{...s.input,marginBottom:20}} value={clearConfirmText} onChange={e=>setClearConfirmText(e.target.value)} placeholder="APAGAR TUDO"/>
             <div style={{display:"flex",gap:10}}>
-              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setShowConfirmClear(false)}>Cancelar</button>
-              <button style={{...s.btn("danger"),flex:1}} onClick={clearAll}>Sim, apagar tudo</button>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>{setShowConfirmClear(false);setClearConfirmText("");}}>Cancelar</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={clearAll} disabled={clearConfirmText!=="APAGAR TUDO"}>Sim, apagar tudo</button>
             </div>
           </div>
         </div>
