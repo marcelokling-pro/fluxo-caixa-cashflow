@@ -1547,7 +1547,7 @@ export default function App() {
   const [saldoInicial,setSaldoInicial] = useState(0);
   const [hiddenBaseCls,setHiddenBaseCls] = useState([]);
   const [alertCronExpr,setAlertCronExpr] = useState("");
-  const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});
+  const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
   const [searchText,setSearchText] = useState("");
@@ -1757,6 +1757,8 @@ export default function App() {
       else if(filter.status==="cartao")        list=list.filter(t=>t.origin==="fatura");
       if(filter.dateFrom)                list=list.filter(t=>dateToSortable(t.date)>=filter.dateFrom);
       if(filter.dateTo)                  list=list.filter(t=>dateToSortable(t.date)<=filter.dateTo);
+      if(filter.sinal==="saida")         list=list.filter(t=>Number(t.value)<0);
+      else if(filter.sinal==="entrada")  list=list.filter(t=>Number(t.value)>0);
     }
     list.sort((a,b)=>{
       if(sortCol==="value"){
@@ -2548,7 +2550,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.6.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.8.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2628,6 +2630,7 @@ export default function App() {
                 </div>
                 <div style={{fontSize:13,color:"#6B8299",marginTop:4}}>
                   {filtered.length} registros
+                  <span style={{fontWeight:600,color:"#E8EDF2"}}> · Total: {fmt(filtered.reduce((s,t)=>s+Number(t.value),0))}</span>
                   {drillDown?.rd&&<span style={{color:"#00C9A7",fontWeight:600}}> · {drillDown.rd}</span>}
                   {drillDown?.dateFrom&&<span> · {drillDown.dateFrom.split("-").reverse().join("/")} até {drillDown.dateTo.split("-").reverse().join("/")}</span>}
                 </div>
@@ -2649,12 +2652,15 @@ export default function App() {
               <select style={s.sel} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
                 <option value="todos">Todos</option><option value="nao_classificados">Não classificados</option><option value="cartao">💳 Cartão</option>
               </select>
+              <select style={s.sel} value={filter.sinal} onChange={e=>setFilter(f=>({...f,sinal:e.target.value}))}>
+                <option value="todos">Todos valores</option><option value="saida">Só saídas</option><option value="entrada">Só entradas</option>
+              </select>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
               <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
               <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} title="Ordenar por data">
                 Data {sortDir==="asc"?"↑":"↓"}
               </button>
-              <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",dateFrom:"",dateTo:""});setSearchText("");}}>Limpar filtros</button>
+              <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setSearchText("");}}>Limpar filtros</button>
             </div>
             <div style={{...s.card,padding:0,overflow:"hidden"}}>
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
@@ -3324,7 +3330,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.6.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.8.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3488,7 +3494,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.6.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.8.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
