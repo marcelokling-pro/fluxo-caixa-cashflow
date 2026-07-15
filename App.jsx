@@ -2554,7 +2554,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2869,7 +2869,19 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {["RECEITA","DESPESAS FIXAS","DESPESAS VARIÁVEIS","DESPESA FINANCEIRA","SALDO INICIAL","__GERACAO__","MOVIMENTAÇÃO","INVESTIMENTOS"].map(rd=>{
+                      {["RECEITA","DESPESAS FIXAS","DESPESAS VARIÁVEIS","__NAO_CLASS__","DESPESA FINANCEIRA","SALDO INICIAL","__GERACAO__","MOVIMENTAÇÃO","INVESTIMENTOS"].map(rd=>{
+                        if(rd==="__NAO_CLASS__"){
+                          const vals=activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&!t.rd;}).reduce((s,t)=>s+Number(t.value),0));
+                          const total=vals.reduce((s,v)=>s+v,0);
+                          if(vals.every(v=>v===0)) return null;
+                          return (
+                            <tr key="nao_class">
+                              <td style={{...s.td,fontWeight:600,color:"#F5A623"}}>DESPESAS VARIÁVEIS – NÃO CLASSIFICADAS</td>
+                              {vals.map((v,i)=><td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:v!==0?"#F5A623":"#6B8299"}}>{v!==0?fmt(v):"—"}</td>)}
+                              <td style={{...s.td,textAlign:"right",fontWeight:700,color:"#F5A623"}}>{fmt(total)}</td>
+                            </tr>
+                          );
+                        }
                         if(rd==="__GERACAO__"){
                           const tots=activeMths.map(m=>transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&MONTHS[parseInt(p[1])-1]===m&&t.rd!=="INVESTIMENTOS"&&t.rd!=="MOVIMENTAÇÃO";}).reduce((s,t)=>s+Number(t.value),0));
                           const grand=tots.reduce((s,v)=>s+v,0);
@@ -3334,7 +3346,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3514,7 +3526,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
