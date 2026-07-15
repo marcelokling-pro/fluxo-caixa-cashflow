@@ -115,6 +115,10 @@ Duplicate detection uses a hash of `date|description|value` stored in `importedH
 
 XLSX parsing uses the `xlsx` library loaded dynamically from CDN at runtime (`window.XLSX`) — it is not a bundled dependency. The Itaú bank Excel format has a special parser (`parseExcelItau`) that reads fixed column positions (row 27+, cols 0/2/10).
 
+## Padrões de UI
+
+**Toda tabela/lista deve ter ordenação por coluna** (padrão desde v7.9.0): cabeçalho clicável com indicador ↑/↓, primeiro clique ordena asc, segundo inverte. Colunas numéricas ordenam por número, datas por `dateToSortable`, texto por `localeCompare`. Ao criar qualquer tabela nova, incluir sorting desde o início — não esperar o usuário pedir. Implementado em: Lançamentos, Classificações, Agenda, Histórico de Importações, Detalhamentos Vinculados.
+
 ## Lançamentos — filtros
 
 Filtros disponíveis: R/D, Classificação, Status (Todos/Não classificados/💳 Cartão), sinal do valor (Todos valores/Só saídas/Só entradas — desde v7.8.0), intervalo de data, busca livre por texto. O cabeçalho mostra contagem + **total do valor filtrado** (soma simples de `t.value` respeitando todos os filtros ativos, incluindo a busca de texto).
@@ -142,6 +146,8 @@ Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), checklist de p
 ## Backlog v8 (roadmap futuro)
 
 **Unificar keywords de classificação e agenda num único cadastro.** Hoje as keywords da aba Classificações (usadas por `localClassify` na importação) e as da agenda (usadas só pelo botão Sugerir e por `saveAgendaItem`) são cadastros separados e desconectados.
+
+**Melhorar auto-detecção de colunas na importação (App.jsx).** O `openColumnMapper` hoje requer confirmação manual mesmo quando data/descrição/valor são óbvios. Implementar heurísticas mais robustas (nome + conteúdo da coluna) e pular a tela de confirmação quando a confiança for alta. Atenção: app é multi-usuário — testar bem antes de deployar.
 
 **Modularizar `App.jsx` em estrutura não monolítica.** Dividir por domínio (ex: `lib/classify.js`, `lib/format.js`, `components/Agenda.jsx`, `components/Lancamentos.jsx`) mantendo o comportamento idêntico. Fazer aos poucos, começando pelas funções puras já cobertas por teste (`parseValue`, `merchantKey`, `flexMatch`, `localClassify`) antes de separar componentes de UI.
 

@@ -1570,6 +1570,10 @@ export default function App() {
   const [clearConfirmText,setClearConfirmText] = useState("");
   const [confirmDeleteBatch,setConfirmDeleteBatch] = useState(null);
   const [confirmDeleteDetail,setConfirmDeleteDetail] = useState(null); // {id, description, count}
+  const [sortHistCol,setSortHistCol] = useState("importedAt");
+  const [sortHistDir,setSortHistDir] = useState("desc");
+  const [sortDetsCol,setSortDetsCol] = useState("date");
+  const [sortDetsDir,setSortDetsDir] = useState("desc");
   const [fluxoGroupBy,setFluxoGroupBy] = useState("rd");
   const [fluxoGroupOrder,setFluxoGroupOrder] = useState({});
   const [dragGroupIdx,setDragGroupIdx] = useState(null);
@@ -2550,7 +2554,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.8.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3330,7 +3334,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.8.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3415,23 +3419,29 @@ export default function App() {
                   if(!extratos[key].min||dateToSortable(t.date)<dateToSortable(extratos[key].min)) extratos[key].min=t.date;
                   if(!extratos[key].max||dateToSortable(t.date)>dateToSortable(extratos[key].max)) extratos[key].max=t.date;
                 });
-                const rows = Object.values(extratos).sort((a,b)=>b.importedAt.localeCompare(a.importedAt));
+                const rows = Object.values(extratos).sort((a,b)=>{
+                  if(sortHistCol==="count") return sortHistDir==="asc"?a.count-b.count:b.count-a.count;
+                  const av=a[sortHistCol]||"", bv=b[sortHistCol]||"";
+                  return sortHistDir==="asc"?av.localeCompare(bv):bv.localeCompare(av);
+                });
                 const fmtImport = iso => {
                   if(!iso||iso==="unknown") return "—";
                   const dt = new Date(iso+":00Z");
                   if(isNaN(dt)) return "—";
                   return dt.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).replace(",","");
                 };
+                const thH = (label,col) => <th style={{...s.th,cursor:"pointer",userSelect:"none"}} onClick={()=>{if(sortHistCol===col)setSortHistDir(d=>d==="asc"?"desc":"asc");else{setSortHistCol(col);setSortHistDir("asc");}}}>
+                  {label}{sortHistCol===col?(sortHistDir==="asc"?" ↑":" ↓"):""}</th>;
                 if(!rows.length) return <div style={{color:"#6B8299",fontSize:13}}>Nenhum extrato importado ainda.</div>;
                 return (
                   <table style={s.table}>
                     <thead><tr>
-                      <th style={s.th}>Conta</th>
-                      <th style={s.th}>Importado em</th>
-                      <th style={s.th}>Lançamentos</th>
-                      <th style={s.th}>Período início</th>
-                      <th style={s.th}>Período fim</th>
-                      <th style={s.th}>Arquivo</th>
+                      {thH("Conta","conta")}
+                      {thH("Importado em","importedAt")}
+                      {thH("Lançamentos","count")}
+                      {thH("Período início","min")}
+                      {thH("Período fim","max")}
+                      {thH("Arquivo","fileName")}
                       <th style={s.th}></th>
                     </tr></thead>
                     <tbody>
@@ -3458,14 +3468,22 @@ export default function App() {
               {Object.keys(transDetailsMap).length===0
                 ? <div style={{color:"#6B8299",fontSize:13}}>Nenhum detalhamento salvo ainda.</div>
                 : (()=>{
-                    const linked = transactions.filter(t=>transDetailsMap[t.id]>0);
+                    const linked = [...transactions.filter(t=>transDetailsMap[t.id]>0)].sort((a,b)=>{
+                      if(sortDetsCol==="value") return sortDetsDir==="asc"?Number(a.value)-Number(b.value):Number(b.value)-Number(a.value);
+                      if(sortDetsCol==="itens") return sortDetsDir==="asc"?(transDetailsMap[a.id]||0)-(transDetailsMap[b.id]||0):(transDetailsMap[b.id]||0)-(transDetailsMap[a.id]||0);
+                      const av=sortDetsCol==="date"?dateToSortable(a.date):a[sortDetsCol]||"";
+                      const bv=sortDetsCol==="date"?dateToSortable(b.date):b[sortDetsCol]||"";
+                      return sortDetsDir==="asc"?av.localeCompare(bv):bv.localeCompare(av);
+                    });
+                    const thD = (label,col,extra={}) => <th style={{...s.th,cursor:"pointer",userSelect:"none",...extra}} onClick={()=>{if(sortDetsCol===col)setSortDetsDir(d=>d==="asc"?"desc":"asc");else{setSortDetsCol(col);setSortDetsDir("asc");}}}>
+                      {label}{sortDetsCol===col?(sortDetsDir==="asc"?" ↑":" ↓"):""}</th>;
                     return (
                       <table style={s.table}>
                         <thead><tr>
-                          <th style={s.th}>Data</th>
-                          <th style={s.th}>Descrição</th>
-                          <th style={s.th}>Itens</th>
-                          <th style={s.th}>Valor</th>
+                          {thD("Data","date")}
+                          {thD("Descrição","description")}
+                          {thD("Itens","itens")}
+                          {thD("Valor","value")}
                           <th style={{...s.th,width:60,textAlign:"center"}}>Ação</th>
                         </tr></thead>
                         <tbody>
@@ -3494,7 +3512,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.8.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
