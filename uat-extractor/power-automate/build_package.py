@@ -251,7 +251,7 @@ def build_package(out_zip: str):
                 "id": f"/providers/Microsoft.Flow/flows/{FLOW_GUID}",
                 "name": FLOW_GUID,
                 "type": "Microsoft.Flow/flows",
-                "creationType": "Existing, New",
+                "creationType": "New",
                 "details": {"displayName": FLOW_NAME},
                 "configurableBy": "User",
                 "hierarchy": "Root",
