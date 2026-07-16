@@ -238,6 +238,7 @@ def build_package(out_zip: str):
 
     root_manifest = {
         "schema": "1.0",
+        "packageKind": "codFirst",
         "details": {
             "displayName": FLOW_NAME,
             "description": "Extrai cenários/passos de uma MS List, salva as imagens anexadas em pastas por ID e monta a planilha Excel com =IMAGE() e link por item.",
@@ -252,6 +253,7 @@ def build_package(out_zip: str):
                 "name": FLOW_GUID,
                 "type": "Microsoft.Flow/flows",
                 "creationType": "New",
+                "suggestedCreationType": "New",
                 "details": {"displayName": FLOW_NAME},
                 "configurableBy": "User",
                 "hierarchy": "Root",
