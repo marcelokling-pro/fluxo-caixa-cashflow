@@ -214,6 +214,10 @@ def build_definition() -> dict:
 def build_package(out_zip: str):
     definition = build_definition()
 
+    # UUIDs internos para as conexões reais (Child do tipo apis/connections)
+    CONN_SP_REAL  = str(uuid.uuid4())
+    CONN_XL_REAL  = str(uuid.uuid4())
+
     flow_manifest = {
         "schemaVersion": "1.0.0.0",
         "properties": {
@@ -236,9 +240,22 @@ def build_package(out_zip: str):
         },
     }
 
+    # connectionsMap: mapeia connectionName → UUID da conexão real (Child apis/connections)
+    connections_map = {
+        "shared_excelonlinebusiness": CONN_XL_REAL,
+        "shared_sharepointonline":    CONN_SP_REAL,
+    }
+
+    # manifest interno da pasta Microsoft.Flow/flows/
+    flow_folder_manifest = {
+        "packageSchemaVersion": "1.0",
+        "flowAssets": {
+            "assetPaths": [FLOW_GUID],
+        },
+    }
+
     root_manifest = {
         "schema": "1.0",
-        "packageKind": "codFirst",
         "details": {
             "displayName": FLOW_NAME,
             "description": "Extrai cenários/passos de uma MS List, salva as imagens anexadas em pastas por ID e monta a planilha Excel com =IMAGE() e link por item.",
@@ -249,57 +266,88 @@ def build_package(out_zip: str):
         },
         "resources": {
             FLOW_GUID: {
-                "id": f"/providers/Microsoft.Flow/flows/{FLOW_GUID}",
-                "name": FLOW_GUID,
                 "type": "Microsoft.Flow/flows",
-                "creationType": "New",
-                "suggestedCreationType": "New",
+                "creationType": "Existing, New, Update",
+                "suggestedCreationType": "Update",
                 "details": {"displayName": FLOW_NAME},
                 "configurableBy": "User",
                 "hierarchy": "Root",
-                "dependsOn": [CONN_SP_GUID, CONN_XL_GUID],
+                "dependsOn": [CONN_XL_GUID, CONN_XL_REAL, CONN_SP_GUID, CONN_SP_REAL],
             },
-            CONN_SP_GUID: {
-                "id": SP_API,
-                "name": "shared_sharepointonline",
-                "type": "Microsoft.PowerApps/apis",
-                "suggestedCreationType": "Existing",
-                "creationType": "Existing",
-                "details": {
-                    "displayName": "SharePoint",
-                    "iconUri": "https://connectoricons-prod.azureedge.net/sharepointonline/icon.png",
-                },
-                "configurableBy": "User",
-                "hierarchy": "Child",
-                "dependsOn": [],
-            },
+            # API do Excel Online (Business) — configurableBy System, sem creationType
             CONN_XL_GUID: {
                 "id": XL_API,
                 "name": "shared_excelonlinebusiness",
                 "type": "Microsoft.PowerApps/apis",
                 "suggestedCreationType": "Existing",
-                "creationType": "Existing",
                 "details": {
                     "displayName": "Excel Online (Business)",
-                    "iconUri": "https://connectoricons-prod.azureedge.net/excelonlinebusiness/icon.png",
+                    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1819/1.0.1819.4798/excelonlinebusiness/icon.png",
+                },
+                "configurableBy": "System",
+                "hierarchy": "Child",
+                "dependsOn": [],
+            },
+            # Conexão real do Excel — configurableBy User, aparece no dropdown
+            CONN_XL_REAL: {
+                "type": "Microsoft.PowerApps/apis/connections",
+                "creationType": "Existing",
+                "suggestedCreationType": "Existing",
+                "details": {
+                    "displayName": "Excel Online (Business)",
+                    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1819/1.0.1819.4798/excelonlinebusiness/icon.png",
                 },
                 "configurableBy": "User",
                 "hierarchy": "Child",
+                "dependsOn": [CONN_XL_GUID],
+            },
+            # API do SharePoint — configurableBy System, sem creationType
+            CONN_SP_GUID: {
+                "id": SP_API,
+                "name": "shared_sharepointonline",
+                "type": "Microsoft.PowerApps/apis",
+                "suggestedCreationType": "Existing",
+                "details": {
+                    "displayName": "SharePoint",
+                    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1813/1.0.1813.4769/sharepointonline/icon.png",
+                },
+                "configurableBy": "System",
+                "hierarchy": "Child",
                 "dependsOn": [],
+            },
+            # Conexão real do SharePoint — configurableBy User, aparece no dropdown
+            CONN_SP_REAL: {
+                "type": "Microsoft.PowerApps/apis/connections",
+                "creationType": "Existing",
+                "suggestedCreationType": "Existing",
+                "details": {
+                    "displayName": "SharePoint",
+                    "iconUri": "https://static.powerapps.com/resource/ppcr/releases/v1.0.1813/1.0.1813.4769/sharepointonline/icon.png",
+                },
+                "configurableBy": "User",
+                "hierarchy": "Child",
+                "dependsOn": [CONN_SP_GUID],
             },
         },
     }
 
     api_map = {
-        "shared_sharepointonline": SP_API,
+        "shared_sharepointonline":    SP_API,
         "shared_excelonlinebusiness": XL_API,
     }
 
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("manifest.json", json.dumps(root_manifest, ensure_ascii=False, indent=2))
+        z.writestr("manifest.json",
+                   json.dumps(root_manifest, ensure_ascii=False, indent=2))
         base = f"Microsoft.Flow/flows/{FLOW_GUID}"
-        z.writestr(f"{base}/definition.json", json.dumps(flow_manifest, ensure_ascii=False, indent=2))
-        z.writestr(f"{base}/apisMap.json", json.dumps(api_map, ensure_ascii=False, indent=2))
+        z.writestr(f"{base}/definition.json",
+                   json.dumps(flow_manifest, ensure_ascii=False, indent=2))
+        z.writestr(f"{base}/apisMap.json",
+                   json.dumps(api_map, ensure_ascii=False, indent=2))
+        z.writestr(f"{base}/connectionsMap.json",
+                   json.dumps(connections_map, ensure_ascii=False, indent=2))
+        z.writestr("Microsoft.Flow/flows/manifest.json",
+                   json.dumps(flow_folder_manifest, ensure_ascii=False, indent=2))
 
     print(f"✅  Pacote gerado: {out_zip}")
 
