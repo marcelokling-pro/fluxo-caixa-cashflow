@@ -2084,13 +2084,16 @@ export default function App() {
     await loadTransactions();
   };
 
-  const associateTransaction = async (ocId, transactionId) => {
+  const associateTransaction = async (agendaId, mes, ano, transactionId) => {
     const t = transactions.find(x=>x.id===transactionId);
     if (!t) return;
-    await supabase.from("agenda_ocorrencias").update({
+    // v7.9.3 — upsert por (agenda_id,mes,ano), igual aos demais botões da Agenda:
+    // funciona mesmo quando ainda não existe registro (status "sem registro"/"não verificado")
+    await supabase.from("agenda_ocorrencias").upsert({
+      agenda_id:agendaId, mes, ano,
       status:"pago", transaction_id:transactionId,
       data_pagamento:t.date, valor_pago:Math.abs(Number(t.value)),
-    }).eq("id",ocId);
+    },{onConflict:"agenda_id,mes,ano"});
     await loadAgenda(); setAssociating(null);
     showToast("Lançamento associado!");
   };
@@ -2554,7 +2557,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3256,7 +3259,7 @@ export default function App() {
                               onClick={()=>{setEditingAgenda(item.id);setAgendaForm({nome:item.nome,tipo:item.tipo||"",dia_vencimento:String(item.dia_vencimento),keywords:(item.keywords||[]).join(", "),rd:item.rd||"DESPESAS FIXAS",classificacao:item.classificacao||""});setShowAgendaModal(true);}}>✏</button>
                             <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}}
                               onClick={()=>setConfirmDelete("agenda_"+item.id)}>✕</button>
-                            {status==="pendente"&&(
+                            {(status==="pendente"||status==="sem registro")&&(
                               <button title="Baixar manualmente" style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}}
                                 onClick={async()=>{
                                   await supabase.from("agenda_ocorrencias").upsert({
@@ -3289,9 +3292,9 @@ export default function App() {
                                   showToast("Associação desfeita!");
                                 }}>↩</button>
                             )}
-                            {status==="pendente"&&oc&&(
+                            {(status==="pendente"||status==="sem registro")&&(
                               <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
-                                onClick={()=>{setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno});setAssocFiltroMes(agendaMes);setAssocFiltroAno(agendaAno);}}>🔗</button>
+                                onClick={()=>{setAssociating({agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno});setAssocFiltroMes(agendaMes);setAssocFiltroAno(agendaAno);}}>🔗</button>
                             )}
                           </div>
                         </td>
@@ -3346,7 +3349,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.3</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3526,7 +3529,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3801,7 +3804,7 @@ export default function App() {
                 const usedNome=usedOc?agenda.find(a=>a.id===usedOc.agenda_id)?.nome:null;
                 return (
                 <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:usedNome?"not-allowed":"pointer",opacity:usedNome?0.4:1}}
-                  onClick={()=>{if(!usedNome) associateTransaction(associating.ocId,t.id);}}>
+                  onClick={()=>{if(!usedNome) associateTransaction(associating.agendaId,associating.mes,associating.ano,t.id);}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:600}}>{t.description}</div>
                     <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}{usedNome?` · já associado a ${usedNome}`:""}</div>
