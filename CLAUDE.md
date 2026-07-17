@@ -113,7 +113,11 @@ File upload → `openColumnMapper` (auto-detects header row and maps date/desc/v
 
 Duplicate detection uses a hash of `date|description|value` stored in `importedHashes` (Set rebuilt from DB on load).
 
-XLSX parsing uses the `xlsx` library loaded dynamically from CDN at runtime (`window.XLSX`) — it is not a bundled dependency. The Itaú bank Excel format has a special parser (`parseExcelItau`) that reads fixed column positions (row 27+, cols 0/2/10).
+XLSX parsing uses the `xlsx` library loaded dynamically from CDN at runtime (`window.XLSX`) — it is not a bundled dependency. O caminho real de importação (CSV **e** XLSX) é `openColumnMapper → processColumnMapper`, genérico para qualquer banco. As funções `parseBankCSV` e `parseExcelItau` no topo do arquivo são **código morto** (nunca chamadas) — não confiar nelas.
+
+### Sinal do valor na importação (desde v7.10.0)
+
+Bancos expressam débito/crédito de formas diferentes. `resolveSign(rawVal,{tipo,debito,credito})` resolve nesta ordem: (1) colunas Débito/Crédito separadas → `valor = crédito − débito`; (2) coluna indicadora D/C → ajuste **corretivo** (só inverte quando o sinal contradiz o indicador); (3) valor como veio. As colunas Tipo/Débito/Crédito são auto-detectadas por **nome exato** de cabeçalho (evita ativar por engano) e ficam editáveis no modal de mapeamento. **Resgate**: se o extrato vem todo positivo e sem nenhuma coluna de sinal, `looksLikeDebit` infere as saídas por palavra-chave. Como o ajuste D/C é corretivo e o resgate só roda quando não há negativos, o Excel do Itaú (já assinado) passa intacto. CSV usa `splitCSVLine` (respeita separador dentro de aspas) e `detectSepMulti` (`;`, `,` ou tab por frequência). O usuário confere os sinais na prévia (`pendingImport`) antes de salvar.
 
 ## Padrões de UI
 

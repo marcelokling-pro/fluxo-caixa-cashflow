@@ -139,6 +139,9 @@ const MONTHS = ["janeiro","fevereiro","março","abril","maio","junho","julho","a
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v) => new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(v??0);
+// v7.11.1 — exibição do fluxo de INVESTIMENTOS (Aplicação/Resgate) nas tabelas Por R/D e Resumo Mensal;
+// classificação real (t.rd) continua "INVESTIMENTOS" — filtros/BASE_CLASSIFICATIONS/Disponibilidade não mudam
+const rdLabel = (rd) => rd==="INVESTIMENTOS" ? "APLICAÇÕES/RESGATES" : rd;
 
 export const parseValue = (raw) => {
   if (raw === null || raw === undefined || raw === "") return NaN;
@@ -309,6 +312,56 @@ const looksLikeDebit = (desc) => DEBIT_DESC.some(k => String(desc).toUpperCase()
 
 const SKIP_ROWS = ["SALDO TOTAL","SALDO DO DIA","TOTAL DO DIA","SALDO DISPONÍV","SALDO DISPONIVEL"];
 const shouldSkip = (cols) => SKIP_ROWS.some(k => cols.some(c => String(c).toUpperCase().includes(k)));
+
+// ── Resolução de sinal para extratos que não trazem o valor já assinado ──
+// Bancos variam: alguns põem o sinal direto na coluna Valor (Itaú), outros usam
+// uma coluna indicadora D/C, outros separam Débito e Crédito em colunas distintas.
+const DC_DEBIT_TOKENS  = ["D","DB","DEB","DEBITO","DÉBITO","S","SAIDA","SAÍDA"];
+const DC_CREDIT_TOKENS = ["C","CR","CRE","CREDITO","CRÉDITO","E","ENTRADA"];
+
+// Ordem: colunas débito/crédito separadas → indicador D/C → valor como veio.
+// O ajuste por D/C é *corretivo* (só age quando o sinal contradiz o indicador),
+// então arquivos que já vêm assinados — como o Excel do Itaú — passam intactos.
+export const resolveSign = (rawVal, { tipo, debito, credito } = {}) => {
+  if (debito !== undefined || credito !== undefined) {
+    const d = parseValue(debito), c = parseValue(credito);
+    const dv = isNaN(d) ? 0 : Math.abs(d), cv = isNaN(c) ? 0 : Math.abs(c);
+    if (dv !== 0 || cv !== 0) return cv - dv;
+  }
+  let val = parseValue(rawVal);
+  if (isNaN(val)) return NaN;
+  const t = String(tipo ?? "").toUpperCase().trim();
+  if (t) {
+    if (val > 0 && DC_DEBIT_TOKENS.includes(t)) val = -val;
+    else if (val < 0 && DC_CREDIT_TOKENS.includes(t)) val = Math.abs(val);
+  }
+  return val;
+};
+
+// Split de linha CSV que respeita separadores dentro de "campos, entre aspas".
+export const splitCSVLine = (line, sep) => {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { if (q && line[i+1] === '"') { cur += '"'; i++; } else q = !q; }
+    else if (ch === sep && !q) { out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out.map(c => c.replace(/^"|"$/g, "").trim());
+};
+
+// Detecta o separador por frequência nas primeiras linhas (cobre ; , e tab).
+export const detectSepMulti = (lines) => {
+  const counts = { ";": 0, ",": 0, "\t": 0 };
+  for (const l of lines.slice(0, 5)) {
+    counts[";"]  += (l.match(/;/g)  || []).length;
+    counts[","]  += (l.match(/,/g)  || []).length;
+    counts["\t"] += (l.match(/\t/g) || []).length;
+  }
+  const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return best[1] > 0 ? best[0] : ";";
+};
 
 const parseBankCSV = (text) => {
   const cleaned = text.replace(/^\uFEFF/, "");
@@ -2195,8 +2248,8 @@ export default function App() {
         const text = await file.text();
         const cleaned = text.replace(/^\uFEFF/,"");
         const lines = cleaned.split(/\r?\n/).filter(l=>l.trim());
-        const sep = lines[0].includes(";") ? ";" : ",";
-        allRows = lines.map(l=>l.split(sep).map(c=>c.replace(/"/g,"").trim()));
+        const sep = detectSepMulti(lines);
+        allRows = lines.map(l=>splitCSVLine(l,sep));
       }
       // Find best header row
       let hi = 0, bestScore = 0;
@@ -2217,15 +2270,27 @@ export default function App() {
       headers = allRows[hi].map((c,i)=>String(c).trim()||`col ${i}`);
       preview = allRows.slice(hi+1,hi+4).map(r=>headers.map((_,i)=>String(r[i]||"")));
       const normHeader = s=>String(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
-      const guessCol = (aliases, fallback=0) => {
-        const idx = headers.findIndex(h=>aliases.some(a=>normHeader(h).includes(normHeader(a))));
-        return idx >= 0 ? idx : fallback;
+      // Por alias: tenta nome EXATO primeiro (ex.: "Descrição" ganha de "Histórico"),
+      // depois substring; ignora colunas já usadas (exclude) — evita a Descrição cair na coluna de data.
+      const guessCol = (aliases, fallback=0, exclude=[]) => {
+        for(const a of aliases){
+          const na = normHeader(a);
+          let idx = headers.findIndex((h,i)=>!exclude.includes(i)&&normHeader(h)===na);
+          if(idx<0) idx = headers.findIndex((h,i)=>!exclude.includes(i)&&normHeader(h).includes(na));
+          if(idx>=0) return idx;
+        }
+        return fallback;
       };
       const autoDate = guessCol(["DATA","DATE","DT","DT_MOV","DATA_MOV"]);
-      const autoDesc = guessCol(["ESTABELECIMENTO","HISTORICO","DESCRICAO","DESCRIPTION","LANCAMENTO","COMPLEMENTO"]);
-      const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"]);
-      const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"]);
+      const autoDesc = guessCol(["DESCRICAO","DESCRIPTION","ESTABELECIMENTO","HISTORICO","LANCAMENTO","COMPLEMENTO"], 1, [autoDate]);
+      const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"], 2, [autoDate]);
+      const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"], -1, [autoDate]);
       const autoRazaoSocial = guessCol(["RAZAO SOCIAL","RAZÃO SOCIAL","FAVORECIDO","NOME FAVORECIDO"], -1);
+      // Colunas de sinal — casamento EXATO (evita ativar por engano em layouts já assinados como o Itaú)
+      const guessExact = aliases => headers.findIndex(h=>aliases.some(a=>normHeader(h)===normHeader(a)));
+      const autoTipo    = guessExact(["TIPO","NATUREZA","D/C","C/D","DC","DEBITO/CREDITO","CREDITO/DEBITO"]);
+      const autoDebito  = guessExact(["DEBITO","DÉBITO","SAIDA","SAÍDA","VALOR DEBITO","VALOR DÉBITO"]);
+      const autoCredito = guessExact(["CREDITO","CRÉDITO","ENTRADA","VALOR CREDITO","VALOR CRÉDITO"]);
       let autoContaValue = "";
       for(let i=0;i<Math.min(hi,allRows.length);i++){
         const rowText = allRows[i].map(c=>String(c||"")).join(";");
@@ -2233,7 +2298,7 @@ export default function App() {
         if(m) { autoContaValue = m[1].trim(); break; }
       }
       setColumnMapper({file, headers, preview, allRows, headerIdx:hi, mode, transaction,
-        map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta, razaoSocial:autoRazaoSocial},
+        map:{date:autoDate, desc:autoDesc, val:autoVal, conta:autoConta, razaoSocial:autoRazaoSocial, tipo:autoTipo, debito:autoDebito, credito:autoCredito},
         autoContaValue,
         isCartao: mode==="detalhe",
       });
@@ -2268,12 +2333,21 @@ export default function App() {
         date = parseDate(rawDate);
       }
       if(!date||!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return null;
-      let val = parseValue(rawVal);
+      const rawTipo = map.tipo>=0    ? cols[map.tipo]    : undefined;
+      const rawDeb  = map.debito>=0  ? cols[map.debito]  : undefined;
+      const rawCred = map.credito>=0 ? cols[map.credito] : undefined;
+      let val = resolveSign(rawVal, {tipo:rawTipo, debito:rawDeb, credito:rawCred});
       if(isNaN(val)||val===0) return null;
       // Cartão: positivos viram negativos (despesas), negativos ficam positivos (estornos/créditos)
       if(isCartao) val = -val;
       return {date, description:rawDesc, value:val, conta:rawConta, razao_social:rawRazaoSocial||null};
     }).filter(Boolean);
+
+    // Resgate: extrato todo positivo e sem coluna de sinal (D/C ou débito/crédito) →
+    // inferir saídas por palavra-chave, senão tudo entraria como receita.
+    if(mode==="extrato" && map.tipo<0 && map.debito<0 && map.credito<0 && !parsed.some(r=>r.value<0)){
+      parsed.forEach(r=>{ if(r.value>0 && looksLikeDebit(r.description)) r.value = -r.value; });
+    }
 
     setColumnMapper(null);
 
@@ -2443,11 +2517,15 @@ export default function App() {
     } catch(e) {
       showToast("Erro ao desfazer: "+(e?.message||"verifique o console"),"error"); setConfirmDeleteBatch(null); return;
     }
+    // v7.10.1 — compromissos da Agenda associados a lançamentos deste lote voltam a "pendente"
+    // (evita transaction_id órfão apontando para um lançamento que deixará de existir)
+    await supabase.from("agenda_ocorrencias").update({status:"pendente",transaction_id:null,data_pagamento:null,valor_pago:null}).in("transaction_id",ids);
     for(let i=0;i<ids.length;i+=50){
       await supabase.from("transactions").delete().in("id",ids.slice(i,i+50));
     }
     await loadTransactions();
     await loadDetailsMap();
+    await loadAgenda();
     setConfirmDeleteBatch(null);
     showToast(`${ids.length} lançamentos removidos.`);
   };
@@ -2557,7 +2635,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.9.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2754,7 +2832,11 @@ export default function App() {
               {(()=>{
                 const lastInv = Object.values(extrasMonthly.investimentos||{}).filter(v=>v>0).at(-1)||0;
                 const lastRec = Object.values(extrasMonthly.contasReceber||{}).filter(v=>v>0).at(-1)||0;
-                const disponibilidade = metrics.saldo + lastInv + lastRec;
+                // v7.9.4 — saldo aplicado em INVESTIMENTOS (transações reais, todo o histórico) soma na
+                // Disponibilidade invertido: líquido negativo (mais aplicação que resgate) vira positivo,
+                // dinheiro que ainda é seu, só que fora da conta corrente. Não mexe em Saldo Atual/Geração de Caixa.
+                const investimentosAplicados = -transactions.filter(t=>t.rd==="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
+                const disponibilidade = metrics.saldo + investimentosAplicados + lastInv + lastRec;
                 return [
                   {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
                   {l:"Total Receitas", v:metrics.recOperacional, c:"#2ECC71"},
@@ -2822,7 +2904,7 @@ export default function App() {
                           onClick={handleGroupClick}>
                           <td style={{...s.td,fontWeight:600,color:nameColor}}>
                             <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
-                            {group}
+                            {rdLabel(group)}
                           </td>
                           <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
                           <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
@@ -2902,7 +2984,7 @@ export default function App() {
                         const rdColor2={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3"};
                         return (
                           <tr key={rd}>
-                            <td style={{...s.td,fontWeight:600,color:rdColor2[rd]||"#E8EDF2"}}>{rd}</td>
+                            <td style={{...s.td,fontWeight:600,color:rdColor2[rd]||"#E8EDF2"}}>{rdLabel(rd)}</td>
                             {vals.map((v,i)=>{
                               const mName=activeMths[i];
                               const mIdx=MONTHS.indexOf(mName)+1;
@@ -3349,7 +3431,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.9.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3529,7 +3611,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.9.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4127,6 +4209,9 @@ export default function App() {
                 {label:"💰 Valor",key:"val",required:true,color:"#E8445A"},
                 {label:"🏦 Conta",key:"conta",required:false,color:"#6B8299"},
                 {label:"🏢 Razão Social",key:"razaoSocial",required:false,color:"#8E7CC3"},
+                {label:"± Tipo (D/C)",key:"tipo",required:false,color:"#F5A623"},
+                {label:"➖ Débito",key:"debito",required:false,color:"#E8445A"},
+                {label:"➕ Crédito",key:"credito",required:false,color:"#2ECC71"},
               ].map(({label,key,required,color})=>(
                 <div key={key} style={{background:"#0F1923",borderRadius:8,padding:"10px 14px",border:`1px solid ${color}22`}}>
                   <div style={{fontSize:11,color,marginBottom:6,fontWeight:600}}>{label} {required&&<span style={{color:"#E8445A"}}>*</span>}</div>
@@ -4143,6 +4228,10 @@ export default function App() {
                   }
                 </div>
               ))}
+            </div>
+
+            <div style={{fontSize:11,color:"#6B8299",marginBottom:16,lineHeight:1.5}}>
+              💡 Se o valor já vem assinado (negativo = saída), deixe <strong>Tipo/Débito/Crédito</strong> em "não importar". Use-os só quando o banco não traz o sinal na coluna Valor — ex.: coluna D/C, ou colunas separadas de Débito e Crédito.
             </div>
 
             {/* Tipo arquivo — só para detalhe */}
