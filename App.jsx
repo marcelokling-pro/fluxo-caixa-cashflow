@@ -2635,7 +2635,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.6 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2811,8 +2811,6 @@ export default function App() {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div><div style={{fontSize:21,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>
                 Fluxo de Caixa
-                <span title="A disponibilidade é composta de: Saldo do Banco + Investimentos + Contas a Receber"
-                  style={{fontSize:12,width:18,height:18,borderRadius:"50%",border:"1px solid #6B8299",color:"#6B8299",display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600}}>?</span>
               </div><div style={{fontSize:13,color:"#6B8299",marginTop:2}}>Agrupado por {fluxoGroupBy==="rd"?"R/D":fluxoGroupBy==="classificacao"?"Classificação":"Mês"}</div></div>
               <div style={{display:"flex",gap:8}}>
                 <button style={s.btn("ghost")} onClick={()=>exportFluxoCSV(transactions)}>⬇ CSV</button>
@@ -2820,30 +2818,21 @@ export default function App() {
             </div>
             <div style={{display:"flex",gap:10,marginBottom:20,flexWrap:"wrap"}}>
               <div style={{display:"flex",gap:4,background:"#162130",borderRadius:10,padding:4,border:"1px solid #1E2D3D"}}>
-                {[["rd","Por R/D"],["classificacao","Por Classificação"],["month","Por Mês"]].map(([v,l])=>(
+                {[["rd","Por R/D"],["classificacao","Por Classificação"]].map(([v,l])=>(
                   <button key={v} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:fluxoGroupBy===v?"#00C9A7":"transparent",color:fluxoGroupBy===v?"#0F1923":"#6B8299"}} onClick={()=>setFluxoGroupBy(v)}>{l}</button>
                 ))}
               </div>
-              <select style={s.sel} value={fluxoMonth} onChange={e=>setFluxoMonth(e.target.value)}>
-                <option value="todos">Todos os meses</option>{MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
-              </select>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
               {(()=>{
-                const lastInv = Object.values(extrasMonthly.investimentos||{}).filter(v=>v>0).at(-1)||0;
-                const lastRec = Object.values(extrasMonthly.contasReceber||{}).filter(v=>v>0).at(-1)||0;
-                // v7.9.4 — saldo aplicado em INVESTIMENTOS (transações reais, todo o histórico) soma na
-                // Disponibilidade invertido: líquido negativo (mais aplicação que resgate) vira positivo,
-                // dinheiro que ainda é seu, só que fora da conta corrente. Não mexe em Saldo Atual/Geração de Caixa.
-                const investimentosAplicados = -transactions.filter(t=>t.rd==="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
-                const disponibilidade = metrics.saldo + investimentosAplicados + lastInv + lastRec;
+                // v7.11.4 — Disponibilidade saiu do cabeçalho: vive só na tabela abaixo (linha DISPONIBILIDADE,
+                // com "?" explicando), pra não duplicar o mesmo número em dois lugares da mesma tela.
                 return [
                   {l:"Saldo Inicial",  v:saldoInicial, c:"#6B8299"},
                   {l:"Total Receitas", v:metrics.recOperacional, c:"#2ECC71"},
                   {l:"Total Despesas", v:metrics.desOperacional, c:"#E8445A"},
                   {l:"Resultado",      v:metrics.recOperacional-metrics.desOperacional, c:(metrics.recOperacional-metrics.desOperacional)>=0?"#00C9A7":"#E8445A", noSign:true},
                   {l:"Saldo Atual",    v:metrics.saldo, c:metrics.saldo>=0?"#00C9A7":"#E8445A"},
-                  {l:"Disponibilidade",v:disponibilidade, c:disponibilidade>=0?"#00C9A7":"#E8445A"},
                 ].map(m=>(
                   <div key={m.l} style={{...s.card,padding:"10px 12px"}}><div style={{fontSize:10,color:"#6B8299",marginBottom:4,textTransform:"uppercase"}}>{m.l}</div><div style={{fontSize:16,fontWeight:700,color:m.c}}>{fmt(m.noSign?Math.abs(m.v):m.v)}</div></div>
                 ));
@@ -2906,7 +2895,7 @@ export default function App() {
                             <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
                             {rdLabel(group)}
                           </td>
-                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:data.total>=0?"#2ECC71":"#E8445A"}}>{fmt(data.total)}</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:group==="MOVIMENTAÇÃO"?nameColor:(data.total>=0?"#2ECC71":"#E8445A")}}>{fmt(data.total)}</td>
                           <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
                           <td style={{...s.td,width:200}}>
                             {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
@@ -2931,6 +2920,28 @@ export default function App() {
                         <td style={{...s.td,textAlign:"right",fontWeight:700,color:grandTotal>=0?"#2ECC71":"#E8445A"}}>{fmt(grandTotal)}</td>
                         <td colSpan={2}/>
                       </tr>
+                      {(()=>{
+                        // v7.11.4 — Disponibilidade (nesta tabela) = Saldo Inicial + Saldo de Caixa Total +
+                        // Aplicações/Resgates de volta como ativo (mesmo dinheiro, só que aplicado); reduz o
+                        // desconforto visual de ver caixa negativo quando parte da saída foi investimento, não
+                        // perda. Não substitui o Saldo de Caixa Total. Mesmo nome/valor do antigo card do topo.
+                        const investLine = fluxoData.find(([g])=>g==="INVESTIMENTOS");
+                        const investimentosAplicados = investLine ? -investLine[1].total : 0;
+                        const patrimonio = saldoInicial + grandTotal + investimentosAplicados;
+                        return (
+                          <tr style={{background:"rgba(46,204,113,0.06)"}}>
+                            <td style={{...s.td,fontWeight:700,color:"#5EE8A0",letterSpacing:"0.6px"}}>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                                DISPONIBILIDADE
+                                <span title="Disponibilidade = Saldo Inicial + Saldo de Caixa Total + Aplicações/Resgates de volta como ativo (dinheiro que ainda é seu, só que aplicado — Saldo do Banco + Investimentos + Contas a Receber)"
+                                  style={{fontSize:10,width:15,height:15,borderRadius:"50%",border:"1px solid #5EE8A0",color:"#5EE8A0",display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600}}>?</span>
+                              </span>
+                            </td>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:patrimonio>=0?"#2ECC71":"#E8445A"}}>{fmt(patrimonio)}</td>
+                            <td colSpan={2}/>
+                          </tr>
+                        );
+                      })()}
                     </>);
                   })()}
                 </tbody>
@@ -2992,7 +3003,7 @@ export default function App() {
                               const mm=String(mIdx).padStart(2,"0");
                               const lastDay=new Date(Number(txYear),mIdx,0).getDate();
                               return (
-                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:v>0?"#2ECC71":v<0?"#E8445A":"#6B8299"}}>
+                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(v>0?"#2ECC71":v<0?"#E8445A":"#6B8299")}}>
                                   {v!==0?(
                                     <button
                                       onClick={()=>{
@@ -3006,7 +3017,7 @@ export default function App() {
                                 </td>
                               );
                             })}
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A"}}>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(total>=0?"#2ECC71":"#E8445A")}}>
                               <button
                                 onClick={()=>{setDrillDown({rd,dateFrom:"",dateTo:"",label:rd});setTab("lancamentos");}}
                                 style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontSize:13,fontWeight:700,padding:0}}>
@@ -3057,6 +3068,23 @@ export default function App() {
                               return <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:total>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(total)}</td>;
                             })}
                             <td style={{...s.td,textAlign:"right",fontWeight:700,color:(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+investRdVals.reduce((s,v)=>s+v,0)+movimentacaoVals.reduce((s,v)=>s+v,0))>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+investRdVals.reduce((s,v)=>s+v,0)+movimentacaoVals.reduce((s,v)=>s+v,0))}</td>
+                          </tr>
+                          {/* v7.11.4 — Disponibilidade = Saldo de Caixa Total sem o efeito da linha Aplicações/Resgates
+                              (dinheiro aplicado continua seu, só que fora da conta corrente). Saldo Inicial entra
+                              só no Total (não em cada mês, pra não contar N vezes). Mesmo nome/valor do antigo card do topo. */}
+                          <tr style={{background:"rgba(46,204,113,0.06)"}}>
+                            <td style={{...s.td,fontWeight:700,color:"#5EE8A0",letterSpacing:"0.6px"}}>
+                              <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                                DISPONIBILIDADE
+                                <span title="Disponibilidade = Saldo Inicial + Saldo de Caixa Total + Aplicações/Resgates de volta como ativo (dinheiro que ainda é seu, só que aplicado — Saldo do Banco + Investimentos + Contas a Receber)"
+                                  style={{fontSize:10,width:15,height:15,borderRadius:"50%",border:"1px solid #5EE8A0",color:"#5EE8A0",display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600}}>?</span>
+                              </span>
+                            </td>
+                            {tots.map((v,i)=>{
+                              const patrimonio = v + invVals[i] + recVals[i] + movimentacaoVals[i];
+                              return <td key={i} style={{...s.td,textAlign:"right",fontWeight:700,color:patrimonio>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(patrimonio)}</td>;
+                            })}
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:(saldoInicial+tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+movimentacaoVals.reduce((s,v)=>s+v,0))>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(saldoInicial+tots.reduce((s,v)=>s+v,0)+lastInv+lastRec+movimentacaoVals.reduce((s,v)=>s+v,0))}</td>
                           </tr>
                         </>);
                       })()}
@@ -3431,7 +3459,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.6</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3611,7 +3639,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.6 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
