@@ -1611,6 +1611,7 @@ export default function App() {
   const [hiddenBaseCls,setHiddenBaseCls] = useState([]);
   const [alertCronExpr,setAlertCronExpr] = useState("");
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
+  const [showPeriodo,setShowPeriodo] = useState(false); // v7.11.14 — popover de período em Lançamentos
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
   const [searchText,setSearchText] = useState("");
@@ -2671,7 +2672,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.13 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.16 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2758,30 +2759,43 @@ export default function App() {
               </div>
               <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setEditingRazaoSocial("");setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Novo</button>
             </div>
-            <div style={{marginBottom:10,position:"relative"}}>
-              <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:16,pointerEvents:"none"}}>🔍</div>
-              <input style={{...s.input,paddingLeft:38}} placeholder="Buscar em qualquer campo — descrição, data, valor, classificação..."
-                value={searchText} onChange={e=>setSearchText(e.target.value)}/>
-            </div>
-            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-              <select style={s.sel} value={filter.rd} onChange={e=>setFilter(f=>({...f,rd:e.target.value}))}>
+            {/* v7.11.15 — largura fixa e compacta em cada select + nowrap com rolagem horizontal:
+                garante uma linha só mesmo com o menu lateral aberto, em vez de depender do
+                auto-tamanho do navegador (que varia e quebra a linha). */}
+            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"nowrap",alignItems:"center",overflowX:"auto",paddingBottom:2}}>
+              <div style={{position:"relative",flex:"1 1 140px",minWidth:110}}>
+                <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:14,pointerEvents:"none"}}>🔍</div>
+                <input style={{...s.input,paddingLeft:34,padding:"8px 10px 8px 34px"}} placeholder="Buscar em qualquer campo..."
+                  value={searchText} onChange={e=>setSearchText(e.target.value)}/>
+              </div>
+              <select style={{...s.sel,width:150,flexShrink:0}} value={filter.rd} onChange={e=>setFilter(f=>({...f,rd:e.target.value}))}>
                 <option value="todos">Todos R/D</option>{RD_TYPES.map(r=><option key={r}>{r}</option>)}
               </select>
-              <select style={s.sel} value={filter.classificacao} onChange={e=>setFilter(f=>({...f,classificacao:e.target.value}))}>
+              <select style={{...s.sel,width:170,flexShrink:0}} value={filter.classificacao} onChange={e=>setFilter(f=>({...f,classificacao:e.target.value}))}>
                 <option value="todas">Todas Classificações</option>{allClassificacoes.map(c=><option key={c}>{c}</option>)}
               </select>
-              <select style={s.sel} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
-                <option value="todos">Todos</option><option value="nao_classificados">Não classificados</option><option value="cartao">💳 Cartão</option>
+              <select style={{...s.sel,width:150,flexShrink:0}} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
+                <option value="todos">Status: Todos</option><option value="nao_classificados">Não classificados</option><option value="cartao">💳 Cartão</option>
               </select>
-              <select style={s.sel} value={filter.sinal} onChange={e=>setFilter(f=>({...f,sinal:e.target.value}))}>
+              <select style={{...s.sel,width:140,flexShrink:0}} value={filter.sinal} onChange={e=>setFilter(f=>({...f,sinal:e.target.value}))}>
                 <option value="todos">Todos valores</option><option value="saida">Só saídas</option><option value="entrada">Só entradas</option>
               </select>
-              <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
-              <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
-              <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} title="Ordenar por data">
-                Data {sortDir==="asc"?"↑":"↓"}
+              <div style={{position:"relative",flexShrink:0}}>
+                <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,whiteSpace:"nowrap",color:(filter.dateFrom||filter.dateTo)?"#00C9A7":"#6B8299"}}
+                  onClick={()=>setShowPeriodo(v=>!v)} title="Filtrar por período">📅 Período</button>
+                {showPeriodo&&(
+                  <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:12,zIndex:50,display:"flex",gap:8,alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>
+                    <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
+                    <span style={{color:"#6B8299",fontSize:12}}>até</span>
+                    <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
+                  </div>
+                )}
+              </div>
+              <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,flexShrink:0}} onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} title="Ordenar por data">
+                {sortDir==="asc"?"↑":"↓"}
               </button>
-              <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setSearchText("");}}>Limpar filtros</button>
+              <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,flexShrink:0}} title="Limpar filtros"
+                onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setSearchText("");setShowPeriodo(false);}}>🔄</button>
             </div>
             <div style={{...s.card,padding:0,overflow:"hidden"}}>
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
@@ -2826,10 +2840,13 @@ export default function App() {
                         }
                       </td>
                       <td style={s.td}>
-                        <div style={{display:"flex",gap:4}}>
-                          <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} title="Detalhamento" onClick={()=>openDetailModal(t)}>📎</button>
-                          <button style={{...s.btn("ghost"),padding:"3px 7px",fontSize:11}} onClick={()=>startEdit(t)}>✏</button>
-                          <button style={{...s.btn("danger"),padding:"3px 7px",fontSize:11}} onClick={()=>deleteT(t.id)}>✕</button>
+                        {/* v7.11.14 — ação reorganizada: cor própria por ação, ✏️ com variação (corrige render sem cor),
+                            🗑️ substitui ✕, separador antes do botão destrutivo pra evitar clique errado */}
+                        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(0,201,167,0.1)",border:"1px solid rgba(0,201,167,0.25)",color:"#00C9A7"}} title="Ver detalhamento" onClick={()=>openDetailModal(t)}>📎</button>
+                          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(107,130,153,0.12)",color:"#8FA3B8"}} title="Editar" onClick={()=>startEdit(t)}>✏️</button>
+                          <div style={{width:1,height:18,background:"#1E2D3D",margin:"0 2px"}}/>
+                          <button style={{...s.btn("danger"),padding:"4px 8px",fontSize:12,background:"rgba(232,68,90,0.1)",border:"1px solid rgba(232,68,90,0.3)",color:"#E8445A"}} title="Excluir" onClick={()=>deleteT(t.id)}>🗑️</button>
                         </div>
                       </td>
                     </tr>
@@ -3495,7 +3512,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.13</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.16</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3679,7 +3696,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.13 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.16 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
