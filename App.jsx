@@ -2691,7 +2691,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.19 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.20 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2920,7 +2920,7 @@ export default function App() {
                     const grandTotal=fluxoData.reduce((acc,[,d])=>acc+d.total,0)+lastInv+lastRec;
                     const monthFiltered = fluxoMonth!=="todos" ? transactions.filter(t=>{const p=t.date?.split("/");return p?.length===3&&parseInt(p[1])===parseInt(fluxoMonth);}) : transactions;
                     const geracaoTotal = monthFiltered.filter(t=>t.rd!=="MOVIMENTAÇÃO"&&t.rd!=="INVESTIMENTOS").reduce((s,t)=>s+Number(t.value),0);
-                    const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#E8445A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3","DESPESAS VARIÁVEIS - NÃO CLASSIFICADAS":"#F5A623","DESPESAS FIXAS - NÃO CLASSIFICADAS":"#F5A623"};
+                    const grupoNameColors={RECEITA:"#2ECC71","DESPESAS FIXAS":"#E8445A","DESPESAS VARIÁVEIS":"#FF7A7A",MOVIMENTAÇÃO:"#6B8299",INVESTIMENTOS:"#8E7CC3","DESPESAS VARIÁVEIS - NÃO CLASSIFICADAS":"#F5A623","DESPESAS FIXAS - NÃO CLASSIFICADAS":"#F5A623"};
                     const colorForGroup=(g,d)=>{
                       if(fluxoGroupBy==="rd") return grupoNameColors[g]||"#00C9A7";
                       if(fluxoGroupBy==="classificacao") return grupoNameColors[d.dominantRd]||"#00C9A7";
@@ -2967,10 +2967,10 @@ export default function App() {
                             <span style={{marginRight:6,color:"#2D3F50",cursor:"grab",userSelect:"none"}} onClick={e=>e.stopPropagation()}>⠿</span>
                             {rdLabel(group)}
                           </td>
-                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:group==="MOVIMENTAÇÃO"?nameColor:(data.total>=0?"#2ECC71":"#E8445A")}}>{fmt(data.total)}</td>
+                          <td style={{...s.td,textAlign:"right",fontWeight:700,color:nameColor}}>{fmt(data.total)}</td>
                           <td style={{...s.td,textAlign:"right",color:"#6B8299"}}>{data.count!==null?data.count:"—"}</td>
                           <td style={{...s.td,width:200}}>
-                            {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:data.total>=0?"#2ECC71":"#E8445A",width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
+                            {!data.isExtra&&<div style={{background:"#1E2D3D",borderRadius:4,height:8}}><div style={{background:nameColor,width:`${pct}%`,height:"100%",borderRadius:4}}/></div>}
                           </td>
                         </tr>
                       );
@@ -3075,7 +3075,7 @@ export default function App() {
                               const mm=String(mIdx).padStart(2,"0");
                               const lastDay=new Date(Number(txYear),mIdx,0).getDate();
                               return (
-                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(v>0?"#2ECC71":v<0?"#E8445A":"#6B8299")}}>
+                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:v!==0?(rdColor2[rd]||"#E8EDF2"):"#6B8299"}}>
                                   {v!==0?(
                                     <button
                                       onClick={()=>{
@@ -3089,7 +3089,7 @@ export default function App() {
                                 </td>
                               );
                             })}
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(total>=0?"#2ECC71":"#E8445A")}}>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:rdColor2[rd]||"#E8EDF2"}}>
                               <button
                                 onClick={()=>{setDrillDown({rd,dateFrom:"",dateTo:"",label:rd});setTab("lancamentos");}}
                                 style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontSize:13,fontWeight:700,padding:0}}>
@@ -3531,7 +3531,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.19</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.20</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3723,7 +3723,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.19 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.20 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
