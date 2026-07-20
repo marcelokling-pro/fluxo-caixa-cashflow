@@ -1610,6 +1610,7 @@ export default function App() {
   const [saldoInicial,setSaldoInicial] = useState(0);
   const [hiddenBaseCls,setHiddenBaseCls] = useState([]);
   const [alertCronExpr,setAlertCronExpr] = useState("");
+  const [alertsPaused,setAlertsPaused] = useState(false); // v7.11.18 — pausa central dos alertas
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
   const [showPeriodo,setShowPeriodo] = useState(false); // v7.11.14 — popover de período em Lançamentos
   const [sortDir,setSortDir]   = useState("desc");
@@ -1760,7 +1761,7 @@ export default function App() {
 
   const loadTransactions = async () => {
     // FIX #5: order by created_at (reliable) instead of text date field
-    const {data}=await supabase.from("transactions").select("*").order("created_at",{ascending:false});
+    const {data}=await supabase.from("transactions").select("*").order("created_at",{ascending:false}).range(0,9999); // v7.11.19 — fix: limite implícito de 1000 linhas Supabase causava saldo errado
     if(data){
       setTransactions(data);
       setImportedHashes(new Set(data.map(t=>generateHash(t.date,t.description,t.value))));
@@ -1776,6 +1777,7 @@ export default function App() {
       const go=data.find(d=>d.key==="fluxo_group_order"); if(go?.value) try{setFluxoGroupOrder(JSON.parse(go.value));}catch{}
       const hb=data.find(d=>d.key==="hidden_base_classifications"); if(hb?.value) try{setHiddenBaseCls(JSON.parse(hb.value));}catch{}
       const ce=data.find(d=>d.key==="alert_cron_expr"); if(ce?.value) setAlertCronExpr(ce.value);
+      const ap=data.find(d=>d.key==="alerts_paused"); setAlertsPaused(ap?.value==="true");
     }
   };
 
@@ -2609,6 +2611,14 @@ export default function App() {
     else showToast(`Agendamento atualizado: ${val}x/dia`);
   };
 
+  const toggleAlertsPaused = async () => {
+    const next = !alertsPaused;
+    setAlertsPaused(next);
+    const {error} = await supabase.from("settings").upsert({key:"alerts_paused",value:String(next)},{onConflict:"key"});
+    if(error){ setAlertsPaused(!next); showToast("Erro ao pausar: "+error.message,"error"); }
+    else showToast(next?"Alertas pausados.":"Alertas retomados.");
+  };
+
   const sendAlertsNow = async () => {
     setSendingAlert(true);
     try {
@@ -2673,7 +2683,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.17 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.18 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3513,7 +3523,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.17</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.18</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3546,11 +3556,19 @@ export default function App() {
                     background:alertRecurrence===v?"#00C9A7":"#1E2D3D",color:alertRecurrence===v?"#0F1923":"#6B8299"}}
                     onClick={()=>saveAlertRecurrence(v)}>{l}</button>
                 ))}
-                <button style={{...s.btn(),fontSize:12,padding:"4px 14px",marginLeft:8}} onClick={sendAlertsNow} disabled={sendingAlert}>
+                <button style={{...s.btn(),fontSize:12,padding:"4px 14px",marginLeft:8}} onClick={sendAlertsNow} disabled={sendingAlert||alertsPaused}>
                   {sendingAlert?"Enviando...":"▶ Enviar agora"}
                 </button>
+                {/* v7.11.18 — pausa central: bloqueia envio manual E automático, sem mexer no agendamento em si */}
+                <button style={{...s.btn(alertsPaused?"warn":"ghost"),fontSize:12,padding:"4px 14px",color:alertsPaused?"#0F1923":"#F5A623"}}
+                  onClick={toggleAlertsPaused} title={alertsPaused?"Retomar envio de alertas":"Pausar envio de alertas"}>
+                  {alertsPaused?"▶️ Retomar":"⏸ Pausar"}
+                </button>
               </div>
-              {alertCronExpr&&<div style={{fontSize:11,color:"#6B8299",marginBottom:16}}>📅 Agendamento automático ativo (cron: <code style={{color:"#00C9A7"}}>{alertCronExpr}</code>)</div>}
+              {alertsPaused
+                ? <div style={{fontSize:11,color:"#F5A623",marginBottom:16}}>⏸ Alertas pausados — nenhum e-mail será enviado (manual ou automático) até retomar.</div>
+                : (alertCronExpr&&<div style={{fontSize:11,color:"#6B8299",marginBottom:16}}>📅 Agendamento automático ativo (cron: <code style={{color:"#00C9A7"}}>{alertCronExpr}</code>)</div>)
+              }
 
               {/* Cadastro de destinatários */}
               <div style={{background:"#0F1923",borderRadius:8,padding:"12px 14px",border:"1px solid #1E2D3D",marginBottom:16}}>
@@ -3697,7 +3715,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.17 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.18 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
