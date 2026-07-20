@@ -3075,7 +3075,7 @@ export default function App() {
                               const mm=String(mIdx).padStart(2,"0");
                               const lastDay=new Date(Number(txYear),mIdx,0).getDate();
                               return (
-                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:v!==0?(rdColor2[rd]||"#E8EDF2"):"#6B8299"}}>
+                                <td key={i} style={{...s.td,textAlign:"right",fontSize:11,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(v>0?"#2ECC71":v<0?"#E8445A":"#6B8299")}}>
                                   {v!==0?(
                                     <button
                                       onClick={()=>{
@@ -3089,7 +3089,7 @@ export default function App() {
                                 </td>
                               );
                             })}
-                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:rdColor2[rd]||"#E8EDF2"}}>
+                            <td style={{...s.td,textAlign:"right",fontWeight:700,color:rd==="MOVIMENTAÇÃO"?rdColor2[rd]:(total>=0?"#2ECC71":"#E8445A")}}>
                               <button
                                 onClick={()=>{setDrillDown({rd,dateFrom:"",dateTo:"",label:rd});setTab("lancamentos");}}
                                 style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontSize:13,fontWeight:700,padding:0}}>
