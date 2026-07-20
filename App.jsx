@@ -1665,6 +1665,7 @@ export default function App() {
   const [assocFiltroAno,setAssocFiltroAno] = useState(null);
   const [assocSortCol,setAssocSortCol]   = useState(null);
   const [assocSortDir,setAssocSortDir]   = useState("asc");
+  const [assocSearch,setAssocSearch]     = useState(""); // v7.11.17 — busca no modal Associar Lançamento
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
   const [agendaSortDir,setAgendaSortDir] = useState("asc");
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
@@ -2672,7 +2673,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.16 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.17 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3457,7 +3458,7 @@ export default function App() {
                             )}
                             {(status==="pendente"||status==="sem registro")&&(
                               <button style={{...s.btn("warn"),padding:"3px 7px",fontSize:11}}
-                                onClick={()=>{setAssociating({agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno});setAssocFiltroMes(agendaMes);setAssocFiltroAno(agendaAno);}}>🔗</button>
+                                onClick={()=>{setAssociating({agendaId:item.id,nome:item.nome,mes:agendaMes,ano:agendaAno});setAssocFiltroMes(agendaMes);setAssocFiltroAno(agendaAno);setAssocSearch("");}}>🔗</button>
                             )}
                           </div>
                         </td>
@@ -3512,7 +3513,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.16</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.17</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3696,7 +3697,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.16 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.17 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -3918,7 +3919,7 @@ export default function App() {
                       if(!oc) return;
                       setShowSemMatchModal(false);
                       setAssociating({ocId:oc.id,agendaId:item.id,nome:item.nome,mes:reconciliarModal.mes,ano:reconciliarModal.ano});
-                      setAssocFiltroMes(reconciliarModal.mes);setAssocFiltroAno(reconciliarModal.ano);
+                      setAssocFiltroMes(reconciliarModal.mes);setAssocFiltroAno(reconciliarModal.ano);setAssocSearch("");
                     }}>🔗 Associar</button>
                 </div>
               ))}
@@ -3947,6 +3948,11 @@ export default function App() {
                 })()}
               </select>
             </div>
+            <div style={{position:"relative",marginBottom:12}}>
+              <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:14,pointerEvents:"none"}}>🔍</div>
+              <input style={{...s.input,padding:"7px 10px 7px 32px",fontSize:12}} placeholder="Buscar por nome..."
+                value={assocSearch} onChange={e=>setAssocSearch(e.target.value)}/>
+            </div>
             <div style={{display:"flex",justifyContent:"space-between",padding:"0 0 6px",borderBottom:"1px solid #1E2D3D",fontSize:11,color:"#6B8299"}}>
               <span style={{cursor:"pointer",userSelect:"none"}} onClick={()=>{
                 if(assocSortCol==="nome") setAssocSortDir(d=>d==="asc"?"desc":"asc");
@@ -3961,7 +3967,8 @@ export default function App() {
               {transactions.filter(t=>{
                 const p=t.date?.split("/");
                 return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
-              }).sort((a,b)=>{
+              }).filter(t=>!assocSearch.trim()||(t.description||"").toLowerCase().includes(assocSearch.trim().toLowerCase())
+              ).sort((a,b)=>{
                 if(!assocSortCol) return 0;
                 const dir=assocSortDir==="asc"?1:-1;
                 if(assocSortCol==="nome") return (a.description||"").localeCompare(b.description||"")*dir;
