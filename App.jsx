@@ -1804,6 +1804,8 @@ export default function App() {
     let list=[...transactions]; // v7.0.6 — itens de cartao aparecem na lista, com badge identificando
     // drillDown overrides filter when set
     if(drillDown){
+      // v7.11.9 — filtro por ids exatos (ex: revisar um lote de importação específico do Histórico)
+      if(drillDown.ids) { const idSet=new Set(drillDown.ids); list=list.filter(t=>idSet.has(t.id)); }
       if(drillDown.rd) list=list.filter(t=>t.rd===drillDown.rd);
       if(drillDown.dateFrom) list=list.filter(t=>dateToSortable(t.date)>=drillDown.dateFrom);
       if(drillDown.dateTo)   list=list.filter(t=>dateToSortable(t.date)<=drillDown.dateTo);
@@ -2639,7 +2641,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.8 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.9 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3463,7 +3465,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.8</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.9</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3584,7 +3586,11 @@ export default function App() {
                           <td style={s.td}>{r.min||"—"}</td>
                           <td style={s.td}>{r.max||"—"}</td>
                           <td style={s.td}>{r.fileName}</td>
-                          <td style={s.td}><button style={{...s.btn("danger"),fontSize:11,padding:"4px 10px"}} onClick={()=>setConfirmDeleteBatch(r)}>↩ Desfazer</button></td>
+                          <td style={s.td}>
+                            <button style={{...s.btn("ghost"),fontSize:11,padding:"4px 10px",marginRight:6}}
+                              onClick={()=>{setDrillDown({ids:r.ids,label:`Importação · ${r.conta} · ${fmtImport(r.importedAt)}`});setTab("lancamentos");}}>🔍 Ver</button>
+                            <button style={{...s.btn("danger"),fontSize:11,padding:"4px 10px"}} onClick={()=>setConfirmDeleteBatch(r)}>↩ Desfazer</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3643,7 +3649,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.8 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.9 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
