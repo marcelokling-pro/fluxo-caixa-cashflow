@@ -183,10 +183,20 @@ const isCCTransaction = (t) => {
 };
 
 // Strip common bank prefixes to isolate merchant name
-export const merchantKey = (desc) => String(desc).toUpperCase().trim()
-  .replace(/^(BOLETO\s+PAGO|COMPRA\s+\S+|PIX\s+ENVIADO|PIX\s+RECEBIDO|PIX\s+|PAGAMENTO\s+|TED\s+|DOC\s+|TRANSFERENCIA\s+|DEBITO\s+|CREDITO\s+)\s*/,'')
-  .replace(/\s\d[\d\s.\/-]*$/,'')
-  .replace(/\s+/g,' ').trim();
+// v7.11.13 — separador-agnóstico: quebra a descrição em tokens por qualquer caractere não
+// alfanumérico (espaço, *, -, /, _, ...), sempre preserva o 1º token (nome do estabelecimento
+// quase sempre vem primeiro) e descarta qualquer token seguinte que pareça código de transação
+// (mistura letra+dígito, ou é puro-numérico com 4+ dígitos). Regra por FORMATO, não por nome —
+// cobre qualquer estabelecimento/banco nesse padrão, não só os já vistos.
+export const merchantKey = (desc) => {
+  const d = String(desc).toUpperCase().trim()
+    .replace(/\s*\(COMPRA:\s*\d{2}\/\d{2}\/\d{4}\)$/,'')
+    .replace(/^(BOLETO\s+PAGO|COMPRA\s+\S+|PIX\s+ENVIADO|PIX\s+RECEBIDO|PIX\s+|PAGAMENTO\s+|TED\s+|DOC\s+|TRANSFERENCIA\s+|DEBITO\s+|CREDITO\s+)\s*/,'');
+  const tokens = d.split(/[^A-Z0-9À-Ú]+/).filter(Boolean);
+  if (!tokens.length) return '';
+  const isNoise = (tok) => tok.length>=5 && ((/[A-Z]/.test(tok)&&/\d/.test(tok)) || /^\d{4,}$/.test(tok));
+  return [tokens[0], ...tokens.slice(1).filter(t=>!isNoise(t))].join(' ').trim();
+};
 
 // Description-to-description similarity: no-space of the shorter must be substring of the longer (min 6 chars)
 const descSimilar = (a, b) => {
@@ -2157,6 +2167,19 @@ export default function App() {
     showToast("Lançamento associado!");
   };
 
+  // v7.11.11 — mantém transaction_details em sincronia com ajustes manuais feitos em Lançamentos.
+  // Sem isso, re-salvar o detalhamento (que apaga e recria os lançamentos a partir do details)
+  // descartaria a classificação manual. Localiza a linha pelo pai (source_file "(detalhe:id)")
+  // + descrição-base (sem o sufixo "(compra: ...)").
+  const syncDetailClassification = async (t, rd, classificacao, subcategoria) => {
+    const m = (t.source_file||"").match(/\(detalhe:([^)]+)\)$/);
+    if (!m || t.origin!=="fatura") return;
+    const baseDesc = String(t.description||"").replace(/ \(compra: \d{2}\/\d{2}\/\d{4}\)$/,"");
+    await supabase.from("transaction_details")
+      .update({rd, classificacao, subcategoria:subcategoria||null, needs_review:false})
+      .eq("transaction_id", m[1]).eq("description", baseDesc);
+  };
+
   // ── Manual entry — FIX #3: operator precedence ────────────────────────────
   const saveManual = async () => {
     if(!form.date||!form.description||!form.value){ showToast("Preencha todos os campos.","error"); return; }
@@ -2166,17 +2189,21 @@ export default function App() {
     const payload={date:form.date,description:form.description,value:val,type:val>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
     try{
     if(editingId){
-      const {error:updErr} = await supabase.from("transactions").update(payload).eq("id",editingId);
+      // v7.11.10 — editar classificação não deve sobrescrever origin (preserva selo 💳 de itens de fatura)
+      const {origin, ...updatePayload} = payload;
+      const {error:updErr} = await supabase.from("transactions").update(updatePayload).eq("id",editingId);
       if(updErr) throw updErr;
       // v7.0.0/v7.0.4 — propaga R/D/Classificacao/Subcategoria/Conta para a anulacao vinculada, se existir
       await supabase.from("transactions").update({rd:form.rd,classificacao:form.classificacao,subcategoria:form.subcategoria||null,conta:form.conta})
         .ilike("source_file",`%(detalhe:${editingId})`).eq("origin","anulacao_cartao");
+      // v7.11.11 — item de fatura editado manualmente: reflete no transaction_details do pai
+      const orig = transactions.find(x=>x.id===editingId);
+      if(orig) await syncDetailClassification(orig, form.rd, form.classificacao, form.subcategoria||null);
       // After editing, find other transactions with similar description that have different classification
-      const {data:all} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin");
+      const {data:all} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin,source_file");
       const editedMerchant = merchantKey(form.description);
       const similar = (all||[]).filter(t =>
         t.id !== editingId &&
-        !isCCTransaction(t) &&
         descSimilar(merchantKey(t.description), editedMerchant) &&
         (t.rd !== form.rd || t.classificacao !== form.classificacao || (t.subcategoria||null) !== (form.subcategoria||null))
       ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null}));
@@ -2439,6 +2466,9 @@ export default function App() {
       }
       for (const g of Object.values(groups))
         await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:false,status:"confirmado"}).in("id",g.ids);
+      // v7.11.11 — itens de fatura do lote também refletem no transaction_details do pai
+      for (const t of similarPending.items)
+        await syncDetailClassification(t, t.suggestedRd, t.suggestedClass, t.suggestedSub||similarPending.subcategoria||null);
       // Populate keywords so future imports classify automatically
       try {
         if (rd && cls) {
@@ -2641,7 +2671,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.9 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.13 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3465,7 +3495,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.9</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.13</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3649,7 +3679,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.9 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.13 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
