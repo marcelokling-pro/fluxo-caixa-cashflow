@@ -1761,11 +1761,19 @@ export default function App() {
 
   const loadTransactions = async () => {
     // FIX #5: order by created_at (reliable) instead of text date field
-    const {data}=await supabase.from("transactions").select("*").order("created_at",{ascending:false}).range(0,9999); // v7.11.19 — fix: limite implícito de 1000 linhas Supabase causava saldo errado
-    if(data){
-      setTransactions(data);
-      setImportedHashes(new Set(data.map(t=>generateHash(t.date,t.description,t.value))));
+    // v7.11.19 — paginação para superar max-rows=1000 do Supabase
+    const allData=[];
+    const pageSize=1000;
+    let from=0;
+    while(true){
+      const {data,error}=await supabase.from("transactions").select("*").order("created_at",{ascending:false}).range(from,from+pageSize-1);
+      if(error||!data||data.length===0) break;
+      allData.push(...data);
+      if(data.length<pageSize) break;
+      from+=pageSize;
     }
+    setTransactions(allData);
+    setImportedHashes(new Set(allData.map(t=>generateHash(t.date,t.description,t.value))));
   };
 
   const loadSettings = async () => {
