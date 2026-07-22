@@ -9,6 +9,8 @@ Instruções para o Claude Code ao trabalhar neste projeto.
 - Quando uma ação precisa ser pesquisada, informar o termo exato de busca em português e em inglês
 - Quando um campo aceita texto fixo, expressão ou conteúdo dinâmico, especificar qual dos três usar
 - Quando há botão de confirmação, especificar se é "OK", "Adicionar" ou "Salvar"
+- Ser preciso nas orientações — informar o passo a passo completo antes de pedir confirmação
+- Nunca retomar um passo sem reapresentar o contexto exato de onde o usuário está
 
 ## Regras de trabalho
 
