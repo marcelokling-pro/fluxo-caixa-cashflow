@@ -2,6 +2,13 @@
 
 Instruções para o Claude Code ao trabalhar neste projeto.
 
+## Regras de trabalho
+
+- Executar as instruções **passo a passo**
+- Após cada passo, **pedir confirmação** de que foi executado
+- **Solicitar informação complementar** do resultado quando necessário antes de avançar
+- Só então **apresentar o próximo passo**
+
 ## Objetivo
 
 Extrair dados e imagens de listas UAT no Microsoft Lists (SharePoint) e gerar um arquivo HTML com imagens embutidas em base64, salvo no OneDrive.
