@@ -2,6 +2,14 @@
 
 Instruções para o Claude Code ao trabalhar neste projeto.
 
+## Regras de orientação ao usuário
+
+- Indicar **exatamente onde clicar**: nome do botão, localização na tela (canto superior direito, dentro do loop X, acima da ação Y)
+- Nunca usar termos vagos como "clique em mostrar resultados" sem indicar onde está
+- Quando uma ação precisa ser pesquisada, informar o termo exato de busca em português e em inglês
+- Quando um campo aceita texto fixo, expressão ou conteúdo dinâmico, especificar qual dos três usar
+- Quando há botão de confirmação, especificar se é "OK", "Adicionar" ou "Salvar"
+
 ## Regras de trabalho
 
 - Executar as instruções **passo a passo**
