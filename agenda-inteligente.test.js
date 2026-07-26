@@ -2,12 +2,12 @@
 // Nenhum deles toca IndexedDB, DOM ou APIs de voz.
 
 import { describe, it, expect } from "vitest";
-import { somarDias, somarMeses, proximaData, proximaDataFutura, semanaDe, mesDe } from "./public/agenda-inteligente/js/recorrencia.js";
-import { novoCompromisso, statusEfetivo } from "./public/agenda-inteligente/js/model.js";
-import { filtrar, resumo, vencidos, proximos, proximoCompromisso, porCategoria } from "./public/agenda-inteligente/js/consultas.js";
-import { lembretesDevidos, chaveLembrete } from "./public/agenda-inteligente/js/lembretes.js";
-import { validarBackup } from "./public/agenda-inteligente/js/backup.js";
-import * as interp from "./public/agenda-inteligente/js/interpretador.js";
+import { somarDias, somarMeses, proximaData, proximaDataFutura, semanaDe, mesDe } from "./agenda-inteligente/js/recorrencia.js";
+import { novoCompromisso, statusEfetivo } from "./agenda-inteligente/js/model.js";
+import { filtrar, resumo, vencidos, proximos, proximoCompromisso, porCategoria } from "./agenda-inteligente/js/consultas.js";
+import { lembretesDevidos, chaveLembrete } from "./agenda-inteligente/js/lembretes.js";
+import { validarBackup } from "./agenda-inteligente/js/backup.js";
+import * as interp from "./agenda-inteligente/js/interpretador.js";
 
 const HOJE = "2026-07-26";
 

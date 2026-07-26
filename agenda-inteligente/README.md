@@ -1,22 +1,37 @@
-# Agenda Inteligente de Compromissos — v1.0.1
+# Agenda Inteligente de Compromissos — v1.1.0
 
 PWA independente (HTML + CSS + JavaScript puro, sem framework e sem build) para gerenciar
 compromissos e pagamentos recorrentes com lembretes, assistente por voz e funcionamento
 100% offline. **Não compartilha código nem dados com o app de Fluxo de Caixa** — vive
 isolado nesta pasta e grava tudo no IndexedDB do próprio aparelho.
 
-## Como abrir
+## Como abrir (100% local)
 
-| Ambiente | URL |
-|---|---|
-| DEV | `npm run dev` → http://localhost:5173/agenda-inteligente/ |
-| PROD | `https://<domínio-do-projeto>/agenda-inteligente/` |
+```bash
+node agenda-inteligente/servir.mjs      # ou: npm run agenda
+```
+→ http://localhost:4321
 
-Está em `public/`, então o Vite serve os arquivos como estáticos no dev e o `npm run build`
-os copia para o `dist/` sem processar — o mesmo código roda nos dois ambientes.
+O `servir.mjs` usa só o Node (nenhuma dependência, nenhum `npm install`). **Não depende do
+Vite, do build nem de deploy** — a pasta está fora de `public/`, então o `npm run build` não
+a inclui e o Vercel não publica nada dela.
 
-No celular: abrir a URL no Chrome/Safari → menu → **Adicionar à tela de início**. Instalado,
-o app abre sem barra de navegador, funciona sem internet e pode emitir notificações.
+Outra porta: `node agenda-inteligente/servir.mjs 8080`.
+
+### Por que não abrir o `index.html` direto (duplo clique)?
+
+Service worker, modo offline, notificações e instalação como app só funcionam em **origem
+segura** — `https://` ou `localhost`. Em `file://` o navegador bloqueia tudo isso (e o Firefox
+também bloqueia IndexedDB). Por isso o servidor local: `localhost` conta como origem segura e
+o app roda completo, sem internet e sem nuvem.
+
+### No celular
+
+Como o app é local, o celular precisa alcançar a máquina: `node agenda-inteligente/servir.mjs --rede`
+mostra o endereço da rede local. **Atenção**: por IP da rede o navegador trata a origem como
+insegura, então cadastro, busca e histórico funcionam, mas service worker, modo offline e
+notificações ficam desativados. Para o app completo no celular é preciso servir por HTTPS
+(hospedagem própria ou túnel) — ou usar no desktop pelo `localhost`.
 
 ## Arquitetura (módulos independentes)
 

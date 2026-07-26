@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "agenda": "node agenda-inteligente/servir.mjs"
   },
   "keywords": [],
   "author": "",

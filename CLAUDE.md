@@ -66,12 +66,14 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 **R/D types** (`RD_TYPES`): `RECEITA`, `DESPESAS FIXAS`, `DESPESAS VARIÁVEIS`, `MOVIMENTAÇÃO`, `INVESTIMENTOS`, `DESPESA FINANCEIRA`, `SALDO INICIAL`.
 
-### App secundário: Agenda Inteligente (`public/agenda-inteligente/`)
+### App secundário: Agenda Inteligente (`agenda-inteligente/`)
 
-PWA **independente** em HTML/CSS/JS puro (sem React, sem Supabase, sem build), servido como
-estático em `/agenda-inteligente/` no DEV e no PROD. Guarda tudo em IndexedDB no aparelho do
-usuário e funciona offline. Versão própria (`v1.0.1` em `js/app.js` + `sw.js`), independente
-da versão do `App.jsx`.
+PWA **independente e somente local** em HTML/CSS/JS puro (sem React, sem Supabase, sem build).
+Roda com `npm run agenda` (= `node agenda-inteligente/servir.mjs`, servidor sem dependências)
+em http://localhost:4321. **Fora de `public/` de propósito**: o `npm run build` não inclui a
+pasta e o Vercel não publica nada dela — não existe versão em PROD. Guarda tudo em IndexedDB
+no aparelho e funciona offline. Versão própria (`v1.1.0` em `js/app.js` + `sw.js`),
+independente da versão do `App.jsx`.
 
 **Não misturar os dois apps**: a Agenda Inteligente não lê nem escreve no Supabase, e a aba
 `agenda` do `App.jsx` continua sendo outra coisa (compromissos recorrentes do fluxo de caixa).
