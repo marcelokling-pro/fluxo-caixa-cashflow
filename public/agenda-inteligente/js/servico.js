@@ -12,6 +12,8 @@ import {
   formatarMoeda,
   labelStatus,
   labelRecorrencia,
+  labelPrioridade,
+  labelLembrete,
 } from "./model.js";
 import { proximaDataFutura } from "./recorrencia.js";
 
@@ -29,12 +31,34 @@ const CAMPOS_RASTREADOS = {
   status: "Situação",
 };
 
+/** Deixa o histórico legível: valores em R$, datas em DD/MM/AAAA, listas por extenso. */
+function exibir(campo, valor) {
+  if (valor == null || valor === "") return "—";
+  switch (campo) {
+    case "valor":
+      return formatarMoeda(valor);
+    case "data":
+      return formatarData(valor);
+    case "lembretes":
+      return (Array.isArray(valor) ? valor : [valor]).map(labelLembrete).join(", ") || "—";
+    case "recorrencia":
+      return labelRecorrencia(valor);
+    case "status":
+      return labelStatus(valor);
+    case "prioridade":
+      return labelPrioridade(valor);
+    default:
+      return Array.isArray(valor) ? valor.join(", ") : String(valor);
+  }
+}
+
 function descreverAlteracoes(antes, depois) {
   const mudancas = [];
   for (const [campo, rotulo] of Object.entries(CAMPOS_RASTREADOS)) {
     const a = Array.isArray(antes[campo]) ? antes[campo].join(", ") : antes[campo] ?? "";
     const b = Array.isArray(depois[campo]) ? depois[campo].join(", ") : depois[campo] ?? "";
-    if (String(a) !== String(b)) mudancas.push(`${rotulo}: "${a || "—"}" → "${b || "—"}"`);
+    if (String(a) !== String(b))
+      mudancas.push(`${rotulo}: "${exibir(campo, antes[campo])}" → "${exibir(campo, depois[campo])}"`);
   }
   return mudancas;
 }

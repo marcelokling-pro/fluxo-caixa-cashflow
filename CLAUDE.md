@@ -70,7 +70,7 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 PWA **independente** em HTML/CSS/JS puro (sem React, sem Supabase, sem build), servido como
 estático em `/agenda-inteligente/` no DEV e no PROD. Guarda tudo em IndexedDB no aparelho do
-usuário e funciona offline. Versão própria (`v1.0.0` em `js/app.js` + `sw.js`), independente
+usuário e funciona offline. Versão própria (`v1.0.1` em `js/app.js` + `sw.js`), independente
 da versão do `App.jsx`.
 
 **Não misturar os dois apps**: a Agenda Inteligente não lê nem escreve no Supabase, e a aba

@@ -4,7 +4,7 @@ import * as db from "./db.js";
 import * as ui from "./ui.js";
 import * as notificacoes from "./notificacoes.js";
 
-export const VERSAO = "1.0.0";
+export const VERSAO = "1.0.1";
 
 async function registrarServiceWorker() {
   const alvo = document.querySelector("#status-sw");

@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.0.0
+# Agenda Inteligente de Compromissos — v1.0.1
 
 PWA independente (HTML + CSS + JavaScript puro, sem framework e sem build) para gerenciar
 compromissos e pagamentos recorrentes com lembretes, assistente por voz e funcionamento
