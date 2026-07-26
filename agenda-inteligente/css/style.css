@@ -500,6 +500,11 @@ label textarea {
   cursor: pointer;
 }
 
+/* no assistente o rodapé é a barra de envio: o botão flutuante cobria o "Enviar" */
+.fab.oculto {
+  display: none;
+}
+
 .fab {
   position: fixed;
   right: 18px;

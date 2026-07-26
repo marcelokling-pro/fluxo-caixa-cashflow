@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.5.0
+# Agenda Inteligente de Compromissos — v1.6.0
 
 App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
 gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e
@@ -47,6 +47,10 @@ Regere sempre que mexer em `js/`, `css/` ou `index.html` — o HTML do celular n
 
 Como as notificações não existem nesse modo, **os lembretes vencidos aparecem em destaque no
 topo do painel** toda vez que você abre a agenda — é o substituto direto do aviso do sistema.
+
+**Cara de app**: a barra de endereço do Chrome só some com o app instalado, e instalar exige
+origem `https`. No modo arquivo, o botão **⛶** no topo põe a agenda em tela cheia enquanto
+ela estiver aberta — é o mais perto possível sem hospedagem.
 
 Para ter notificação com o app fechado é obrigatório abrir a agenda por um endereço `https://`
 ou `localhost` (regra do navegador, não do app) e instalá-la como PWA.

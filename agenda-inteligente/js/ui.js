@@ -512,7 +512,29 @@ export function abrirAba(aba) {
   estado.aba = aba;
   $$(".aba").forEach((b) => b.classList.toggle("ativa", b.dataset.aba === aba));
   $$(".view").forEach((v) => v.classList.toggle("ativa", v.id === "view-" + aba));
+  // o botão flutuante fica sobre o "Enviar" do assistente
+  $("#btn-novo").classList.toggle("oculto", aba === "assistente");
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/**
+ * Tela cheia: é o mais perto de "cara de app" quando o arquivo é aberto no
+ * navegador — a barra de endereço só some de verdade com o app instalado,
+ * e instalar exige origem https.
+ */
+async function alternarTelaCheia() {
+  const raiz = document.documentElement;
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    if (raiz.requestFullscreen) await raiz.requestFullscreen({ navigationUI: "hide" });
+    else if (raiz.webkitRequestFullscreen) raiz.webkitRequestFullscreen();
+    else toast("Este navegador não permite tela cheia aqui.", true);
+  } catch (e) {
+    toast("Não foi possível entrar em tela cheia: " + e.message, true);
+  }
 }
 
 /* ---------- Assistente ---------- */
@@ -534,6 +556,9 @@ function balao(msg) {
   const chat = $("#chat");
   const parcial = chat.querySelector(".balao.parcial");
   if (parcial) parcial.remove();
+  // não repetir a mesma mensagem em sequência (tocar duas vezes no microfone, por exemplo)
+  const ultimo = chat.lastElementChild;
+  if (ultimo && ultimo.className === div.className && ultimo.textContent === div.textContent) return;
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
@@ -811,6 +836,11 @@ export function iniciar({ persistencia } = {}) {
   $("#btn-enviar").addEventListener("click", () => enviarAoAssistente($("#entrada-assistente").value));
   $("#entrada-assistente").addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") enviarAoAssistente($("#entrada-assistente").value);
+  });
+  $("#btn-telacheia").addEventListener("click", alternarTelaCheia);
+  document.addEventListener("fullscreenchange", () => {
+    $("#btn-telacheia").textContent = document.fullscreenElement ? "⤢" : "⛶";
+    $("#btn-telacheia").title = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
   });
   if (MODO_ARQUIVO) $("#btn-microfone").title = "Usar o microfone do teclado";
   $("#btn-microfone").addEventListener("click", alternarMicrofone);
