@@ -105,10 +105,16 @@ export class Escuta {
     rec.onerror = (ev) => {
       this.ativa = false;
       const mensagens = {
-        "not-allowed": "Permissão de microfone negada. Libere o microfone nas configurações do navegador.",
-        "service-not-allowed": "O navegador bloqueou o reconhecimento de voz.",
-        "no-speech": "Não consegui ouvir nada. Tente de novo.",
-        network: "O reconhecimento de voz precisa de internet neste navegador. Use o campo de texto.",
+        "not-allowed":
+          "Microfone bloqueado. Toque no ícone à esquerda do endereço → Permissões → Microfone → Permitir. " +
+          "Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. " +
+          "Enquanto isso, o assistente funciona igual pelo campo de texto.",
+        "service-not-allowed":
+          "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
+        "no-speech": "Não consegui ouvir nada. Tente de novo, mais perto do microfone.",
+        network: "O reconhecimento de voz do Chrome precisa de internet. Sem rede, use o campo de texto.",
+        "audio-capture": "Nenhum microfone disponível para o navegador.",
+        aborted: "Escuta interrompida.",
       };
       this.onErro(new Error(mensagens[ev.error] || "Falha no reconhecimento: " + ev.error));
     };
