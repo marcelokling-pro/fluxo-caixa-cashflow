@@ -47,13 +47,20 @@ export function esc(txt) {
 }
 
 let timerToast = null;
-export function toast(mensagem, erro = false) {
+/**
+ * Mensagem curta some sozinha; instrução longa fica fixa até o usuário fechar —
+ * ninguém consegue ler e executar um passo a passo que desaparece em 5 segundos.
+ */
+export function toast(mensagem, erro = false, fixo = null) {
   const el = $("#toast");
+  const permanente = fixo == null ? String(mensagem).length > 80 : fixo;
   el.textContent = mensagem;
   el.classList.toggle("erro", !!erro);
+  el.classList.toggle("fixo", permanente);
   el.hidden = false;
+  el.onclick = () => (el.hidden = true);
   clearTimeout(timerToast);
-  timerToast = setTimeout(() => (el.hidden = true), erro ? 5200 : 3000);
+  if (!permanente) timerToast = setTimeout(() => (el.hidden = true), erro ? 5200 : 3000);
 }
 
 /* ---------- Carga e render ---------- */
@@ -538,10 +545,29 @@ function mostrarParcial(texto) {
   chat.scrollTop = chat.scrollHeight;
 }
 
+/** Mostra o que o assistente está esperando — sem isso o usuário fica sem saber o que responder. */
+function renderEstadoAssistente(ultimaPergunta = "") {
+  const el = $("#estado-assistente");
+  const entrada = $("#entrada-assistente");
+  if (!estado.assistente?.emCadastro) {
+    el.hidden = true;
+    el.innerHTML = "";
+    entrada.placeholder = "Fale, digite ou use o microfone do teclado...";
+    return;
+  }
+  const pergunta = ultimaPergunta || estado.ultimaPergunta || "Responda para continuar";
+  estado.ultimaPergunta = pergunta;
+  el.hidden = false;
+  el.innerHTML = `<span>Cadastrando — <span class="pergunta">${esc(pergunta)}</span></span>
+    <button type="button" id="btn-cancelar-cadastro">Cancelar</button>`;
+  entrada.placeholder = "Responda aqui: " + pergunta;
+}
+
 async function enviarAoAssistente(texto) {
   if (!texto.trim()) return;
   $("#entrada-assistente").value = "";
   const resposta = await estado.assistente.processar(texto);
+  renderEstadoAssistente(estado.assistente.emCadastro ? resposta : "");
   if ($("#chk-falar").checked) falar(resposta);
 }
 
@@ -552,8 +578,18 @@ function alternarMicrofone() {
     btn.classList.remove("ouvindo");
     return;
   }
-  if (!reconhecimentoDisponivel()) {
-    toast("Este navegador não reconhece voz. Toque no campo de texto e use o microfone do teclado — o assistente entende igual.", true);
+  // Modo arquivo: o Android nunca libera o microfone da página. Em vez de tentar e
+  // falhar, leva direto ao caminho que funciona — e a explicação fica no chat, não
+  // num aviso que some.
+  if (MODO_ARQUIVO || !reconhecimentoDisponivel()) {
+    balao({
+      de: "assistente",
+      texto:
+        "Neste modo o microfone do app fica bloqueado pelo Android.\n\n" +
+        "Toque no campo de texto aqui embaixo e use o 🎤 do seu próprio teclado. " +
+        "Eu entendo exatamente igual — pode falar “cadastrar pagamento do condomínio” ou " +
+        "“quais contas vencem esta semana”.",
+    });
     $("#entrada-assistente").focus();
     return;
   }
@@ -568,8 +604,8 @@ function alternarMicrofone() {
     onErro: (e) => {
       btn.classList.remove("ouvindo");
       $("#chat").querySelector(".balao.parcial")?.remove();
-      toast(e.message, true);
-      // caminho alternativo pronto: o teclado do celular tem microfone próprio
+      // no chat a instrução fica disponível enquanto o usuário executa os passos
+      balao({ de: "assistente", texto: e.message });
       if (/microfone|reconhecimento de voz/i.test(e.message)) $("#entrada-assistente").focus();
     },
   });
@@ -741,7 +777,14 @@ export function iniciar({ persistencia } = {}) {
   $("#entrada-assistente").addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") enviarAoAssistente($("#entrada-assistente").value);
   });
+  if (MODO_ARQUIVO) $("#btn-microfone").title = "Usar o microfone do teclado";
   $("#btn-microfone").addEventListener("click", alternarMicrofone);
+  $("#estado-assistente").addEventListener("click", (ev) => {
+    if (!ev.target.closest("#btn-cancelar-cadastro")) return;
+    estado.assistente.cancelar();
+    renderEstadoAssistente("");
+    if ($("#chk-falar").checked) calarBoca();
+  });
   $$(".dica").forEach((d) => d.addEventListener("click", () => enviarAoAssistente(d.dataset.frase)));
 
   // ajustes

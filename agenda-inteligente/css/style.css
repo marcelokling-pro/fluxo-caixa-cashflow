@@ -585,6 +585,39 @@ label textarea {
   cursor: pointer;
 }
 
+.estado-assistente {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(0, 201, 167, 0.12);
+  border: 1px solid rgba(0, 201, 167, 0.4);
+  border-radius: var(--raio);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.estado-assistente[hidden] {
+  display: none;
+}
+
+.estado-assistente .pergunta {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.estado-assistente button {
+  background: transparent;
+  border: 1px solid var(--borda);
+  color: var(--texto-fraco);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+}
+
 .barra-assistente {
   display: flex;
   gap: 8px;
@@ -821,6 +854,27 @@ fieldset.lembretes legend {
 
 .toast[hidden] {
   display: none;
+}
+
+.toast.fixo {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  left: 12px;
+  right: 12px;
+  transform: none;
+  max-width: none;
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: left;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.toast.fixo::after {
+  content: "toque para fechar";
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  opacity: 0.65;
 }
 
 .toast.erro {

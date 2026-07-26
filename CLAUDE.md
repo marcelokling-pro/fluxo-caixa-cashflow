@@ -71,7 +71,7 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 App **independente e somente local** em HTML/CSS/JS puro (sem React, sem Supabase, sem build),
 feito para rodar **no celular**. **Fora de `public/` de propósito**: o `npm run build` não
 inclui a pasta e o Vercel não publica nada dela — não existe versão em PROD. Versão própria
-(`v1.3.2` em `js/app.js` + `sw.js`), independente da versão do `App.jsx`.
+(`v1.4.0` em `js/app.js` + `sw.js`), independente da versão do `App.jsx`.
 
 Dois modos de execução, e a diferença entre eles é regra de navegador, não escolha de projeto:
 

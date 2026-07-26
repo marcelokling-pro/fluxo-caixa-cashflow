@@ -599,6 +599,39 @@ label textarea {
   cursor: pointer;
 }
 
+.estado-assistente {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: rgba(0, 201, 167, 0.12);
+  border: 1px solid rgba(0, 201, 167, 0.4);
+  border-radius: var(--raio);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.estado-assistente[hidden] {
+  display: none;
+}
+
+.estado-assistente .pergunta {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.estado-assistente button {
+  background: transparent;
+  border: 1px solid var(--borda);
+  color: var(--texto-fraco);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex: none;
+}
+
 .barra-assistente {
   display: flex;
   gap: 8px;
@@ -837,6 +870,27 @@ fieldset.lembretes legend {
   display: none;
 }
 
+.toast.fixo {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  left: 12px;
+  right: 12px;
+  transform: none;
+  max-width: none;
+  border-radius: 14px;
+  padding: 14px 16px;
+  text-align: left;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.toast.fixo::after {
+  content: "toque para fechar";
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  opacity: 0.65;
+}
+
 .toast.erro {
   border-color: var(--perigo);
   color: #ffd7dd;
@@ -948,6 +1002,7 @@ fieldset.lembretes legend {
           <button class="dica" data-frase="Quanto preciso pagar este mês?">Quanto preciso pagar este mês?</button>
           <button class="dica" data-frase="Qual o próximo compromisso?">Qual o próximo compromisso?</button>
         </div>
+        <div id="estado-assistente" class="estado-assistente" hidden></div>
         <div class="barra-assistente">
           <button id="btn-microfone" class="btn-mic" title="Falar">🎤</button>
           <input id="entrada-assistente" type="text" placeholder="Fale, digite ou use o microfone do teclado..." autocomplete="off" />
@@ -2935,13 +2990,16 @@ fieldset.lembretes legend {
     return String(txt ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
   var timerToast = null;
-  function toast(mensagem, erro = false) {
+  function toast(mensagem, erro = false, fixo = null) {
     const el = $("#toast");
+    const permanente = fixo == null ? String(mensagem).length > 80 : fixo;
     el.textContent = mensagem;
     el.classList.toggle("erro", !!erro);
+    el.classList.toggle("fixo", permanente);
     el.hidden = false;
+    el.onclick = () => el.hidden = true;
     clearTimeout(timerToast);
-    timerToast = setTimeout(() => el.hidden = true, erro ? 5200 : 3e3);
+    if (!permanente) timerToast = setTimeout(() => el.hidden = true, erro ? 5200 : 3e3);
   }
   async function carregar() {
     const { compromissos, categorias } = await carregarTudo();
@@ -3353,10 +3411,27 @@ fieldset.lembretes legend {
     el.textContent = texto;
     chat.scrollTop = chat.scrollHeight;
   }
+  function renderEstadoAssistente(ultimaPergunta = "") {
+    const el = $("#estado-assistente");
+    const entrada = $("#entrada-assistente");
+    if (!estado.assistente?.emCadastro) {
+      el.hidden = true;
+      el.innerHTML = "";
+      entrada.placeholder = "Fale, digite ou use o microfone do teclado...";
+      return;
+    }
+    const pergunta = ultimaPergunta || estado.ultimaPergunta || "Responda para continuar";
+    estado.ultimaPergunta = pergunta;
+    el.hidden = false;
+    el.innerHTML = `<span>Cadastrando — <span class="pergunta">${esc(pergunta)}</span></span>
+    <button type="button" id="btn-cancelar-cadastro">Cancelar</button>`;
+    entrada.placeholder = "Responda aqui: " + pergunta;
+  }
   async function enviarAoAssistente(texto) {
     if (!texto.trim()) return;
     $("#entrada-assistente").value = "";
     const resposta = await estado.assistente.processar(texto);
+    renderEstadoAssistente(estado.assistente.emCadastro ? resposta : "");
     if ($("#chk-falar").checked) falar(resposta);
   }
   function alternarMicrofone() {
@@ -3366,8 +3441,11 @@ fieldset.lembretes legend {
       btn.classList.remove("ouvindo");
       return;
     }
-    if (!reconhecimentoDisponivel()) {
-      toast("Este navegador não reconhece voz. Toque no campo de texto e use o microfone do teclado — o assistente entende igual.", true);
+    if (MODO_ARQUIVO3 || !reconhecimentoDisponivel()) {
+      balao({
+        de: "assistente",
+        texto: "Neste modo o microfone do app fica bloqueado pelo Android.\n\nToque no campo de texto aqui embaixo e use o 🎤 do seu próprio teclado. Eu entendo exatamente igual — pode falar “cadastrar pagamento do condomínio” ou “quais contas vencem esta semana”."
+      });
       $("#entrada-assistente").focus();
       return;
     }
@@ -3382,7 +3460,7 @@ fieldset.lembretes legend {
       onErro: (e) => {
         btn.classList.remove("ouvindo");
         $("#chat").querySelector(".balao.parcial")?.remove();
-        toast(e.message, true);
+        balao({ de: "assistente", texto: e.message });
         if (/microfone|reconhecimento de voz/i.test(e.message)) $("#entrada-assistente").focus();
       }
     });
@@ -3524,7 +3602,14 @@ fieldset.lembretes legend {
     $("#entrada-assistente").addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") enviarAoAssistente($("#entrada-assistente").value);
     });
+    if (MODO_ARQUIVO3) $("#btn-microfone").title = "Usar o microfone do teclado";
     $("#btn-microfone").addEventListener("click", alternarMicrofone);
+    $("#estado-assistente").addEventListener("click", (ev) => {
+      if (!ev.target.closest("#btn-cancelar-cadastro")) return;
+      estado.assistente.cancelar();
+      renderEstadoAssistente("");
+      if ($("#chk-falar").checked) calarBoca();
+    });
     $$(".dica").forEach((d) => d.addEventListener("click", () => enviarAoAssistente(d.dataset.frase)));
     $("#btn-permitir-notificacoes").addEventListener("click", async () => {
       const r = await pedirPermissao();
@@ -3586,7 +3671,7 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var VERSAO = "1.3.2";
+  var VERSAO = "1.4.0";
   var MODO_ARQUIVO4 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");
