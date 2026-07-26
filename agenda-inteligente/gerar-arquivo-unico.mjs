@@ -9,7 +9,7 @@
 // O código-fonte continua modular em js/ — este script só monta o pacote. Rode de novo
 // depois de qualquer alteração, senão o arquivo do celular fica desatualizado.
 
-import { readFile, writeFile, stat } from "node:fs/promises";
+import { readFile, writeFile, stat, readdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -17,7 +17,15 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const RAIZ = dirname(fileURLToPath(import.meta.url));
-const SAIDA = join(RAIZ, "AgendaInteligente.html");
+
+/** A versão vem do js/app.js — fonte única, para o arquivo nunca mentir sobre o que é. */
+const VERSAO = (await readFile(join(RAIZ, "js", "app.js"), "utf8")).match(
+  /export const VERSAO = "([^"]+)"/
+)?.[1];
+if (!VERSAO) throw new Error("Não achei a constante VERSAO em js/app.js");
+
+const NOME = `AgendaInteligente-v${VERSAO}.html`;
+const SAIDA = join(RAIZ, NOME);
 
 const ESBUILD = join(RAIZ, "..", "node_modules", ".bin", "esbuild");
 
@@ -63,7 +71,7 @@ montado = trocar(montado, /\s*<script type="module" src="\.\/js\/app\.js"><\/scr
 montado = trocar(
   montado,
   "<title>Agenda Inteligente</title>",
-  "<title>Agenda Inteligente</title>\n    <!-- Arquivo único gerado por gerar-arquivo-unico.mjs — não editar à mão. -->"
+  `<title>Agenda Inteligente</title>\n    <!-- Agenda Inteligente v${VERSAO} — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->`
 );
 
 if (montado.includes("./js/app.js") || montado.includes("./css/style.css")) {
@@ -74,7 +82,19 @@ if (!/\$\$\s*=/.test(montado) || !montado.includes("$$(")) {
   throw new Error('O helper "$$" sumiu do bundle — substituição comeu o cifrão duplo.');
 }
 
+// o rodapé e o "Sobre" são preenchidos pelo app; aqui garantimos que a versão
+// esteja no arquivo mesmo antes de ele rodar
+if (!montado.includes(`v${VERSAO}`)) throw new Error("A versão não aparece no HTML gerado.");
+
+// só uma cópia na pasta: versões antigas confundem na hora de mandar para o celular
+for (const arquivo of await readdir(RAIZ)) {
+  if (/^AgendaInteligente.*\.html$/.test(arquivo) && arquivo !== NOME) {
+    await unlink(join(RAIZ, arquivo));
+    console.log(`  removido: ${arquivo}`);
+  }
+}
+
 await writeFile(SAIDA, montado, "utf8");
 const tamanho = (Buffer.byteLength(montado) / 1024).toFixed(0);
-console.log(`\n  AgendaInteligente.html gerado (${tamanho} KB, tudo embutido)`);
+console.log(`\n  ${NOME} gerado (${tamanho} KB, tudo embutido)`);
 console.log(`  → ${SAIDA}\n`);

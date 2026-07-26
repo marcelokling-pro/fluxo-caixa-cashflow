@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.4.0
+# Agenda Inteligente de Compromissos — v1.4.1
 
 App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
 gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e
@@ -8,9 +8,13 @@ do próprio aparelho.
 
 ## Levar para o celular (arquivo único)
 
-**`AgendaInteligente.html`** é o app inteiro num arquivo só (121 KB): CSS, JavaScript e ícone
-embutidos, sem depender de servidor, internet, hospedagem ou build. É esse arquivo que vai
-para o aparelho.
+**`AgendaInteligente-v<versão>.html`** é o app inteiro num arquivo só (~131 KB): CSS,
+JavaScript e ícone embutidos, sem depender de servidor, internet, hospedagem ou build. É esse
+arquivo que vai para o aparelho.
+
+A versão aparece em três lugares, justamente para não haver dúvida sobre qual cópia está
+aberta no celular: no **nome do arquivo**, no **rodapé** de todas as telas (`MKK · v…`) e em
+**Ajustes → Sobre**. O gerador apaga as versões anteriores da pasta, deixando só a atual.
 
 ```bash
 node agenda-inteligente/gerar-arquivo-unico.mjs    # ou: npm run agenda:arquivo

@@ -847,6 +847,27 @@ fieldset.lembretes legend {
   color: var(--texto-fraco);
 }
 
+/* ---------- Rodapé ---------- */
+
+.rodape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 18px 0 4px;
+  margin-top: 8px;
+  border-top: 1px solid var(--borda);
+  font-size: 12px;
+  color: var(--texto-fraco);
+  letter-spacing: 0.5px;
+}
+
+.rodape .marca {
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1.4px;
+}
+
 /* ---------- Toast ---------- */
 
 .toast {
@@ -908,7 +929,7 @@ fieldset.lembretes legend {
 
     </style>
     <title>Agenda Inteligente</title>
-    <!-- Arquivo único gerado por gerar-arquivo-unico.mjs — não editar à mão. -->
+    <!-- Agenda Inteligente v1.4.1 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1065,6 +1086,10 @@ fieldset.lembretes legend {
           <p id="status-sw" class="ajuda"></p>
         </div>
       </section>
+      <footer class="rodape">
+        <span class="marca">MKK</span>
+        <span id="rodape-versao">v1.4.1</span>
+      </footer>
     </main>
 
     <button id="btn-novo" class="fab" title="Novo compromisso">+</button>
@@ -3671,7 +3696,7 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var VERSAO = "1.4.0";
+  var VERSAO = "1.4.1";
   var MODO_ARQUIVO4 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");
@@ -3728,6 +3753,8 @@ fieldset.lembretes legend {
   }
   async function iniciar3() {
     document.querySelector("#versao-app").textContent = "v" + VERSAO;
+    const rodape = document.querySelector("#rodape-versao");
+    if (rodape) rodape.textContent = "v" + VERSAO;
     try {
       await iniciar();
     } catch (e) {

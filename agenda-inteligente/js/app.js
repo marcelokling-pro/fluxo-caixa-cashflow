@@ -4,7 +4,7 @@ import * as db from "./db.js";
 import * as ui from "./ui.js";
 import * as notificacoes from "./notificacoes.js";
 
-export const VERSAO = "1.4.0";
+export const VERSAO = "1.4.1";
 
 /** Aberto direto do arquivo (sem servidor): o navegador desliga SW e notificações. */
 export const MODO_ARQUIVO = location.protocol === "file:";
@@ -69,7 +69,10 @@ function prepararInstalacao() {
 }
 
 async function iniciar() {
+  // versão em dois lugares visíveis, para nunca haver dúvida sobre qual cópia está aberta
   document.querySelector("#versao-app").textContent = "v" + VERSAO;
+  const rodape = document.querySelector("#rodape-versao");
+  if (rodape) rodape.textContent = "v" + VERSAO;
 
   // O banco escolhe sozinho o melhor armazenamento disponível (IndexedDB →
   // localStorage → memória). Só falha de verdade se nem isso funcionar.
