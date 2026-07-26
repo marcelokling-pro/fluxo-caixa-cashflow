@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
-    "agenda": "node agenda-inteligente/servir.mjs"
+    "agenda": "node agenda-inteligente/servir.mjs",
+    "agenda:arquivo": "node agenda-inteligente/gerar-arquivo-unico.mjs"
   },
   "keywords": [],
   "author": "",

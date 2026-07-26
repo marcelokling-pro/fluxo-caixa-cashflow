@@ -1,0 +1,3534 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0F1923" />
+    <meta name="description" content="Agenda Inteligente de Compromissos — lembretes, recorrência e assistente por voz, 100% offline." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Agenda" />
+    <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAD60lEQVR42u3dPWtTURjA8QsdOjg4O/dbRFdXN3FydBWEbA4OQungVyhCO2QrdCiIQ3Wsi4NbyRfo1K27D14Mos19zTG55/zgjxRJvOHpr/clObdWDx8dSIOrjEAACSABJIAkgASQABJAEkACSAAJIAkgASSABJAEkAASQAJIAEkACSABJIAkgASQABJAEkACSAAJIAkgASSABJAAkgASQAJoCj199uLt+w/Rze1dVH8df2kCALUPrh7ZurJntPEJFATo/NPX5tnVxcNMAKCBs8vYUKIJVI5cJRzL0k2gCEB9Z1dnAgAN/OHLbCeUdAL5A1pdrPYtnmgCAAEE0DYO/zmdBiWdAEAAAQQQQAABBBBAAAEEEEAAAQQQQAAZnwkABBBAAAEEEEC70oPHT/ZfPl9VnRw1N2Z8rf/4JEo7gam4CSt7717v3PgA2v39zTA3AAF0MJIOQOUCih3PNMYHUK47HoAKBbRZPQCVBWjjeqL51eWw2cUT8wCUdgJ56wGoFECJ9ESzi9Nh44sn5gEo7QQyu+ba4ElAHnqST2AnfsvV7v0IZrP7ST6BjA9ef3a2vO4+u3hwTnrSTiDvg9eACWapJ+EEStj9dN+TZ3bk+h8TyPvsZ90Q4wJ1dXFbf509nVQT2O4KjXK+Z9lWzvFLuQEyfYCmcf2lDAE5AQIIIAEkgFQioOrLR9MHaASgbwvTB8ibQAABJIAEkAACCCCABJAAEkAAAQSQABJAAggggAASQAJIAAEEEEDa9pJWZRBAAkgACSCAAAJIAAkgAQQQQAAJIAEkgAACCCABJIAEEEAATRXQ/ptXUY/fJvvr8TYK0GLv+HDUfw1zfGij5QIaOdNh384iNloIoK287CI2WgKgXqcCrScKNgoQQABtY6/e65WXslGAAALI9xIggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAgggyzks57CcAyCALGm1pNWieht1W4/betzW4x4/NxbKrc0AAQSQABJAAggggAASQAJIAAEEkI8yxm10vvwe3dzedax+vI8yfJi6mP343N3Nv8XTfZha7nKOkXqGGbKcI58FZeP11FlQVuKS1l4nPa2nRJa0AgSQ23r6vPJN6el1FHNbT0GA5leX0eziNP48W14DBFBXQMGlOjn6q5AEEEDtgO7V02oIIIB+U1ijpy4OZwABtBZQ+GgGFAEEEEAApQEUZzmtgO69IgMIIHsggEYDargEa74QAwigTkexde8oAgRQu6GG96MBAqjpZChINX+aARBAa9+Y9mGq5RyWcwAEEECWtFrSalG9RfVu63FbjxsL3VgIkNzaLIAAAgggAaQ0/QSXg1pwp7bCpwAAAABJRU5ErkJggg==" />
+    <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAD60lEQVR42u3dPWtTURjA8QsdOjg4O/dbRFdXN3FydBWEbA4OQungVyhCO2QrdCiIQ3Wsi4NbyRfo1K27D14Mos19zTG55/zgjxRJvOHpr/clObdWDx8dSIOrjEAACSABJIAkgASQABJAEkACSAAJIAkgASSABJAEkAASQAJIAEkACSABJIAkgASQABJAEkACSAAJIAkgASSABJAAkgASQAJoCj199uLt+w/Rze1dVH8df2kCALUPrh7ZurJntPEJFATo/NPX5tnVxcNMAKCBs8vYUKIJVI5cJRzL0k2gCEB9Z1dnAgAN/OHLbCeUdAL5A1pdrPYtnmgCAAEE0DYO/zmdBiWdAEAAAQQQQAABBBBAAAEEEEAAAQQQQAAZnwkABBBAAAEEEEC70oPHT/ZfPl9VnRw1N2Z8rf/4JEo7gam4CSt7717v3PgA2v39zTA3AAF0MJIOQOUCih3PNMYHUK47HoAKBbRZPQCVBWjjeqL51eWw2cUT8wCUdgJ56wGoFECJ9ESzi9Nh44sn5gEo7QQyu+ba4ElAHnqST2AnfsvV7v0IZrP7ST6BjA9ef3a2vO4+u3hwTnrSTiDvg9eACWapJ+EEStj9dN+TZ3bk+h8TyPvsZ90Q4wJ1dXFbf509nVQT2O4KjXK+Z9lWzvFLuQEyfYCmcf2lDAE5AQIIIAEkgFQioOrLR9MHaASgbwvTB8ibQAABJIAEkAACCCCABJAAEkAAAQSQABJAAggggAASQAJIAAEEEEDa9pJWZRBAAkgACSCAAAJIAAkgAQQQQAAJIAEkgAACCCABJIAEEEAATRXQ/ptXUY/fJvvr8TYK0GLv+HDUfw1zfGij5QIaOdNh384iNloIoK287CI2WgKgXqcCrScKNgoQQABtY6/e65WXslGAAALI9xIggAACCCCAAAIIIIAAAggggAACCCCAAAIIIIAAAgggyzks57CcAyCALGm1pNWieht1W4/betzW4x4/NxbKrc0AAQSQABJAAggggAASQAJIAAEEkI8yxm10vvwe3dzedax+vI8yfJi6mP343N3Nv8XTfZha7nKOkXqGGbKcI58FZeP11FlQVuKS1l4nPa2nRJa0AgSQ23r6vPJN6el1FHNbT0GA5leX0eziNP48W14DBFBXQMGlOjn6q5AEEEDtgO7V02oIIIB+U1ijpy4OZwABtBZQ+GgGFAEEEEAApQEUZzmtgO69IgMIIHsggEYDargEa74QAwigTkexde8oAgRQu6GG96MBAqjpZChINX+aARBAa9+Y9mGq5RyWcwAEEECWtFrSalG9RfVu63FbjxsL3VgIkNzaLIAAAgggAaQ0/QSXg1pwp7bCpwAAAABJRU5ErkJggg==" />
+    <style>
+/* style.css — tema escuro, mobile-first. Paleta alinhada ao app de Fluxo de Caixa. */
+
+:root {
+  --fundo: #0f1923;
+  --card: #162130;
+  --card-alto: #1c2a3c;
+  --borda: #24344a;
+  --texto: #e8eef5;
+  --texto-fraco: #8fa3ba;
+  --accent: #00c9a7;
+  --accent-escuro: #00a288;
+  --perigo: #e8445a;
+  --alerta: #f5a623;
+  --info: #4c9aff;
+  --raio: 14px;
+  --sombra: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  padding-bottom: 96px;
+  overscroll-behavior-y: contain;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- Topo ---------- */
+
+.topo {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: linear-gradient(180deg, #0f1923 70%, rgba(15, 25, 35, 0.92));
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 16px 8px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.topo-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.topo h1 {
+  font-size: 19px;
+  letter-spacing: 0.2px;
+}
+
+.topo h1 span {
+  color: var(--accent);
+  margin-left: 5px;
+  font-weight: 400;
+}
+
+.topo-acoes {
+  display: flex;
+  gap: 6px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chip {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  color: var(--texto-fraco);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chip.ok {
+  color: var(--accent);
+  border-color: rgba(0, 201, 167, 0.4);
+}
+.chip.alerta {
+  color: var(--alerta);
+  border-color: rgba(245, 166, 35, 0.4);
+}
+.chip.erro {
+  color: var(--perigo);
+  border-color: rgba(232, 68, 90, 0.4);
+}
+.chip.acao {
+  cursor: pointer;
+}
+.chip.remover::after {
+  content: "✕";
+  opacity: 0.6;
+  font-size: 10px;
+}
+
+/* ---------- Abas ---------- */
+
+.abas {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px 0;
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: var(--fundo);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.abas::-webkit-scrollbar {
+  display: none;
+}
+
+.aba {
+  flex: 1 0 auto;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--texto-fraco);
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.aba.ativa {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+main {
+  padding: 12px;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.view {
+  display: none;
+}
+.view.ativa {
+  display: block;
+}
+
+/* ---------- Cards de resumo ---------- */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 12px;
+}
+
+.card .rotulo {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--texto-fraco);
+}
+
+.card .valor {
+  font-size: 21px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.card .sub {
+  font-size: 12px;
+  color: var(--texto-fraco);
+  margin-top: 2px;
+}
+
+.card.perigo .valor {
+  color: var(--perigo);
+}
+.card.ok .valor {
+  color: var(--accent);
+}
+.card.alerta .valor {
+  color: var(--alerta);
+}
+
+/* ---------- Aviso de lembretes na tela ---------- */
+
+.aviso {
+  background: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  border-radius: var(--raio);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.aviso[hidden] {
+  display: none;
+}
+
+.aviso h2 {
+  font-size: 13px;
+  color: var(--alerta);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+
+.aviso .linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  border-top: 1px solid rgba(245, 166, 35, 0.2);
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.aviso .linha:first-of-type {
+  border-top: none;
+}
+
+.aviso .quando {
+  color: var(--alerta);
+  white-space: nowrap;
+}
+
+.aviso .nota {
+  font-size: 11.5px;
+  color: var(--texto-fraco);
+  margin-top: 8px;
+}
+
+/* ---------- Blocos e listas ---------- */
+
+.bloco {
+  margin-bottom: 20px;
+}
+
+.bloco h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--texto-fraco);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cont {
+  background: var(--card-alto);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--texto);
+}
+
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--info);
+  border-radius: var(--raio);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.item:active {
+  background: var(--card-alto);
+}
+
+.item-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.item-titulo {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-valor {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--texto-fraco);
+}
+
+.item.pago {
+  opacity: 0.62;
+}
+.item.pago .item-titulo {
+  text-decoration: line-through;
+}
+
+.tag {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  border: 1px solid currentColor;
+}
+
+.vazio {
+  color: var(--texto-fraco);
+  font-size: 13px;
+  padding: 10px 2px;
+}
+
+/* ---------- Filtros ---------- */
+
+.filtros {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 10px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filtros-linha {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.filtros-linha > * {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+
+.filtros-avancados summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--texto-fraco);
+  padding: 4px 0;
+}
+
+.filtros-avancados[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 9px 10px;
+  outline: none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+}
+
+label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--texto-fraco);
+}
+
+label input,
+label select,
+label textarea {
+  margin-top: 4px;
+  color: var(--texto);
+}
+
+.contador {
+  font-size: 12.5px;
+  color: var(--texto-fraco);
+  margin: 0 2px 8px;
+}
+
+/* ---------- Botões ---------- */
+
+.btn-primario,
+.btn-secundario {
+  border-radius: 10px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn-primario {
+  background: var(--accent);
+  color: #04231e;
+  font-weight: 600;
+}
+
+.btn-primario:active {
+  background: var(--accent-escuro);
+}
+
+.btn-secundario {
+  background: var(--card-alto);
+  border-color: var(--borda);
+  color: var(--texto);
+}
+
+.btn-secundario.largo,
+.btn-primario.largo {
+  width: 100%;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.btn-perigo {
+  background: transparent;
+  border: 1px solid var(--perigo);
+  color: var(--perigo);
+  border-radius: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.btn-icone {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  color: var(--texto);
+  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.arquivo {
+  display: block;
+  cursor: pointer;
+}
+
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #04231e;
+  border: none;
+  font-size: 30px;
+  line-height: 1;
+  box-shadow: var(--sombra);
+  cursor: pointer;
+  z-index: 30;
+}
+
+/* ---------- Assistente ---------- */
+
+.chat {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 12px;
+  min-height: 220px;
+  max-height: 46vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.balao {
+  max-width: 86%;
+  padding: 9px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+.balao.assistente {
+  background: var(--card-alto);
+  border-top-left-radius: 4px;
+  align-self: flex-start;
+}
+
+.balao.usuario {
+  background: var(--accent);
+  color: #04231e;
+  border-top-right-radius: 4px;
+  align-self: flex-end;
+}
+
+.balao.parcial {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.balao .itens {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--texto-fraco);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dicas {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 0;
+  scrollbar-width: none;
+}
+
+.dicas::-webkit-scrollbar {
+  display: none;
+}
+
+.dica {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  color: var(--texto-fraco);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.barra-assistente {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.barra-assistente input {
+  flex: 1;
+}
+
+.btn-mic {
+  width: 46px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--borda);
+  background: var(--card-alto);
+  font-size: 20px;
+  cursor: pointer;
+  flex: none;
+}
+
+.btn-mic.ouvindo {
+  background: var(--perigo);
+  border-color: var(--perigo);
+  animation: pulsar 1.1s infinite;
+}
+
+@keyframes pulsar {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.linha-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--texto-fraco);
+}
+
+.linha-check input {
+  width: auto;
+}
+
+.ajuda {
+  font-size: 12.5px;
+  color: var(--texto-fraco);
+  margin: 6px 0;
+}
+
+/* ---------- Modais ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 12, 18, 0.72);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-caixa {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-width: 640px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  animation: subir 0.18s ease-out;
+}
+
+@keyframes subir {
+  from { transform: translateY(18px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.modal-topo h2 {
+  font-size: 17px;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-linha {
+  display: flex;
+  gap: 10px;
+}
+
+.form-linha > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-acoes {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.form-acoes > * {
+  flex: 1;
+}
+
+fieldset.lembretes {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 10px;
+}
+
+fieldset.lembretes legend {
+  font-size: 12.5px;
+  color: var(--texto-fraco);
+  padding: 0 6px;
+}
+
+.chip-lembrete {
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--texto-fraco);
+}
+
+.chip-lembrete.ativo {
+  background: rgba(0, 201, 167, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- Detalhe ---------- */
+
+.detalhe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.detalhe-item {
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.detalhe-item .rotulo {
+  font-size: 11px;
+  color: var(--texto-fraco);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detalhe-item .conteudo {
+  font-size: 14px;
+  margin-top: 2px;
+  word-break: break-word;
+}
+
+.acoes-detalhe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.acoes-detalhe > button {
+  flex: 1 1 45%;
+}
+
+.historico {
+  border-top: 1px solid var(--borda);
+  padding-top: 10px;
+}
+
+.historico h3 {
+  font-size: 13px;
+  color: var(--texto-fraco);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 8px;
+}
+
+.hist-item {
+  border-left: 2px solid var(--borda);
+  padding: 0 0 10px 10px;
+  margin-left: 3px;
+  font-size: 13px;
+}
+
+.hist-item .quando {
+  font-size: 11.5px;
+  color: var(--texto-fraco);
+}
+
+/* ---------- Toast ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 90px);
+  transform: translateX(-50%);
+  background: var(--card-alto);
+  border: 1px solid var(--borda);
+  color: var(--texto);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  box-shadow: var(--sombra);
+  z-index: 60;
+  max-width: 92vw;
+  text-align: center;
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+.toast.erro {
+  border-color: var(--perigo);
+  color: #ffd7dd;
+}
+
+@media (min-width: 720px) {
+  .modal {
+    align-items: center;
+    padding: 20px;
+  }
+  .modal-caixa {
+    border-radius: 18px;
+  }
+}
+
+    </style>
+    <title>Agenda Inteligente</title>
+    <!-- Arquivo único gerado por gerar-arquivo-unico.mjs — não editar à mão. -->
+  </head>
+  <body>
+    <header class="topo">
+      <div class="topo-linha">
+        <h1>Agenda<span>Inteligente</span></h1>
+        <div class="topo-acoes">
+          <button id="btn-instalar" class="btn-icone" title="Instalar no celular" hidden>⬇</button>
+          <button id="btn-assistente-atalho" class="btn-icone" title="Assistente por voz">🎤</button>
+        </div>
+      </div>
+      <div id="chips-status" class="chips"></div>
+    </header>
+
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="painel" role="tab">Painel</button>
+      <button class="aba" data-aba="lista" role="tab">Compromissos</button>
+      <button class="aba" data-aba="assistente" role="tab">Assistente</button>
+      <button class="aba" data-aba="ajustes" role="tab">Ajustes</button>
+    </nav>
+
+    <main>
+      <!-- PAINEL -->
+      <section id="view-painel" class="view ativa">
+        <div id="aviso-lembretes" class="aviso" hidden></div>
+        <div id="resumo-cards" class="cards"></div>
+
+        <div class="bloco">
+          <h2>Vencidos <span id="cont-vencidos" class="cont"></span></h2>
+          <div id="lista-vencidos" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Hoje <span id="cont-hoje" class="cont"></span></h2>
+          <div id="lista-hoje" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Próximos 7 dias <span id="cont-proximos" class="cont"></span></h2>
+          <div id="lista-proximos" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Por categoria no mês</h2>
+          <div id="painel-categorias" class="lista"></div>
+        </div>
+      </section>
+
+      <!-- LISTA / BUSCA -->
+      <section id="view-lista" class="view">
+        <div class="filtros">
+          <input id="f-texto" type="search" placeholder="Buscar por nome, categoria, valor..." />
+          <div class="filtros-linha">
+            <select id="f-categoria"><option value="">Categoria: todas</option></select>
+            <select id="f-status"><option value="">Situação: todas</option></select>
+          </div>
+          <div class="filtros-linha">
+            <select id="f-prioridade"><option value="">Prioridade: todas</option></select>
+            <select id="f-recorrencia"><option value="">Recorrência: todas</option></select>
+          </div>
+          <details class="filtros-avancados">
+            <summary>Filtros por data e valor</summary>
+            <div class="filtros-linha">
+              <label>De <input id="f-de" type="date" /></label>
+              <label>Até <input id="f-ate" type="date" /></label>
+            </div>
+            <div class="filtros-linha">
+              <label>Valor mín. <input id="f-valor-min" type="number" step="0.01" inputmode="decimal" /></label>
+              <label>Valor máx. <input id="f-valor-max" type="number" step="0.01" inputmode="decimal" /></label>
+            </div>
+            <div class="filtros-linha">
+              <label>Ordenar por
+                <select id="f-ordem">
+                  <option value="data">Vencimento</option>
+                  <option value="valor">Valor</option>
+                  <option value="titulo">Título</option>
+                  <option value="prioridade">Prioridade</option>
+                </select>
+              </label>
+              <button id="btn-limpar-filtros" class="btn-secundario">Limpar filtros</button>
+            </div>
+          </details>
+        </div>
+        <p id="contador-lista" class="contador"></p>
+        <div id="lista-compromissos" class="lista"></div>
+      </section>
+
+      <!-- ASSISTENTE -->
+      <section id="view-assistente" class="view">
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <div id="assistente-dicas" class="dicas">
+          <button class="dica" data-frase="Cadastrar pagamento do condomínio">Cadastrar pagamento do condomínio</button>
+          <button class="dica" data-frase="Quais contas vencem esta semana?">Quais contas vencem esta semana?</button>
+          <button class="dica" data-frase="Tenho algum compromisso amanhã?">Tenho algum compromisso amanhã?</button>
+          <button class="dica" data-frase="Quanto preciso pagar este mês?">Quanto preciso pagar este mês?</button>
+          <button class="dica" data-frase="Qual o próximo compromisso?">Qual o próximo compromisso?</button>
+        </div>
+        <div class="barra-assistente">
+          <button id="btn-microfone" class="btn-mic" title="Falar">🎤</button>
+          <input id="entrada-assistente" type="text" placeholder="Fale ou digite um comando..." autocomplete="off" />
+          <button id="btn-enviar" class="btn-primario">Enviar</button>
+        </div>
+        <label class="linha-check">
+          <input id="chk-falar" type="checkbox" checked /> Responder em voz alta
+        </label>
+      </section>
+
+      <!-- AJUSTES -->
+      <section id="view-ajustes" class="view">
+        <div class="bloco">
+          <h2>Notificações</h2>
+          <p id="status-notificacoes" class="ajuda"></p>
+          <div class="filtros-linha">
+            <button id="btn-permitir-notificacoes" class="btn-primario">Permitir notificações</button>
+            <button id="btn-testar-notificacao" class="btn-secundario">Testar</button>
+          </div>
+          <button id="btn-verificar-lembretes" class="btn-secundario largo">Verificar lembretes agora</button>
+        </div>
+
+        <div class="bloco">
+          <h2>Categorias</h2>
+          <div class="filtros-linha">
+            <input id="nova-categoria" type="text" placeholder="Nova categoria" />
+            <button id="btn-add-categoria" class="btn-primario">Adicionar</button>
+          </div>
+          <div id="lista-categorias" class="chips"></div>
+        </div>
+
+        <div class="bloco">
+          <h2>Backup</h2>
+          <p class="ajuda">O backup em JSON contém compromissos, histórico, categorias e configurações.</p>
+          <div class="filtros-linha">
+            <button id="btn-exportar-json" class="btn-primario">Exportar JSON</button>
+            <button id="btn-exportar-csv" class="btn-secundario">Exportar CSV (Excel)</button>
+          </div>
+          <label class="linha-check">
+            <input id="chk-substituir" type="checkbox" /> Ao importar, substituir tudo (em vez de mesclar)
+          </label>
+          <label class="btn-secundario largo arquivo">
+            Importar backup
+            <input id="arquivo-backup" type="file" accept="application/json,.json" hidden />
+          </label>
+          <p id="status-backup" class="ajuda"></p>
+        </div>
+
+        <div class="bloco">
+          <h2>Armazenamento</h2>
+          <p id="status-armazenamento" class="ajuda"></p>
+        </div>
+
+        <div class="bloco">
+          <h2>Sobre</h2>
+          <p class="ajuda">
+            Agenda Inteligente <strong id="versao-app">v1.0.0</strong> — funciona offline, com dados
+            gravados apenas neste aparelho (IndexedDB). Nenhuma informação é enviada para a internet.
+          </p>
+          <p id="status-sw" class="ajuda"></p>
+        </div>
+      </section>
+    </main>
+
+    <button id="btn-novo" class="fab" title="Novo compromisso">+</button>
+
+    <!-- MODAL: cadastro/edição -->
+    <div id="modal-form" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2 id="titulo-modal-form">Novo compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-form">✕</button>
+        </div>
+        <form id="form-compromisso" class="formulario">
+          <input type="hidden" id="c-id" />
+          <label>Título *
+            <input id="c-titulo" type="text" required maxlength="120" placeholder="Ex.: Conta de luz" />
+          </label>
+          <label>Categoria *
+            <select id="c-categoria" required></select>
+          </label>
+          <div class="form-linha">
+            <label>Data *
+              <input id="c-data" type="date" required />
+            </label>
+            <label>Hora
+              <input id="c-hora" type="time" />
+            </label>
+          </div>
+          <div class="form-linha">
+            <label>Valor (R$)
+              <input id="c-valor" type="number" step="0.01" inputmode="decimal" placeholder="0,00" />
+            </label>
+            <label>Prioridade
+              <select id="c-prioridade"></select>
+            </label>
+          </div>
+          <label>Recorrência
+            <select id="c-recorrencia"></select>
+          </label>
+          <fieldset class="lembretes">
+            <legend>Lembretes</legend>
+            <div id="c-lembretes" class="chips"></div>
+            <div class="filtros-linha">
+              <input id="c-lembrete-custom" type="number" min="0" max="365" placeholder="Personalizado (dias antes)" />
+              <button type="button" id="btn-add-lembrete" class="btn-secundario">Incluir</button>
+            </div>
+          </fieldset>
+          <label>Descrição
+            <textarea id="c-descricao" rows="2" maxlength="500"></textarea>
+          </label>
+          <label>Observações
+            <textarea id="c-observacoes" rows="2" maxlength="500"></textarea>
+          </label>
+          <label id="linha-status" hidden>Situação
+            <select id="c-status"></select>
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-form">Cancelar</button>
+            <button type="submit" class="btn-primario">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: detalhe + histórico -->
+    <div id="modal-detalhe" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2 id="titulo-modal-detalhe">Compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-detalhe">✕</button>
+        </div>
+        <div id="detalhe-conteudo"></div>
+      </div>
+    </div>
+
+    <!-- MODAL: pagamento -->
+    <div id="modal-pagamento" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2>Registrar pagamento</h2>
+          <button class="btn-icone fechar" data-fechar="modal-pagamento">✕</button>
+        </div>
+        <form id="form-pagamento" class="formulario">
+          <input type="hidden" id="p-id" />
+          <p id="p-resumo" class="ajuda"></p>
+          <div class="form-linha">
+            <label>Data do pagamento
+              <input id="p-data" type="date" required />
+            </label>
+            <label>Valor pago
+              <input id="p-valor" type="number" step="0.01" inputmode="decimal" />
+            </label>
+          </div>
+          <label>Observação
+            <input id="p-obs" type="text" maxlength="200" />
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-pagamento">Cancelar</button>
+            <button type="submit" class="btn-primario">Confirmar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: adiar -->
+    <div id="modal-adiar" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2>Adiar compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-adiar">✕</button>
+        </div>
+        <form id="form-adiar" class="formulario">
+          <input type="hidden" id="a-id" />
+          <label>Nova data
+            <input id="a-data" type="date" required />
+          </label>
+          <label>Motivo
+            <input id="a-motivo" type="text" maxlength="200" />
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-adiar">Cancelar</button>
+            <button type="submit" class="btn-primario">Adiar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script>
+(() => {
+  // agenda-inteligente/js/model.js
+  var RECORRENCIAS = [
+    { id: "unico", label: "Único" },
+    { id: "diario", label: "Diário", dias: 1 },
+    { id: "semanal", label: "Semanal", dias: 7 },
+    { id: "quinzenal", label: "Quinzenal", dias: 14 },
+    { id: "mensal", label: "Mensal", meses: 1 },
+    { id: "bimestral", label: "Bimestral", meses: 2 },
+    { id: "trimestral", label: "Trimestral", meses: 3 },
+    { id: "semestral", label: "Semestral", meses: 6 },
+    { id: "anual", label: "Anual", meses: 12 }
+  ];
+  var PRIORIDADES = [
+    { id: "baixa", label: "Baixa", cor: "#5B7085" },
+    { id: "media", label: "Média", cor: "#00C9A7" },
+    { id: "alta", label: "Alta", cor: "#F5A623" },
+    { id: "urgente", label: "Urgente", cor: "#E8445A" }
+  ];
+  var STATUS = [
+    { id: "pendente", label: "Pendente", cor: "#4C9AFF" },
+    { id: "pago", label: "Pago", cor: "#00C9A7" },
+    { id: "atrasado", label: "Atrasado", cor: "#E8445A", derivado: true },
+    { id: "cancelado", label: "Cancelado", cor: "#5B7085" },
+    { id: "adiado", label: "Adiado", cor: "#F5A623" }
+  ];
+  var STATUS_ABERTOS = ["pendente", "adiado"];
+  var CATEGORIAS_PADRAO = [
+    "Contas",
+    "Cartão de Crédito",
+    "Condomínio",
+    "Aluguel",
+    "Impostos",
+    "Saúde",
+    "Seguros",
+    "Trabalho",
+    "Pessoal"
+  ];
+  var LEMBRETES_PRESET = [30, 15, 10, 7, 5, 3, 1, 0];
+  var TIPOS_HISTORICO = {
+    criado: "Criado",
+    alterado: "Alterado",
+    pago: "Pago",
+    status: "Situação alterada",
+    adiado: "Adiado",
+    gerado: "Gerado por recorrência",
+    restaurado: "Restaurado de backup",
+    excluido: "Excluído"
+  };
+  function uid() {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+  function agoraISO() {
+    return (/* @__PURE__ */ new Date()).toISOString();
+  }
+  function hojeISO(base = /* @__PURE__ */ new Date()) {
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, "0");
+    const d = String(base.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  function labelRecorrencia(id) {
+    return RECORRENCIAS.find((r) => r.id === id)?.label || "Único";
+  }
+  function labelPrioridade(id) {
+    return PRIORIDADES.find((p) => p.id === id)?.label || "Média";
+  }
+  function corPrioridade(id) {
+    return PRIORIDADES.find((p) => p.id === id)?.cor || "#00C9A7";
+  }
+  function labelStatus(id) {
+    return STATUS.find((s) => s.id === id)?.label || id;
+  }
+  function corStatus(id) {
+    return STATUS.find((s) => s.id === id)?.cor || "#5B7085";
+  }
+  function statusEfetivo(c, hoje = hojeISO()) {
+    if (STATUS_ABERTOS.includes(c.status) && c.data < hoje) return "atrasado";
+    return c.status;
+  }
+  function estaAberto(c) {
+    return STATUS_ABERTOS.includes(c.status);
+  }
+  function novoCompromisso(dados = {}) {
+    const criadoEm = dados.criadoEm || agoraISO();
+    return {
+      id: dados.id || uid(),
+      serieId: dados.serieId || dados.id || uid(),
+      origemId: dados.origemId || null,
+      titulo: (dados.titulo || "").trim() || "Sem título",
+      descricao: (dados.descricao || "").trim(),
+      categoria: (dados.categoria || "Pessoal").trim(),
+      data: dados.data || hojeISO(),
+      hora: dados.hora || "",
+      valor: dados.valor === "" || dados.valor == null ? null : Number(dados.valor),
+      prioridade: dados.prioridade || "media",
+      observacoes: (dados.observacoes || "").trim(),
+      recorrencia: dados.recorrencia || "unico",
+      lembretes: Array.isArray(dados.lembretes) ? [...new Set(dados.lembretes.map(Number))].sort((a, b) => b - a) : [1],
+      status: dados.status || "pendente",
+      pagamento: dados.pagamento || null,
+      criadoEm,
+      atualizadoEm: dados.atualizadoEm || criadoEm
+    };
+  }
+  function novoHistorico(compromissoId, tipo, descricao, dados = null) {
+    return { id: uid(), compromissoId, tipo, descricao, dados, em: agoraISO() };
+  }
+  function formatarMoeda(v) {
+    if (v == null || v === "" || Number.isNaN(Number(v))) return "—";
+    return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
+  function formatarData(iso2) {
+    if (!iso2) return "—";
+    const [y, m, d] = iso2.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  function formatarDataHora(isoTimestamp) {
+    if (!isoTimestamp) return "—";
+    const d = new Date(isoTimestamp);
+    return d.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  }
+  function labelLembrete(dias) {
+    if (dias === 0) return "No dia";
+    if (dias === 1) return "1 dia antes";
+    return `${dias} dias antes`;
+  }
+
+  // agenda-inteligente/js/db.js
+  var DB_NOME = "agenda-inteligente";
+  var DB_VERSAO = 1;
+  var STORES = {
+    compromissos: "compromissos",
+    historico: "historico",
+    categorias: "categorias",
+    config: "config",
+    lembretes: "lembretes_enviados"
+  };
+  var _db = null;
+  var ouvintes = /* @__PURE__ */ new Set();
+  function onMudanca(fn) {
+    ouvintes.add(fn);
+    return () => ouvintes.delete(fn);
+  }
+  function notificar(motivo) {
+    ouvintes.forEach((fn) => {
+      try {
+        fn(motivo);
+      } catch (e) {
+        console.error("[db] ouvinte falhou", e);
+      }
+    });
+  }
+  function abrir() {
+    if (_db) return Promise.resolve(_db);
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NOME, DB_VERSAO);
+      req.onupgradeneeded = (ev) => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORES.compromissos)) {
+          const s = db.createObjectStore(STORES.compromissos, { keyPath: "id" });
+          s.createIndex("data", "data");
+          s.createIndex("status", "status");
+          s.createIndex("categoria", "categoria");
+          s.createIndex("serieId", "serieId");
+        }
+        if (!db.objectStoreNames.contains(STORES.historico)) {
+          const h = db.createObjectStore(STORES.historico, { keyPath: "id" });
+          h.createIndex("compromissoId", "compromissoId");
+          h.createIndex("em", "em");
+        }
+        if (!db.objectStoreNames.contains(STORES.categorias)) {
+          db.createObjectStore(STORES.categorias, { keyPath: "nome" });
+        }
+        if (!db.objectStoreNames.contains(STORES.config)) {
+          db.createObjectStore(STORES.config, { keyPath: "chave" });
+        }
+        if (!db.objectStoreNames.contains(STORES.lembretes)) {
+          const l = db.createObjectStore(STORES.lembretes, { keyPath: "id" });
+          l.createIndex("compromissoId", "compromissoId");
+        }
+        console.info("[db] schema criado/atualizado para v" + DB_VERSAO, ev.oldVersion);
+      };
+      req.onsuccess = () => {
+        _db = req.result;
+        _db.onversionchange = () => {
+          _db.close();
+          _db = null;
+        };
+        resolve(_db);
+      };
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => console.warn("[db] abertura bloqueada por outra aba");
+    });
+  }
+  function tx(stores, modo = "readonly") {
+    return abrir().then((db) => db.transaction(stores, modo));
+  }
+  function pedido(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function concluir(transacao) {
+    return new Promise((resolve, reject) => {
+      transacao.oncomplete = () => resolve();
+      transacao.onerror = () => reject(transacao.error);
+      transacao.onabort = () => reject(transacao.error || new Error("transação abortada"));
+    });
+  }
+  async function listar(store) {
+    const t = await tx(store);
+    return pedido(t.objectStore(store).getAll());
+  }
+  async function obter(store, chave) {
+    const t = await tx(store);
+    return pedido(t.objectStore(store).get(chave));
+  }
+  async function gravar(store, registro, motivo = store) {
+    const t = await tx(store, "readwrite");
+    t.objectStore(store).put(registro);
+    await concluir(t);
+    notificar(motivo);
+    return registro;
+  }
+  async function gravarVarios(store, registros, motivo = store) {
+    if (!registros.length) return;
+    const t = await tx(store, "readwrite");
+    const s = t.objectStore(store);
+    registros.forEach((r) => s.put(r));
+    await concluir(t);
+    notificar(motivo);
+  }
+  async function remover(store, chave, motivo = store) {
+    const t = await tx(store, "readwrite");
+    t.objectStore(store).delete(chave);
+    await concluir(t);
+    notificar(motivo);
+  }
+  async function limparStore(store) {
+    const t = await tx(store, "readwrite");
+    t.objectStore(store).clear();
+    await concluir(t);
+  }
+  function listarCompromissos() {
+    return listar(STORES.compromissos);
+  }
+  function obterCompromisso(id) {
+    return obter(STORES.compromissos, id);
+  }
+  async function salvarCompromisso(compromisso, historico = null) {
+    const stores = historico ? [STORES.compromissos, STORES.historico] : [STORES.compromissos];
+    const t = await tx(stores, "readwrite");
+    t.objectStore(STORES.compromissos).put(compromisso);
+    if (historico) t.objectStore(STORES.historico).put(historico);
+    await concluir(t);
+    notificar("compromissos");
+    return compromisso;
+  }
+  async function salvarLote(compromissos = [], historicos = []) {
+    const t = await tx([STORES.compromissos, STORES.historico], "readwrite");
+    const sc = t.objectStore(STORES.compromissos);
+    const sh = t.objectStore(STORES.historico);
+    compromissos.forEach((c) => sc.put(c));
+    historicos.forEach((h) => sh.put(h));
+    await concluir(t);
+    notificar("compromissos");
+  }
+  async function excluirCompromisso(id, titulo = "") {
+    const t = await tx([STORES.compromissos, STORES.historico], "readwrite");
+    t.objectStore(STORES.compromissos).delete(id);
+    t.objectStore(STORES.historico).put(
+      novoHistorico(id, "excluido", `Compromisso "${titulo}" excluído em ${agoraISO()}`)
+    );
+    await concluir(t);
+    notificar("compromissos");
+  }
+  async function historicoDe(compromissoId) {
+    const t = await tx(STORES.historico);
+    const idx = t.objectStore(STORES.historico).index("compromissoId");
+    const itens = await pedido(idx.getAll(compromissoId));
+    return itens.sort((a, b) => a.em < b.em ? 1 : -1);
+  }
+  function registrarHistorico(h) {
+    return gravar(STORES.historico, h, "historico");
+  }
+  async function listarCategorias() {
+    const itens = await listar(STORES.categorias);
+    return itens.map((c) => c.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }
+  async function adicionarCategoria(nome) {
+    const limpo = String(nome || "").trim();
+    if (!limpo) return null;
+    await gravar(STORES.categorias, { nome: limpo, criadaEm: agoraISO() }, "categorias");
+    return limpo;
+  }
+  function removerCategoria(nome) {
+    return remover(STORES.categorias, nome, "categorias");
+  }
+  async function config(chave, padrao = null) {
+    const r = await obter(STORES.config, chave);
+    return r ? r.valor : padrao;
+  }
+  function setConfig(chave, valor) {
+    return gravar(STORES.config, { chave, valor }, "config");
+  }
+  function listarLembretesEnviados() {
+    return listar(STORES.lembretes);
+  }
+  function marcarLembreteEnviado(registro) {
+    return gravar(STORES.lembretes, registro, "lembretes");
+  }
+  async function garantirPersistencia() {
+    if (!navigator.storage?.persist) return { suportado: false, persistente: false };
+    try {
+      const jaPersistente = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+      const persistente = jaPersistente || await navigator.storage.persist();
+      let uso = null;
+      if (navigator.storage.estimate) {
+        const e = await navigator.storage.estimate();
+        uso = { usado: e.usage || 0, cota: e.quota || 0 };
+      }
+      return { suportado: true, persistente, uso };
+    } catch (e) {
+      console.warn("[db] persistência não concedida", e);
+      return { suportado: true, persistente: false };
+    }
+  }
+  async function semear() {
+    await abrir();
+    const jaSemeado = await config("semeado", false);
+    if (jaSemeado) return;
+    const existentes = await listarCategorias();
+    const faltando = CATEGORIAS_PADRAO.filter((c) => !existentes.includes(c));
+    await gravarVarios(
+      STORES.categorias,
+      faltando.map((nome) => ({ nome, criadaEm: agoraISO(), padrao: true })),
+      "categorias"
+    );
+    await setConfig("semeado", true);
+  }
+  async function iniciar() {
+    await abrir();
+    await semear();
+    return abrir();
+  }
+
+  // agenda-inteligente/js/recorrencia.js
+  function paraData(iso2) {
+    const [y, m, d] = String(iso2).split("-").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  }
+  function paraISO(date) {
+    return hojeISO(date);
+  }
+  function somarDias(iso2, n) {
+    const d = paraData(iso2);
+    d.setDate(d.getDate() + n);
+    return paraISO(d);
+  }
+  function ultimoDiaDoMes(ano, mesZeroBased) {
+    return new Date(ano, mesZeroBased + 1, 0).getDate();
+  }
+  function somarMeses(iso2, n) {
+    const d = paraData(iso2);
+    const diaOriginal = d.getDate();
+    const alvoMes = d.getMonth() + n;
+    const ano = d.getFullYear() + Math.floor(alvoMes / 12);
+    const mes = (alvoMes % 12 + 12) % 12;
+    const dia = Math.min(diaOriginal, ultimoDiaDoMes(ano, mes));
+    return paraISO(new Date(ano, mes, dia));
+  }
+  function proximaData(iso2, recorrencia) {
+    const regra = RECORRENCIAS.find((r) => r.id === recorrencia);
+    if (!regra || regra.id === "unico") return null;
+    if (regra.dias) return somarDias(iso2, regra.dias);
+    if (regra.meses) return somarMeses(iso2, regra.meses);
+    return null;
+  }
+  function proximaDataFutura(iso2, recorrencia, referencia = hojeISO()) {
+    let prox = proximaData(iso2, recorrencia);
+    if (!prox) return null;
+    let guarda = 0;
+    while (prox < referencia && guarda < 500) {
+      const seguinte = proximaData(prox, recorrencia);
+      if (!seguinte) break;
+      prox = seguinte;
+      guarda++;
+    }
+    return prox;
+  }
+  function diffDias(a, b) {
+    const MS = 24 * 60 * 60 * 1e3;
+    return Math.round((paraData(b).getTime() - paraData(a).getTime()) / MS);
+  }
+  function semanaDe(iso2 = hojeISO()) {
+    const d = paraData(iso2);
+    const dow = (d.getDay() + 6) % 7;
+    const inicio = somarDias(iso2, -dow);
+    return { inicio, fim: somarDias(inicio, 6) };
+  }
+  function mesDe(iso2 = hojeISO()) {
+    const d = paraData(iso2);
+    const ano = d.getFullYear();
+    const mes = d.getMonth();
+    return {
+      inicio: paraISO(new Date(ano, mes, 1)),
+      fim: paraISO(new Date(ano, mes, ultimoDiaDoMes(ano, mes)))
+    };
+  }
+  function dentroDoIntervalo(iso2, inicio, fim) {
+    return iso2 >= inicio && iso2 <= fim;
+  }
+
+  // agenda-inteligente/js/servico.js
+  var CAMPOS_RASTREADOS = {
+    titulo: "Título",
+    descricao: "Descrição",
+    categoria: "Categoria",
+    data: "Data",
+    hora: "Hora",
+    valor: "Valor",
+    prioridade: "Prioridade",
+    observacoes: "Observações",
+    recorrencia: "Recorrência",
+    lembretes: "Lembretes",
+    status: "Situação"
+  };
+  function exibir(campo2, valor) {
+    if (valor == null || valor === "") return "—";
+    switch (campo2) {
+      case "valor":
+        return formatarMoeda(valor);
+      case "data":
+        return formatarData(valor);
+      case "lembretes":
+        return (Array.isArray(valor) ? valor : [valor]).map(labelLembrete).join(", ") || "—";
+      case "recorrencia":
+        return labelRecorrencia(valor);
+      case "status":
+        return labelStatus(valor);
+      case "prioridade":
+        return labelPrioridade(valor);
+      default:
+        return Array.isArray(valor) ? valor.join(", ") : String(valor);
+    }
+  }
+  function descreverAlteracoes(antes, depois) {
+    const mudancas = [];
+    for (const [campo2, rotulo] of Object.entries(CAMPOS_RASTREADOS)) {
+      const a = Array.isArray(antes[campo2]) ? antes[campo2].join(", ") : antes[campo2] ?? "";
+      const b = Array.isArray(depois[campo2]) ? depois[campo2].join(", ") : depois[campo2] ?? "";
+      if (String(a) !== String(b))
+        mudancas.push(`${rotulo}: "${exibir(campo2, antes[campo2])}" → "${exibir(campo2, depois[campo2])}"`);
+    }
+    return mudancas;
+  }
+  async function criar(dados) {
+    const c = novoCompromisso(dados);
+    const h = novoHistorico(
+      c.id,
+      "criado",
+      `Criado para ${formatarData(c.data)}${c.valor ? " — " + formatarMoeda(c.valor) : ""} (${labelRecorrencia(c.recorrencia)})`,
+      { data: c.data, valor: c.valor }
+    );
+    await salvarCompromisso(c, h);
+    return c;
+  }
+  async function atualizar(id, dados) {
+    const antes = await obterCompromisso(id);
+    if (!antes) throw new Error("Compromisso não encontrado: " + id);
+    const depois = novoCompromisso({
+      ...antes,
+      ...dados,
+      id: antes.id,
+      serieId: antes.serieId,
+      criadoEm: antes.criadoEm,
+      atualizadoEm: agoraISO()
+    });
+    const mudancas = descreverAlteracoes(antes, depois);
+    if (!mudancas.length) return antes;
+    const h = novoHistorico(id, "alterado", mudancas.join(" | "), { mudancas });
+    await salvarCompromisso(depois, h);
+    return depois;
+  }
+  async function marcarPago(id, { data = hojeISO(), valor, observacao = "" } = {}) {
+    const atual = await obterCompromisso(id);
+    if (!atual) throw new Error("Compromisso não encontrado: " + id);
+    const valorPago = valor === void 0 || valor === "" || valor === null ? atual.valor : Number(valor);
+    const pago = {
+      ...atual,
+      status: "pago",
+      pagamento: { data, valor: valorPago, observacao },
+      atualizadoEm: agoraISO()
+    };
+    const historicos = [
+      novoHistorico(
+        id,
+        "pago",
+        `Pago em ${formatarData(data)}${valorPago ? " — " + formatarMoeda(valorPago) : ""}${observacao ? " (" + observacao + ")" : ""}`,
+        { data, valor: valorPago, observacao }
+      )
+    ];
+    const compromissos = [pago];
+    let proximo = null;
+    const proximaData2 = proximaDataFutura(atual.data, atual.recorrencia, hojeISO());
+    if (proximaData2) {
+      proximo = novoCompromisso({
+        ...atual,
+        id: uid(),
+        serieId: atual.serieId,
+        origemId: atual.id,
+        data: proximaData2,
+        status: "pendente",
+        pagamento: null,
+        criadoEm: agoraISO(),
+        atualizadoEm: agoraISO()
+      });
+      compromissos.push(proximo);
+      historicos.push(
+        novoHistorico(
+          proximo.id,
+          "gerado",
+          `Gerado automaticamente (${labelRecorrencia(atual.recorrencia)}) a partir de ${formatarData(atual.data)}`,
+          { origemId: atual.id, data: proximaData2 }
+        )
+      );
+    }
+    await salvarLote(compromissos, historicos);
+    return { atual: pago, proximo };
+  }
+  async function reabrir(id) {
+    const atual = await obterCompromisso(id);
+    if (!atual) throw new Error("Compromisso não encontrado: " + id);
+    const aberto = { ...atual, status: "pendente", pagamento: null, atualizadoEm: agoraISO() };
+    const h = novoHistorico(id, "status", "Reaberto como pendente");
+    await salvarCompromisso(aberto, h);
+    return aberto;
+  }
+  async function mudarStatus(id, status) {
+    const atual = await obterCompromisso(id);
+    if (!atual) throw new Error("Compromisso não encontrado: " + id);
+    const novo = { ...atual, status, atualizadoEm: agoraISO() };
+    const h = novoHistorico(id, "status", `Situação: ${labelStatus(atual.status)} → ${labelStatus(status)}`);
+    await salvarCompromisso(novo, h);
+    return novo;
+  }
+  async function adiar(id, novaData, motivo = "") {
+    const atual = await obterCompromisso(id);
+    if (!atual) throw new Error("Compromisso não encontrado: " + id);
+    const novo = { ...atual, data: novaData, status: "adiado", atualizadoEm: agoraISO() };
+    const h = novoHistorico(
+      id,
+      "adiado",
+      `Adiado de ${formatarData(atual.data)} para ${formatarData(novaData)}${motivo ? " — " + motivo : ""}`,
+      { de: atual.data, para: novaData, motivo }
+    );
+    await salvarCompromisso(novo, h);
+    return novo;
+  }
+  async function excluir(id) {
+    const atual = await obterCompromisso(id);
+    await excluirCompromisso(id, atual?.titulo || "");
+  }
+  async function carregarTudo() {
+    const [compromissos, categorias] = await Promise.all([
+      listarCompromissos(),
+      listarCategorias()
+    ]);
+    return { compromissos, categorias };
+  }
+
+  // agenda-inteligente/js/consultas.js
+  function normalizar(txt) {
+    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  function ordenarPorData(lista) {
+    return [...lista].sort((a, b) => {
+      if (a.data !== b.data) return a.data < b.data ? -1 : 1;
+      return (a.hora || "99:99").localeCompare(b.hora || "99:99");
+    });
+  }
+  function filtrar(lista, filtros = {}, hoje = hojeISO()) {
+    const texto = normalizar(filtros.texto);
+    return lista.filter((c) => {
+      const st = statusEfetivo(c, hoje);
+      if (filtros.categoria && c.categoria !== filtros.categoria) return false;
+      if (filtros.status && st !== filtros.status) return false;
+      if (filtros.prioridade && c.prioridade !== filtros.prioridade) return false;
+      if (filtros.recorrencia && c.recorrencia !== filtros.recorrencia) return false;
+      if (filtros.de && c.data < filtros.de) return false;
+      if (filtros.ate && c.data > filtros.ate) return false;
+      if (filtros.valorMin != null && filtros.valorMin !== "" && Number(c.valor || 0) < Number(filtros.valorMin)) return false;
+      if (filtros.valorMax != null && filtros.valorMax !== "" && Number(c.valor || 0) > Number(filtros.valorMax)) return false;
+      if (texto) {
+        const alvo = normalizar(
+          [c.titulo, c.descricao, c.categoria, c.observacoes, c.valor, c.data].join(" ")
+        );
+        if (!alvo.includes(texto)) return false;
+      }
+      return true;
+    });
+  }
+  function vencidos(lista, hoje = hojeISO()) {
+    return ordenarPorData(lista.filter((c) => estaAberto(c) && c.data < hoje));
+  }
+  function doDia(lista, dia = hojeISO()) {
+    return ordenarPorData(lista.filter((c) => c.data === dia && c.status !== "cancelado"));
+  }
+  function proximos(lista, dias = 7, hoje = hojeISO()) {
+    const limite = somarDias(hoje, dias);
+    return ordenarPorData(
+      lista.filter((c) => estaAberto(c) && c.data > hoje && c.data <= limite)
+    );
+  }
+  function proximoCompromisso(lista, hoje = hojeISO()) {
+    return ordenarPorData(lista.filter((c) => estaAberto(c) && c.data >= hoje))[0] || null;
+  }
+  function noIntervalo(lista, inicio, fim, apenasAbertos = false) {
+    return ordenarPorData(
+      lista.filter(
+        (c) => dentroDoIntervalo(c.data, inicio, fim) && c.status !== "cancelado" && (!apenasAbertos || estaAberto(c))
+      )
+    );
+  }
+  function daSemana(lista, hoje = hojeISO()) {
+    const { inicio, fim } = semanaDe(hoje);
+    return noIntervalo(lista, inicio, fim);
+  }
+  function doMes(lista, hoje = hojeISO()) {
+    const { inicio, fim } = mesDe(hoje);
+    return noIntervalo(lista, inicio, fim);
+  }
+  function soma(lista) {
+    return lista.reduce((acc, c) => acc + Number(c.valor || 0), 0);
+  }
+  function resumo(lista, hoje = hojeISO()) {
+    const { inicio, fim } = mesDe(hoje);
+    const mes = lista.filter((c) => dentroDoIntervalo(c.data, inicio, fim) && c.status !== "cancelado");
+    const pagosMes = mes.filter((c) => c.status === "pago");
+    const abertosMes = mes.filter((c) => estaAberto(c));
+    const listaVencidos = vencidos(lista, hoje);
+    const listaHoje = doDia(lista, hoje).filter((c) => estaAberto(c));
+    const lista7 = proximos(lista, 7, hoje);
+    return {
+      vencidos: listaVencidos,
+      hoje: listaHoje,
+      proximos: lista7,
+      quantidadeMes: mes.length,
+      totalPrevistoMes: soma(mes),
+      totalPagoMes: soma(pagosMes),
+      totalPendenteMes: soma(abertosMes),
+      totalVencido: soma(listaVencidos),
+      periodoMes: { inicio, fim }
+    };
+  }
+  function porCategoria(lista) {
+    const mapa = /* @__PURE__ */ new Map();
+    lista.forEach((c) => {
+      const atual = mapa.get(c.categoria) || { categoria: c.categoria, quantidade: 0, total: 0 };
+      atual.quantidade++;
+      atual.total += Number(c.valor || 0);
+      mapa.set(c.categoria, atual);
+    });
+    return [...mapa.values()].sort((a, b) => b.total - a.total || a.categoria.localeCompare(b.categoria, "pt-BR"));
+  }
+  function rotuloRelativo(dataISO, hoje = hojeISO()) {
+    const d = diffDias(hoje, dataISO);
+    if (d === 0) return "hoje";
+    if (d === 1) return "amanhã";
+    if (d === -1) return "ontem";
+    if (d > 1) return `em ${d} dias`;
+    return `há ${Math.abs(d)} dias`;
+  }
+
+  // agenda-inteligente/js/backup.js
+  var FORMATO = "agenda-inteligente/backup";
+  var FORMATO_VERSAO = 1;
+  async function montarBackup() {
+    const [compromissos, historico, categorias, config2, lembretes] = await Promise.all([
+      listar(STORES.compromissos),
+      listar(STORES.historico),
+      listar(STORES.categorias),
+      listar(STORES.config),
+      listar(STORES.lembretes)
+    ]);
+    return {
+      formato: FORMATO,
+      versao: FORMATO_VERSAO,
+      exportadoEm: agoraISO(),
+      totais: { compromissos: compromissos.length, historico: historico.length },
+      compromissos,
+      historico,
+      categorias,
+      config: config2,
+      lembretes
+    };
+  }
+  function baixar(nome, conteudo, tipo) {
+    const blob = new Blob([conteudo], { type: tipo });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2e3);
+  }
+  async function exportarJSON() {
+    const backup = await montarBackup();
+    baixar(`agenda-backup-${hojeISO()}.json`, JSON.stringify(backup, null, 2), "application/json");
+    await setConfig("ultimoBackup", agoraISO());
+    return backup.totais;
+  }
+  var COLUNAS_CSV = [
+    ["titulo", "Título"],
+    ["categoria", "Categoria"],
+    ["data", "Vencimento"],
+    ["hora", "Hora"],
+    ["valor", "Valor"],
+    ["status", "Situação"],
+    ["prioridade", "Prioridade"],
+    ["recorrencia", "Recorrência"],
+    ["lembretes", "Lembretes (dias antes)"],
+    ["descricao", "Descrição"],
+    ["observacoes", "Observações"],
+    ["pagamentoData", "Data do pagamento"],
+    ["pagamentoValor", "Valor pago"]
+  ];
+  function campoCSV(v) {
+    const s = v == null ? "" : String(v);
+    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  async function exportarCSV(lista = null) {
+    const compromissos = lista || await listarCompromissos();
+    const linhas = [COLUNAS_CSV.map(([, rotulo]) => rotulo).join(";")];
+    compromissos.slice().sort((a, b) => a.data < b.data ? -1 : 1).forEach((c) => {
+      const plano = {
+        ...c,
+        data: formatarData(c.data),
+        valor: c.valor == null ? "" : String(c.valor).replace(".", ","),
+        lembretes: (c.lembretes || []).join(" / "),
+        pagamentoData: c.pagamento?.data ? formatarData(c.pagamento.data) : "",
+        pagamentoValor: c.pagamento?.valor != null ? String(c.pagamento.valor).replace(".", ",") : ""
+      };
+      linhas.push(COLUNAS_CSV.map(([campo2]) => campoCSV(plano[campo2])).join(";"));
+    });
+    baixar(`agenda-${hojeISO()}.csv`, "\uFEFF" + linhas.join("\r\n"), "text/csv;charset=utf-8");
+    return compromissos.length;
+  }
+  function validarBackup(dados) {
+    if (!dados || typeof dados !== "object") return "Arquivo inválido.";
+    if (dados.formato && dados.formato !== FORMATO) return "Este arquivo não é um backup da Agenda Inteligente.";
+    if (!Array.isArray(dados.compromissos)) return "Backup sem a lista de compromissos.";
+    if (dados.versao && Number(dados.versao) > FORMATO_VERSAO)
+      return "Backup gerado por uma versão mais nova do aplicativo.";
+    return null;
+  }
+  async function restaurar(dados, modo = "mesclar") {
+    const erro = validarBackup(dados);
+    if (erro) throw new Error(erro);
+    if (modo === "substituir") {
+      await Promise.all([
+        limparStore(STORES.compromissos),
+        limparStore(STORES.historico),
+        limparStore(STORES.categorias),
+        limparStore(STORES.lembretes)
+      ]);
+    }
+    const compromissos = dados.compromissos.map((c) => novoCompromisso(c));
+    const historico = Array.isArray(dados.historico) ? dados.historico : [];
+    const categorias = Array.isArray(dados.categorias) ? dados.categorias.map((c) => typeof c === "string" ? { nome: c, criadaEm: agoraISO() } : c) : [];
+    const lembretes = Array.isArray(dados.lembretes) ? dados.lembretes : [];
+    await gravarVarios(STORES.compromissos, compromissos, "compromissos");
+    await gravarVarios(STORES.historico, historico, "historico");
+    await gravarVarios(STORES.categorias, categorias, "categorias");
+    await gravarVarios(STORES.lembretes, lembretes, "lembretes");
+    await registrarHistorico(
+      novoHistorico(
+        "sistema",
+        "restaurado",
+        `Backup de ${dados.exportadoEm || "origem desconhecida"} restaurado (${modo}): ${compromissos.length} compromissos`
+      )
+    );
+    await setConfig("ultimaRestauracao", agoraISO());
+    return { compromissos: compromissos.length, historico: historico.length, categorias: categorias.length };
+  }
+  function lerArquivo(file) {
+    return new Promise((resolve, reject) => {
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        try {
+          resolve(JSON.parse(String(leitor.result)));
+        } catch (e) {
+          reject(new Error("Não foi possível ler o arquivo: JSON inválido."));
+        }
+      };
+      leitor.onerror = () => reject(leitor.error || new Error("Falha ao ler o arquivo."));
+      leitor.readAsText(file);
+    });
+  }
+
+  // agenda-inteligente/js/lembretes.js
+  function chaveLembrete(compromisso, dias) {
+    return `${compromisso.id}:${dias}:${compromisso.data}`;
+  }
+  function textoLembrete(c, dias) {
+    const quando = dias === 0 ? "vence hoje" : dias === 1 ? "vence amanhã" : `vence em ${dias} dias`;
+    const partes = [`${formatarData(c.data)}${c.hora ? " às " + c.hora : ""}`];
+    if (c.valor) partes.push(formatarMoeda(c.valor));
+    if (c.categoria) partes.push(c.categoria);
+    return {
+      titulo: `⏰ ${c.titulo} ${quando}`,
+      corpo: partes.join(" • ")
+    };
+  }
+  function lembretesDevidos(compromissos, enviados = /* @__PURE__ */ new Set(), hoje = hojeISO()) {
+    const devidos = [];
+    for (const c of compromissos) {
+      if (!estaAberto(c)) continue;
+      if (c.data < hoje) continue;
+      for (const dias of c.lembretes || []) {
+        const alvo = somarDias(c.data, -Number(dias));
+        if (alvo > hoje) continue;
+        const chave = chaveLembrete(c, dias);
+        if (enviados.has(chave)) continue;
+        devidos.push({ chave, compromisso: c, dias, ...textoLembrete(c, dias) });
+      }
+    }
+    return devidos.sort((a, b) => diffDias(hoje, a.compromisso.data) - diffDias(hoje, b.compromisso.data));
+  }
+  function avisosAtivos(compromissos, hoje = hojeISO()) {
+    const ativos = [];
+    for (const c of compromissos) {
+      if (!estaAberto(c)) continue;
+      if (c.data < hoje) continue;
+      const disparados = (c.lembretes || []).map(Number).filter((dias2) => somarDias(c.data, -dias2) <= hoje);
+      if (!disparados.length) continue;
+      const dias = Math.min(...disparados);
+      ativos.push({ compromisso: c, dias, ...textoLembrete(c, dias) });
+    }
+    return ativos.sort((a, b) => diffDias(hoje, a.compromisso.data) - diffDias(hoje, b.compromisso.data));
+  }
+  function proximoLembrete(c, hoje = hojeISO()) {
+    const futuros = (c.lembretes || []).map((dias) => ({ dias, alvo: somarDias(c.data, -Number(dias)) })).filter((l) => l.alvo >= hoje).sort((a, b) => a.alvo < b.alvo ? -1 : 1);
+    if (!futuros.length) return null;
+    return { ...futuros[0], label: labelLembrete(futuros[0].dias) };
+  }
+
+  // agenda-inteligente/js/notificacoes.js
+  var INTERVALO_MS = 60 * 1e3;
+  var timer = null;
+  var registroSW = null;
+  var MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
+  function suportado() {
+    return typeof Notification !== "undefined" && !MODO_ARQUIVO;
+  }
+  function permissao() {
+    return suportado() ? Notification.permission : "unsupported";
+  }
+  async function pedirPermissao() {
+    if (!suportado()) return "unsupported";
+    if (Notification.permission === "granted") return "granted";
+    try {
+      return await Notification.requestPermission();
+    } catch {
+      return Notification.permission;
+    }
+  }
+  function definirRegistroSW(reg) {
+    registroSW = reg;
+  }
+  async function exibir2(titulo, opcoes2) {
+    if (permissao() !== "granted") return false;
+    try {
+      const reg = registroSW || await navigator.serviceWorker?.getRegistration?.();
+      if (reg?.showNotification) {
+        await reg.showNotification(titulo, opcoes2);
+        return true;
+      }
+      new Notification(titulo, opcoes2);
+      return true;
+    } catch (e) {
+      console.warn("[notificacoes] falha ao exibir", e);
+      return false;
+    }
+  }
+  async function enviadosSet() {
+    const itens = await listarLembretesEnviados();
+    return new Set(itens.map((i) => i.id));
+  }
+  async function verificar(compromissos = null) {
+    const lista = compromissos || await listarCompromissos();
+    const enviados = await enviadosSet();
+    const devidos = lembretesDevidos(lista, enviados, hojeISO());
+    let disparados = 0;
+    if (permissao() !== "granted") {
+      return { devidos: devidos.length, disparados: 0, semPermissao: true };
+    }
+    for (const d of devidos) {
+      const ok = await exibir2(d.titulo, {
+        body: d.corpo,
+        tag: d.chave,
+        icon: "./icons/icon-192.png",
+        badge: "./icons/icon-192.png",
+        data: { compromissoId: d.compromisso.id, url: "./index.html" },
+        requireInteraction: d.dias === 0,
+        vibrate: [120, 60, 120]
+      });
+      if (!ok) continue;
+      await marcarLembreteEnviado({
+        id: d.chave,
+        compromissoId: d.compromisso.id,
+        dias: d.dias,
+        dataCompromisso: d.compromisso.data,
+        em: agoraISO()
+      });
+      disparados++;
+    }
+    await setConfig("ultimaVerificacaoLembretes", agoraISO());
+    return { devidos: devidos.length, disparados };
+  }
+  function notificarAgora(titulo, corpo) {
+    return exibir2(titulo, { body: corpo, icon: "./icons/icon-192.png" });
+  }
+  function iniciarAgendador() {
+    if (timer) return;
+    const rodar = () => verificar().catch((e) => console.warn("[notificacoes] verificação falhou", e));
+    rodar();
+    timer = setInterval(rodar, INTERVALO_MS);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") rodar();
+    });
+    window.addEventListener("online", rodar);
+  }
+  async function registrarVerificacaoEmSegundoPlano() {
+    try {
+      const reg = registroSW || await navigator.serviceWorker?.getRegistration?.();
+      if (!reg) return { ativo: false, motivo: "sem service worker" };
+      if ("periodicSync" in reg) {
+        const status = await navigator.permissions?.query?.({ name: "periodic-background-sync" });
+        if (!status || status.state === "granted") {
+          await reg.periodicSync.register("checar-lembretes", { minInterval: 6 * 60 * 60 * 1e3 });
+          return { ativo: true, tipo: "periodicSync" };
+        }
+        return { ativo: false, motivo: "permissão negada" };
+      }
+      return { ativo: false, motivo: "periodicSync indisponível" };
+    } catch (e) {
+      return { ativo: false, motivo: e.message };
+    }
+  }
+
+  // agenda-inteligente/js/interpretador.js
+  function normalizar2(txt) {
+    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  }
+  var NUMEROS = {
+    zero: 0,
+    um: 1,
+    uma: 1,
+    dois: 2,
+    duas: 2,
+    tres: 3,
+    quatro: 4,
+    cinco: 5,
+    seis: 6,
+    sete: 7,
+    oito: 8,
+    nove: 9,
+    dez: 10,
+    onze: 11,
+    doze: 12,
+    treze: 13,
+    quatorze: 14,
+    catorze: 14,
+    quinze: 15,
+    dezesseis: 16,
+    dezasseis: 16,
+    dezessete: 17,
+    dezoito: 18,
+    dezenove: 19,
+    vinte: 20,
+    trinta: 30,
+    quarenta: 40,
+    cinquenta: 50,
+    sessenta: 60,
+    setenta: 70,
+    oitenta: 80,
+    noventa: 90,
+    cem: 100,
+    cento: 100,
+    duzentos: 200,
+    trezentos: 300,
+    quatrocentos: 400,
+    quinhentos: 500,
+    seiscentos: 600,
+    setecentos: 700,
+    oitocentos: 800,
+    novecentos: 900
+  };
+  function palavrasParaNumero(texto) {
+    const tokens = normalizar2(texto).split(/[\s-]+/).filter((t) => t && t !== "e");
+    let total2 = 0;
+    let atual = 0;
+    let achou = false;
+    for (const t of tokens) {
+      if (t === "mil") {
+        atual = (atual || 1) * 1e3;
+        total2 += atual;
+        atual = 0;
+        achou = true;
+      } else if (t === "milhao" || t === "milhoes") {
+        atual = (atual || 1) * 1e6;
+        total2 += atual;
+        atual = 0;
+        achou = true;
+      } else if (t in NUMEROS) {
+        atual += NUMEROS[t];
+        achou = true;
+      }
+    }
+    const r = total2 + atual;
+    return achou ? r : null;
+  }
+  function extrairValor(texto, exigirContexto = false) {
+    const t = normalizar2(texto);
+    const comMoeda = t.match(/(?:r\$|reais?|valor(?: de| e)?)\s*([\d.,]+)/) || t.match(/([\d.,]+)\s*(?:reais?|conto)/);
+    if (comMoeda) {
+      const n = numeroBR(comMoeda[1]);
+      if (n != null) return n;
+    }
+    if (!exigirContexto) {
+      const soNumero = t.match(/(?:^|\s)(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?:\s|$)/);
+      if (soNumero) {
+        const n = numeroBR(soNumero[1]);
+        if (n != null) return n;
+      }
+      const extenso = palavrasParaNumero(t.replace(/\b(dia|dias|horas?|minutos?)\b/g, ""));
+      if (extenso != null && extenso > 0) return extenso;
+    }
+    return null;
+  }
+  function numeroBR(str) {
+    if (!str) return null;
+    let s = String(str).trim();
+    if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  var MESES = {
+    janeiro: 1,
+    fevereiro: 2,
+    marco: 3,
+    abril: 4,
+    maio: 5,
+    junho: 6,
+    julho: 7,
+    agosto: 8,
+    setembro: 9,
+    outubro: 10,
+    novembro: 11,
+    dezembro: 12
+  };
+  var SEMANA = {
+    domingo: 0,
+    segunda: 1,
+    terca: 2,
+    quarta: 3,
+    quinta: 4,
+    sexta: 5,
+    sabado: 6
+  };
+  function iso(ano, mes, dia) {
+    return paraISO(new Date(ano, mes - 1, dia));
+  }
+  function extrairData(texto, hoje = hojeISO()) {
+    const t = normalizar2(texto);
+    const base = paraData(hoje);
+    if (/\bdepois de amanha\b/.test(t)) return somarDias(hoje, 2);
+    if (/\bamanha\b/.test(t)) return somarDias(hoje, 1);
+    if (/\bhoje\b/.test(t)) return hoje;
+    if (/\bontem\b/.test(t)) return somarDias(hoje, -1);
+    const emDias = t.match(/(?:daqui a|em|dentro de)\s+([\w]+)\s+dias?/);
+    if (emDias) {
+      const n = numeroBR(emDias[1]) ?? palavrasParaNumero(emDias[1]);
+      if (n != null) return somarDias(hoje, n);
+    }
+    const emSemanas = t.match(/(?:daqui a|em|dentro de)\s+([\w]+)\s+semanas?/);
+    if (emSemanas) {
+      const n = numeroBR(emSemanas[1]) ?? palavrasParaNumero(emSemanas[1]);
+      if (n != null) return somarDias(hoje, n * 7);
+    }
+    const emMeses = t.match(/(?:daqui a|em|dentro de)\s+([\w]+)\s+(?:mes|meses)/);
+    if (emMeses) {
+      const n = numeroBR(emMeses[1]) ?? palavrasParaNumero(emMeses[1]);
+      if (n != null) return somarMeses(hoje, n);
+    }
+    const numerica = t.match(/\b(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b/);
+    if (numerica) {
+      const dia = Number(numerica[1]);
+      const mes = Number(numerica[2]);
+      let ano = numerica[3] ? Number(numerica[3]) : base.getFullYear();
+      if (ano < 100) ano += 2e3;
+      if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31) {
+        const candidato = iso(ano, mes, dia);
+        if (!numerica[3] && candidato < hoje) return iso(ano + 1, mes, dia);
+        return candidato;
+      }
+    }
+    const porExtenso = t.match(/\b(\d{1,2}|[a-z]+)\s+de\s+([a-z]+)(?:\s+de\s+(\d{4}))?/);
+    if (porExtenso && MESES[porExtenso[2]]) {
+      const dia = numeroBR(porExtenso[1]) ?? palavrasParaNumero(porExtenso[1]);
+      const mes = MESES[porExtenso[2]];
+      const ano = porExtenso[3] ? Number(porExtenso[3]) : base.getFullYear();
+      if (dia >= 1 && dia <= 31) {
+        const candidato = iso(ano, mes, dia);
+        if (!porExtenso[3] && candidato < hoje) return iso(ano + 1, mes, dia);
+        return candidato;
+      }
+    }
+    const soDia = t.match(/\bdia\s+(\d{1,2}|[a-z]+)\b/);
+    if (soDia) {
+      const dia = numeroBR(soDia[1]) ?? palavrasParaNumero(soDia[1]);
+      if (dia >= 1 && dia <= 31) {
+        const candidato = iso(base.getFullYear(), base.getMonth() + 1, dia);
+        return candidato < hoje ? somarMeses(candidato, 1) : candidato;
+      }
+    }
+    const diaSemana = t.match(/\b(?:proxima|proximo|na|no)?\s*(domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/);
+    if (diaSemana) {
+      const alvo = SEMANA[diaSemana[1]];
+      const atual = base.getDay();
+      let delta = (alvo - atual + 7) % 7;
+      if (delta === 0) delta = 7;
+      return somarDias(hoje, delta);
+    }
+    const soAno = t.match(/\bproximo (mes|ano)\b/);
+    if (soAno) return soAno[1] === "mes" ? somarMeses(hoje, 1) : somarMeses(hoje, 12);
+    return null;
+  }
+  function extrairFrequencia(texto) {
+    const t = normalizar2(texto);
+    if (/\b(nao|nenhuma|unico|unica|so uma vez|uma vez so|apenas uma vez)\b/.test(t) && !/\bmensal|todo mes\b/.test(t))
+      return "unico";
+    if (/\b(diario|diaria|todo dia|todos os dias)\b/.test(t)) return "diario";
+    if (/\b(semanal|toda semana|por semana)\b/.test(t)) return "semanal";
+    if (/\b(quinzenal|quinze em quinze|a cada quinze dias)\b/.test(t)) return "quinzenal";
+    if (/\b(mensal|todo mes|por mes|mes a mes|mensalmente)\b/.test(t)) return "mensal";
+    if (/\b(bimestral|a cada dois meses)\b/.test(t)) return "bimestral";
+    if (/\b(trimestral|a cada tres meses)\b/.test(t)) return "trimestral";
+    if (/\b(semestral|a cada seis meses)\b/.test(t)) return "semestral";
+    if (/\b(anual|todo ano|por ano|anualmente)\b/.test(t)) return "anual";
+    const direto = RECORRENCIAS.find((r) => normalizar2(r.label) === t);
+    return direto ? direto.id : null;
+  }
+  function extrairAntecedencia(texto) {
+    const t = normalizar2(texto);
+    if (/\b(no dia|na hora|mesmo dia|no proprio dia)\b/.test(t)) return 0;
+    if (/\b(nenhum|nao quero|sem lembrete|nao precisa)\b/.test(t)) return null;
+    if (/\b(uma semana|sete dias)\b/.test(t)) return 7;
+    if (/\b(duas semanas|quinze dias|quinzena)\b/.test(t)) return 15;
+    if (/\b(um mes|trinta dias)\b/.test(t)) return 30;
+    if (/\b(vespera|dia anterior|um dia antes)\b/.test(t)) return 1;
+    const num = t.match(/(\d+)\s*dias?/) || t.match(/^(\d+)$/);
+    if (num) return Number(num[1]);
+    const extenso = t.match(/([a-z]+)\s+dias?/);
+    if (extenso) {
+      const n = palavrasParaNumero(extenso[1]);
+      if (n != null) return n;
+    }
+    const solto = palavrasParaNumero(t);
+    return solto != null ? solto : null;
+  }
+  function ehSim(texto) {
+    return /\b(sim|isso|confirmo|confirmar|pode|pode ser|claro|ok|okay|correto|certo|salvar|salva|positivo|e isso)\b/.test(
+      normalizar2(texto)
+    );
+  }
+  function ehNao(texto) {
+    return /\b(nao|negativo|cancela|cancelar|errado|de novo|refazer|esquece)\b/.test(normalizar2(texto));
+  }
+  function ehPular(texto) {
+    return /\b(pular|pula|nao sei|nao tem|sem valor|depois|deixa em branco|nenhum)\b/.test(normalizar2(texto));
+  }
+  var VERBOS_CADASTRO = /^(cadastrar|cadastre|cadastra|agendar|agende|agenda|anotar|anote|anota|criar|crie|cria|adicionar|adicione|adiciona|marcar|marque|marca|lembrar|lembre|lembra|novo|nova|registrar|registre)\b/;
+  var STOPWORDS_TITULO = /* @__PURE__ */ new Set([
+    "compromisso",
+    "um",
+    "uma",
+    "o",
+    "a",
+    "os",
+    "as",
+    "de",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "para",
+    "pra",
+    "me",
+    "meu",
+    "minha",
+    "no",
+    "na",
+    "que"
+  ]);
+  function extrairTitulo(texto) {
+    let palavras = String(texto || "").trim().replace(/[.!?]+$/, "").split(/\s+/).filter(Boolean);
+    if (palavras.length && VERBOS_CADASTRO.test(normalizar2(palavras[0]))) palavras = palavras.slice(1);
+    while (palavras.length > 1 && STOPWORDS_TITULO.has(normalizar2(palavras[0]))) palavras = palavras.slice(1);
+    if (palavras.length === 1 && STOPWORDS_TITULO.has(normalizar2(palavras[0]))) return "";
+    const t = palavras.join(" ").trim();
+    if (!t) return "";
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  var CONSULTAS = [
+    { id: "vencidos", re: /\b(vencid|atrasad|em atraso|venceu)\w*/ },
+    { id: "semana", re: /\b(esta|essa|nesta|dessa|da|na) semana\b|\bsemana\b/ },
+    { id: "amanha", re: /\bamanha\b/ },
+    { id: "hoje", re: /\bhoje\b/ },
+    { id: "mes", re: /\b(este|esse|neste|desse|do|no) mes\b|\bmes\b/ },
+    { id: "proximo", re: /\bproximo (compromisso|vencimento|pagamento)\b|\bqual (e )?o proximo\b/ },
+    { id: "resumo", re: /\b(resumo|situacao geral|panorama|como estou)\b/ }
+  ];
+  function detectarIntencao(texto) {
+    const t = normalizar2(texto);
+    if (!t) return { tipo: "desconhecido" };
+    const pergunta = /^(quais|quanto|quantos|quantas|tenho|tem|qual|o que|quando|me (diga|fala|mostra)|mostrar|mostre|listar|liste|consultar|consulte)\b/.test(
+      t
+    ) || /\?$/.test(String(texto).trim());
+    if (pergunta) {
+      for (const c of CONSULTAS) if (c.re.test(t)) return { tipo: "consulta", consulta: c.id };
+      return { tipo: "consulta", consulta: "resumo" };
+    }
+    if (VERBOS_CADASTRO.test(t)) {
+      return {
+        tipo: "cadastrar",
+        titulo: extrairTitulo(texto),
+        valor: extrairValor(texto, true),
+        data: extrairData(texto),
+        recorrencia: extrairFrequencia(texto)
+      };
+    }
+    for (const c of CONSULTAS) if (c.re.test(t)) return { tipo: "consulta", consulta: c.id };
+    return { tipo: "desconhecido" };
+  }
+  function sugerirCategoria(titulo, categorias = []) {
+    const t = normalizar2(titulo);
+    let melhor = null;
+    for (const cat of categorias) {
+      const n = normalizar2(cat);
+      if (t.includes(n) && (!melhor || n.length > normalizar2(melhor).length)) melhor = cat;
+    }
+    if (melhor) return melhor;
+    const dicas = [
+      [/\b(luz|energia|agua|gas|internet|telefone|celular|tv|boleto|fatura|conta)\b/, "Contas"],
+      [/\b(cartao|credito|visa|master|nubank)\b/, "Cartão de Crédito"],
+      [/\b(condominio|predio)\b/, "Condomínio"],
+      [/\b(aluguel|locacao)\b/, "Aluguel"],
+      [/\b(iptu|ipva|imposto|darf|inss|irpf|tributo)\b/, "Impostos"],
+      [/\b(medico|dentista|exame|consulta|plano de saude|remedio|farmacia)\b/, "Saúde"],
+      [/\b(seguro|apolice)\b/, "Seguros"],
+      [/\b(reuniao|trabalho|cliente|projeto|entrega)\b/, "Trabalho"]
+    ];
+    for (const [re, cat] of dicas) if (re.test(t)) return categorias.includes(cat) ? cat : cat;
+    return categorias[0] || "Pessoal";
+  }
+  function listarFalado(itens, limite = 5) {
+    const nomes = itens.slice(0, limite).map((c) => {
+      const valor = c.valor ? `, ${formatarMoeda(c.valor)}` : "";
+      return `${c.titulo} em ${formatarData(c.data)}${valor}`;
+    });
+    const resto = itens.length - nomes.length;
+    return nomes.join("; ") + (resto > 0 ? `; e mais ${resto}` : "");
+  }
+  function total(itens) {
+    return itens.reduce((s, c) => s + Number(c.valor || 0), 0);
+  }
+  function responderConsulta(consulta, lista, hoje = hojeISO()) {
+    const abertos = (arr) => arr.filter((c) => c.status === "pendente" || c.status === "adiado");
+    switch (consulta) {
+      case "vencidos": {
+        const itens = vencidos(lista, hoje);
+        if (!itens.length) return { texto: "Você não tem nenhum compromisso vencido. Tudo em dia.", itens };
+        return {
+          texto: `Você tem ${itens.length} compromisso${itens.length > 1 ? "s" : ""} vencido${itens.length > 1 ? "s" : ""}, somando ${formatarMoeda(total(itens))}: ${listarFalado(itens)}.`,
+          itens
+        };
+      }
+      case "semana": {
+        const itens = abertos(daSemana(lista, hoje));
+        if (!itens.length) return { texto: "Nada vence nesta semana.", itens };
+        return {
+          texto: `Nesta semana vencem ${itens.length} compromisso${itens.length > 1 ? "s" : ""}, total de ${formatarMoeda(total(itens))}: ${listarFalado(itens)}.`,
+          itens
+        };
+      }
+      case "amanha": {
+        const dia = somarDias(hoje, 1);
+        const itens = abertos(doDia(lista, dia));
+        if (!itens.length) return { texto: "Amanhã você não tem nenhum compromisso.", itens };
+        return {
+          texto: `Amanhã você tem ${itens.length} compromisso${itens.length > 1 ? "s" : ""}: ${listarFalado(itens)}.`,
+          itens
+        };
+      }
+      case "hoje": {
+        const itens = abertos(doDia(lista, hoje));
+        if (!itens.length) return { texto: "Hoje você não tem nenhum compromisso em aberto.", itens };
+        return {
+          texto: `Hoje você tem ${itens.length} compromisso${itens.length > 1 ? "s" : ""}: ${listarFalado(itens)}.`,
+          itens
+        };
+      }
+      case "mes": {
+        const r = resumo(lista, hoje);
+        const itens = abertos(doMes(lista, hoje));
+        return {
+          texto: `Neste mês o previsto é ${formatarMoeda(r.totalPrevistoMes)}. Já foram pagos ${formatarMoeda(r.totalPagoMes)} e faltam ${formatarMoeda(r.totalPendenteMes)}.`,
+          itens
+        };
+      }
+      case "proximo": {
+        const c = proximoCompromisso(lista, hoje);
+        if (!c) return { texto: "Não há compromissos futuros cadastrados.", itens: [] };
+        const valor = c.valor ? `, no valor de ${formatarMoeda(c.valor)}` : "";
+        return {
+          texto: `O próximo é ${c.titulo}, ${rotuloRelativo(c.data, hoje)}, dia ${formatarData(c.data)}${valor}.`,
+          itens: [c]
+        };
+      }
+      default: {
+        const r = resumo(lista, hoje);
+        const partes = [];
+        if (r.vencidos.length) partes.push(`${r.vencidos.length} vencido${r.vencidos.length > 1 ? "s" : ""}`);
+        if (r.hoje.length) partes.push(`${r.hoje.length} para hoje`);
+        if (r.proximos.length) partes.push(`${r.proximos.length} nos próximos sete dias`);
+        const resumoTxt = partes.length ? partes.join(", ") : "nenhuma pendência próxima";
+        return {
+          texto: `Você tem ${resumoTxt}. No mês, ${formatarMoeda(r.totalPendenteMes)} ainda em aberto de um total de ${formatarMoeda(r.totalPrevistoMes)}.`,
+          itens: [...r.vencidos, ...r.hoje, ...r.proximos]
+        };
+      }
+    }
+  }
+
+  // agenda-inteligente/js/voz.js
+  var Reconhecimento = typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
+  function reconhecimentoDisponivel() {
+    return !!Reconhecimento;
+  }
+  function falaDisponivel() {
+    return typeof window !== "undefined" && "speechSynthesis" in window;
+  }
+  var vozPtBr = null;
+  function escolherVoz() {
+    if (!falaDisponivel()) return null;
+    if (vozPtBr) return vozPtBr;
+    const vozes = window.speechSynthesis.getVoices() || [];
+    vozPtBr = vozes.find((v) => v.lang === "pt-BR") || vozes.find((v) => (v.lang || "").startsWith("pt")) || null;
+    return vozPtBr;
+  }
+  if (falaDisponivel()) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      vozPtBr = null;
+      escolherVoz();
+    };
+  }
+  function falar(texto, ativo = true) {
+    if (!ativo || !falaDisponivel() || !texto) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(texto);
+      u.lang = "pt-BR";
+      u.rate = 1.02;
+      u.pitch = 1;
+      const v = escolherVoz();
+      if (v) u.voice = v;
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn("[voz] síntese falhou", e);
+    }
+  }
+  function calarBoca() {
+    if (falaDisponivel()) window.speechSynthesis.cancel();
+  }
+  var Escuta = class {
+    constructor({ onParcial, onFinal, onFim, onErro } = {}) {
+      this.onParcial = onParcial || (() => {
+      });
+      this.onFinal = onFinal || (() => {
+      });
+      this.onFim = onFim || (() => {
+      });
+      this.onErro = onErro || (() => {
+      });
+      this.rec = null;
+      this.ativa = false;
+    }
+    iniciar() {
+      if (!Reconhecimento) {
+        this.onErro(new Error("Reconhecimento de voz não suportado neste navegador."));
+        return false;
+      }
+      if (this.ativa) return true;
+      calarBoca();
+      const rec = new Reconhecimento();
+      rec.lang = "pt-BR";
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = (ev) => {
+        let parcial = "";
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const r = ev.results[i];
+          if (r.isFinal) {
+            this.onFinal(r[0].transcript.trim());
+            return;
+          }
+          parcial += r[0].transcript;
+        }
+        if (parcial) this.onParcial(parcial.trim());
+      };
+      rec.onerror = (ev) => {
+        this.ativa = false;
+        const mensagens = {
+          "not-allowed": "Permissão de microfone negada. Libere o microfone nas configurações do navegador.",
+          "service-not-allowed": "O navegador bloqueou o reconhecimento de voz.",
+          "no-speech": "Não consegui ouvir nada. Tente de novo.",
+          network: "O reconhecimento de voz precisa de internet neste navegador. Use o campo de texto."
+        };
+        this.onErro(new Error(mensagens[ev.error] || "Falha no reconhecimento: " + ev.error));
+      };
+      rec.onend = () => {
+        this.ativa = false;
+        this.onFim();
+      };
+      this.rec = rec;
+      this.ativa = true;
+      try {
+        rec.start();
+        return true;
+      } catch (e) {
+        this.ativa = false;
+        this.onErro(e);
+        return false;
+      }
+    }
+    parar() {
+      try {
+        this.rec?.stop();
+      } catch {
+      }
+      this.ativa = false;
+    }
+  };
+  var Assistente = class {
+    /**
+     * @param {object} deps
+     * @param {() => Array} deps.getCompromissos lista atual (para consultas)
+     * @param {() => Array} deps.getCategorias   categorias cadastradas
+     * @param {(msg) => void} deps.onMensagem    ({ de, texto, itens })
+     * @param {() => void} deps.aoSalvar         chamado após gravar
+     */
+    constructor({ getCompromissos, getCategorias, onMensagem, aoSalvar } = {}) {
+      this.getCompromissos = getCompromissos || (() => []);
+      this.getCategorias = getCategorias || (() => []);
+      this.onMensagem = onMensagem || (() => {
+      });
+      this.aoSalvar = aoSalvar || (() => {
+      });
+      this.etapa = "ocioso";
+      this.rascunho = null;
+    }
+    get emCadastro() {
+      return this.etapa !== "ocioso";
+    }
+    responder(texto, itens = null) {
+      this.onMensagem({ de: "assistente", texto, itens });
+      return texto;
+    }
+    cancelar() {
+      this.etapa = "ocioso";
+      this.rascunho = null;
+      return this.responder("Cadastro cancelado. Pode falar outro comando.");
+    }
+    /** Entrada única do assistente (voz ou texto). Retorna o texto falado. */
+    async processar(entrada) {
+      const texto = String(entrada || "").trim();
+      if (!texto) return "";
+      this.onMensagem({ de: "usuario", texto });
+      if (this.emCadastro) {
+        if (/^(cancelar|cancela|para|parar|esquece)$/i.test(normalizar2(texto))) return this.cancelar();
+        return this.continuarCadastro(texto);
+      }
+      const intencao = detectarIntencao(texto);
+      if (intencao.tipo === "consulta") {
+        const r = responderConsulta(intencao.consulta, this.getCompromissos(), hojeISO());
+        return this.responder(r.texto, r.itens);
+      }
+      if (intencao.tipo === "cadastrar") {
+        return this.iniciarCadastro(intencao);
+      }
+      return this.responder(
+        'Não entendi. Você pode dizer "cadastrar pagamento do condomínio" ou perguntar "quais contas vencem esta semana?".'
+      );
+    }
+    iniciarCadastro(intencao) {
+      const titulo = intencao.titulo || "";
+      this.rascunho = {
+        titulo,
+        valor: intencao.valor ?? null,
+        data: intencao.data || null,
+        recorrencia: intencao.recorrencia || null,
+        lembretes: [],
+        categoria: sugerirCategoria(titulo, this.getCategorias()),
+        prioridade: "media"
+      };
+      if (!titulo) {
+        this.etapa = "titulo";
+        return this.responder("O que você quer cadastrar?");
+      }
+      return this.proximaPergunta();
+    }
+    /** Pergunta o próximo campo ainda vazio, na ordem da especificação. */
+    proximaPergunta() {
+      const r = this.rascunho;
+      if (!r.titulo) {
+        this.etapa = "titulo";
+        return this.responder("O que você quer cadastrar?");
+      }
+      if (r.valor == null && !r.valorPulado) {
+        this.etapa = "valor";
+        return this.responder(`Qual o valor de ${r.titulo}? Se não tiver valor, diga "pular".`);
+      }
+      if (!r.data) {
+        this.etapa = "data";
+        return this.responder("Qual o vencimento?");
+      }
+      if (!r.recorrencia) {
+        this.etapa = "recorrente";
+        return this.responder("É recorrente?");
+      }
+      if (!r.lembretes.length && !r.lembretePulado) {
+        this.etapa = "lembrete";
+        return this.responder("Quantos dias antes deseja ser avisado?");
+      }
+      this.etapa = "confirmar";
+      return this.responder(`${this.resumoRascunho()} O compromisso será salvo. Confirma?`);
+    }
+    resumoRascunho() {
+      const r = this.rascunho;
+      const partes = [r.titulo];
+      if (r.valor != null) partes.push(`no valor de ${formatarMoeda(r.valor)}`);
+      partes.push(`com vencimento em ${formatarData(r.data)}`);
+      partes.push(`recorrência ${labelRecorrencia(r.recorrencia).toLowerCase()}`);
+      if (r.lembretes.length) partes.push(`aviso ${r.lembretes.map(labelLembrete).join(" e ").toLowerCase()}`);
+      else partes.push("sem lembrete");
+      partes.push(`na categoria ${r.categoria}`);
+      return partes.join(", ") + ".";
+    }
+    async continuarCadastro(texto) {
+      const r = this.rascunho;
+      const pulou = ehPular(texto);
+      switch (this.etapa) {
+        case "titulo": {
+          const titulo = extrairTitulo(texto) || texto.trim();
+          r.titulo = titulo;
+          r.categoria = sugerirCategoria(titulo, this.getCategorias());
+          return this.proximaPergunta();
+        }
+        case "valor": {
+          if (pulou) {
+            r.valorPulado = true;
+            return this.proximaPergunta();
+          }
+          const v = extrairValor(texto);
+          if (v == null) return this.responder('Não entendi o valor. Diga por exemplo "450 reais" ou "pular".');
+          r.valor = v;
+          return this.proximaPergunta();
+        }
+        case "data": {
+          const d = extrairData(texto, hojeISO());
+          if (!d) return this.responder('Não entendi a data. Diga por exemplo "dia 10", "10 de agosto" ou "amanhã".');
+          r.data = d;
+          return this.proximaPergunta();
+        }
+        case "recorrente": {
+          const freq = extrairFrequencia(texto);
+          if (freq && freq !== "unico") {
+            r.recorrencia = freq;
+            return this.proximaPergunta();
+          }
+          if (ehNao(texto) || freq === "unico") {
+            r.recorrencia = "unico";
+            return this.proximaPergunta();
+          }
+          if (ehSim(texto)) {
+            this.etapa = "frequencia";
+            return this.responder("Qual a frequência? Diária, semanal, quinzenal, mensal, bimestral, trimestral, semestral ou anual?");
+          }
+          return this.responder('Não entendi. É recorrente? Responda "sim" ou "não".');
+        }
+        case "frequencia": {
+          const freq = extrairFrequencia(texto);
+          if (!freq) return this.responder("Não entendi a frequência. Diga mensal, semanal, anual...");
+          r.recorrencia = freq;
+          return this.proximaPergunta();
+        }
+        case "lembrete": {
+          if (pulou || ehNao(texto)) {
+            r.lembretePulado = true;
+            return this.proximaPergunta();
+          }
+          const dias = extrairAntecedencia(texto);
+          if (dias == null) return this.responder('Não entendi. Diga por exemplo "5 dias antes" ou "no dia".');
+          r.lembretes = [dias];
+          return this.proximaPergunta();
+        }
+        case "confirmar": {
+          if (ehSim(texto)) return this.salvar();
+          if (ehNao(texto)) return this.cancelar();
+          return this.responder('Confirma o cadastro? Responda "sim" ou "não".');
+        }
+        default:
+          this.etapa = "ocioso";
+          return this.responder("Pode falar.");
+      }
+    }
+    async salvar() {
+      const r = this.rascunho;
+      const c = await criar({
+        titulo: r.titulo,
+        valor: r.valor,
+        data: r.data,
+        recorrencia: r.recorrencia || "unico",
+        lembretes: r.lembretes.length ? r.lembretes : [],
+        categoria: r.categoria,
+        prioridade: r.prioridade,
+        descricao: "Cadastrado pelo assistente de voz"
+      });
+      this.etapa = "ocioso";
+      this.rascunho = null;
+      this.aoSalvar(c);
+      return this.responder(
+        `Pronto. ${c.titulo} salvo para ${formatarData(c.data)}${c.valor ? ", " + formatarMoeda(c.valor) : ""}.`,
+        [c]
+      );
+    }
+  };
+
+  // agenda-inteligente/js/ui.js
+  var $ = (sel) => document.querySelector(sel);
+  var $$ = (sel) => [...document.querySelectorAll(sel)];
+  var estado = {
+    compromissos: [],
+    categorias: [],
+    aba: "painel",
+    filtros: {},
+    lembretesSelecionados: /* @__PURE__ */ new Set(),
+    assistente: null,
+    escuta: null
+  };
+  function esc(txt) {
+    return String(txt ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
+  var timerToast = null;
+  function toast(mensagem, erro = false) {
+    const el = $("#toast");
+    el.textContent = mensagem;
+    el.classList.toggle("erro", !!erro);
+    el.hidden = false;
+    clearTimeout(timerToast);
+    timerToast = setTimeout(() => el.hidden = true, erro ? 5200 : 3e3);
+  }
+  async function carregar() {
+    const { compromissos, categorias } = await carregarTudo();
+    estado.compromissos = compromissos;
+    estado.categorias = categorias;
+    renderizar();
+  }
+  function renderizar() {
+    renderPainel();
+    renderLista();
+    renderSelects();
+    renderCategoriasAjustes();
+    renderChips();
+  }
+  function itemHTML(c) {
+    const st = statusEfetivo(c);
+    const cor = st === "atrasado" ? "#E8445A" : corStatus(st);
+    const relativo = rotuloRelativo(c.data);
+    const lembrete = proximoLembrete(c);
+    return `
+    <article class="item ${c.status === "pago" ? "pago" : ""}" data-id="${c.id}" style="border-left-color:${cor}">
+      <div class="item-topo">
+        <span class="item-titulo">${esc(c.titulo)}</span>
+        <span class="item-valor">${c.valor != null ? formatarMoeda(c.valor) : ""}</span>
+      </div>
+      <div class="item-meta">
+        <span>${formatarData(c.data)}${c.hora ? " · " + esc(c.hora) : ""} · ${relativo}</span>
+        <span class="tag" style="color:${cor}">${labelStatus(st)}</span>
+        <span class="tag" style="color:${corPrioridade(c.prioridade)}">${labelPrioridade(c.prioridade)}</span>
+        <span>${esc(c.categoria)}</span>
+        ${c.recorrencia !== "unico" ? `<span>🔁 ${labelRecorrencia(c.recorrencia)}</span>` : ""}
+        ${lembrete ? `<span>🔔 ${esc(lembrete.label)}</span>` : ""}
+      </div>
+    </article>`;
+  }
+  function pintarLista(elId, itens, vazio) {
+    const el = $(elId);
+    el.innerHTML = itens.length ? itens.map(itemHTML).join("") : `<p class="vazio">${vazio}</p>`;
+  }
+  function renderAvisos() {
+    const el = $("#aviso-lembretes");
+    const ativos = avisosAtivos(estado.compromissos);
+    if (!ativos.length) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    const semNotificacao = permissao() !== "granted";
+    el.hidden = false;
+    el.innerHTML = `
+    <h2>🔔 ${ativos.length} lembrete(s) ativo(s)</h2>
+    ${ativos.map(
+      (a) => `<div class="linha" data-id="${a.compromisso.id}">
+          <span>${esc(a.compromisso.titulo)}${a.compromisso.valor != null ? " · " + formatarMoeda(a.compromisso.valor) : ""}</span>
+          <span class="quando">${esc(rotuloRelativo(a.compromisso.data))}</span>
+        </div>`
+    ).join("")}
+    ${semNotificacao ? `<p class="nota">As notificações do sistema estão desativadas neste modo — os avisos aparecem aqui ao abrir o app.</p>` : ""}`;
+  }
+  function renderPainel() {
+    renderAvisos();
+    const r = resumo(estado.compromissos);
+    $("#resumo-cards").innerHTML = `
+    <div class="card ${r.vencidos.length ? "perigo" : "ok"}">
+      <div class="rotulo">Vencidos</div>
+      <div class="valor">${r.vencidos.length}</div>
+      <div class="sub">${formatarMoeda(r.totalVencido)}</div>
+    </div>
+    <div class="card alerta">
+      <div class="rotulo">Hoje</div>
+      <div class="valor">${r.hoje.length}</div>
+      <div class="sub">${formatarData(hojeISO())}</div>
+    </div>
+    <div class="card">
+      <div class="rotulo">Previsto no mês</div>
+      <div class="valor">${formatarMoeda(r.totalPrevistoMes)}</div>
+      <div class="sub">${r.quantidadeMes} compromisso(s)</div>
+    </div>
+    <div class="card ok">
+      <div class="rotulo">Já pago no mês</div>
+      <div class="valor">${formatarMoeda(r.totalPagoMes)}</div>
+      <div class="sub">Pendente: ${formatarMoeda(r.totalPendenteMes)}</div>
+    </div>`;
+    $("#cont-vencidos").textContent = r.vencidos.length;
+    $("#cont-hoje").textContent = r.hoje.length;
+    $("#cont-proximos").textContent = r.proximos.length;
+    pintarLista("#lista-vencidos", r.vencidos, "Nenhum compromisso vencido. 👍");
+    pintarLista("#lista-hoje", r.hoje, "Nada para hoje.");
+    pintarLista("#lista-proximos", r.proximos, "Nada nos próximos 7 dias.");
+    const cats = porCategoria(doMes(estado.compromissos));
+    $("#painel-categorias").innerHTML = cats.length ? cats.map(
+      (c) => `<article class="item" style="cursor:default;border-left-color:var(--borda)">
+            <div class="item-topo">
+              <span class="item-titulo">${esc(c.categoria)}</span>
+              <span class="item-valor">${formatarMoeda(c.total)}</span>
+            </div>
+            <div class="item-meta"><span>${c.quantidade} compromisso(s) no mês</span></div>
+          </article>`
+    ).join("") : `<p class="vazio">Sem compromissos neste mês.</p>`;
+  }
+  function lerFiltros() {
+    return {
+      texto: $("#f-texto").value,
+      categoria: $("#f-categoria").value,
+      status: $("#f-status").value,
+      prioridade: $("#f-prioridade").value,
+      recorrencia: $("#f-recorrencia").value,
+      de: $("#f-de").value,
+      ate: $("#f-ate").value,
+      valorMin: $("#f-valor-min").value,
+      valorMax: $("#f-valor-max").value,
+      ordem: $("#f-ordem").value
+    };
+  }
+  function renderLista() {
+    const f = estado.filtros.ordem ? estado.filtros : lerFiltros();
+    estado.filtros = f;
+    let itens = filtrar(estado.compromissos, f);
+    const ordens = {
+      data: (a, b) => a.data < b.data ? -1 : a.data > b.data ? 1 : 0,
+      valor: (a, b) => Number(b.valor || 0) - Number(a.valor || 0),
+      titulo: (a, b) => a.titulo.localeCompare(b.titulo, "pt-BR"),
+      prioridade: (a, b) => {
+        const ordem = PRIORIDADES.map((p) => p.id).reverse();
+        return ordem.indexOf(b.prioridade) - ordem.indexOf(a.prioridade);
+      }
+    };
+    itens = itens.sort(ordens[f.ordem] || ordens.data);
+    const total2 = itens.reduce((s, c) => s + Number(c.valor || 0), 0);
+    const emAberto = itens.filter(estaAberto).reduce((s, c) => s + Number(c.valor || 0), 0);
+    $("#contador-lista").textContent = `${itens.length} compromisso(s) · total ${formatarMoeda(total2)} · em aberto ${formatarMoeda(emAberto)}`;
+    pintarLista("#lista-compromissos", itens, "Nenhum compromisso encontrado com esses filtros.");
+  }
+  function opcoes(lista, selecionado = "") {
+    return lista.map((o) => `<option value="${esc(o.id ?? o)}" ${(o.id ?? o) === selecionado ? "selected" : ""}>${esc(o.label ?? o)}</option>`).join("");
+  }
+  function renderSelects() {
+    const cats = estado.categorias;
+    const manter = (sel, primeiro, itens) => {
+      const el = $(sel);
+      const atual = el.value;
+      el.innerHTML = `<option value="">${primeiro}</option>` + opcoes(itens);
+      el.value = atual;
+    };
+    manter("#f-categoria", "Categoria: todas", cats);
+    manter("#f-status", "Situação: todas", STATUS);
+    manter("#f-prioridade", "Prioridade: todas", PRIORIDADES);
+    manter("#f-recorrencia", "Recorrência: todas", RECORRENCIAS);
+    const cSel = $("#c-categoria");
+    const catAtual = cSel.value;
+    cSel.innerHTML = opcoes(cats.length ? cats : ["Pessoal"]);
+    if (catAtual) cSel.value = catAtual;
+    $("#c-prioridade").innerHTML = opcoes(PRIORIDADES);
+    $("#c-recorrencia").innerHTML = opcoes(RECORRENCIAS);
+    $("#c-status").innerHTML = opcoes(STATUS.filter((s) => !s.derivado));
+  }
+  function renderCategoriasAjustes() {
+    $("#lista-categorias").innerHTML = estado.categorias.map((c) => `<span class="chip acao remover" data-categoria="${esc(c)}">${esc(c)}</span>`).join("");
+  }
+  var MODO_ARQUIVO2 = typeof location !== "undefined" && location.protocol === "file:";
+  function renderChips() {
+    const chips = [];
+    if (MODO_ARQUIVO2) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
+    chips.push(
+      navigator.onLine ? `<span class="chip ok">● online</span>` : `<span class="chip alerta">● offline — tudo continua funcionando</span>`
+    );
+    if (!MODO_ARQUIVO2) {
+      const perm = permissao();
+      const mapa = {
+        granted: `<span class="chip ok">🔔 notificações ativas</span>`,
+        denied: `<span class="chip erro">🔕 notificações bloqueadas</span>`,
+        default: `<span class="chip alerta acao" data-acao="pedir-notificacao">🔔 ativar notificações</span>`,
+        unsupported: `<span class="chip">🔕 sem suporte a notificações</span>`
+      };
+      chips.push(mapa[perm] || mapa.default);
+    }
+    if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
+    $("#chips-status").innerHTML = chips.join("");
+  }
+  function renderChipsLembrete() {
+    const sel = estado.lembretesSelecionados;
+    const extras = [...sel].filter((d) => !LEMBRETES_PRESET.includes(d));
+    const todos = [...LEMBRETES_PRESET, ...extras].sort((a, b) => b - a);
+    $("#c-lembretes").innerHTML = todos.map(
+      (d) => `<span class="chip-lembrete ${sel.has(d) ? "ativo" : ""}" data-dias="${d}">${esc(labelLembrete(d))}</span>`
+    ).join("");
+  }
+  function abrirForm(id = null) {
+    const c = id ? estado.compromissos.find((x) => x.id === id) : null;
+    $("#titulo-modal-form").textContent = c ? "Editar compromisso" : "Novo compromisso";
+    $("#c-id").value = c?.id || "";
+    $("#c-titulo").value = c?.titulo || "";
+    $("#c-categoria").value = c?.categoria || (estado.categorias.includes("Pessoal") ? "Pessoal" : estado.categorias[0] || "Pessoal");
+    $("#c-data").value = c?.data || hojeISO();
+    $("#c-hora").value = c?.hora || "";
+    $("#c-valor").value = c?.valor ?? "";
+    $("#c-prioridade").value = c?.prioridade || "media";
+    $("#c-recorrencia").value = c?.recorrencia || "unico";
+    $("#c-descricao").value = c?.descricao || "";
+    $("#c-observacoes").value = c?.observacoes || "";
+    $("#c-status").value = c?.status || "pendente";
+    $("#linha-status").hidden = !c;
+    estado.lembretesSelecionados = new Set(c ? c.lembretes : [1]);
+    renderChipsLembrete();
+    abrirModal("modal-form");
+    setTimeout(() => $("#c-titulo").focus(), 120);
+  }
+  async function submeterForm(ev) {
+    ev.preventDefault();
+    const id = $("#c-id").value;
+    const dados = {
+      titulo: $("#c-titulo").value.trim(),
+      categoria: $("#c-categoria").value,
+      data: $("#c-data").value,
+      hora: $("#c-hora").value,
+      valor: $("#c-valor").value === "" ? null : Number($("#c-valor").value),
+      prioridade: $("#c-prioridade").value,
+      recorrencia: $("#c-recorrencia").value,
+      descricao: $("#c-descricao").value.trim(),
+      observacoes: $("#c-observacoes").value.trim(),
+      lembretes: [...estado.lembretesSelecionados]
+    };
+    if (!dados.titulo) return toast("Informe o título.", true);
+    if (!dados.data) return toast("Informe a data.", true);
+    try {
+      if (id) {
+        dados.status = $("#c-status").value;
+        await atualizar(id, dados);
+        toast("Compromisso atualizado.");
+      } else {
+        await criar(dados);
+        toast("Compromisso salvo.");
+      }
+      fecharModal("modal-form");
+    } catch (e) {
+      console.error(e);
+      toast("Erro ao salvar: " + e.message, true);
+    }
+  }
+  async function abrirDetalhe(id) {
+    const c = estado.compromissos.find((x) => x.id === id);
+    if (!c) return;
+    const st = statusEfetivo(c);
+    const historico = await historicoDe(id);
+    const lembrete = proximoLembrete(c);
+    $("#titulo-modal-detalhe").textContent = c.titulo;
+    $("#detalhe-conteudo").innerHTML = `
+    <div class="detalhe-grid">
+      ${campo("Vencimento", `${formatarData(c.data)}${c.hora ? " às " + esc(c.hora) : ""}`)}
+      ${campo("Situação", `<span style="color:${corStatus(st)}">${labelStatus(st)}</span>`)}
+      ${campo("Valor", c.valor != null ? formatarMoeda(c.valor) : "—")}
+      ${campo("Categoria", esc(c.categoria))}
+      ${campo("Prioridade", `<span style="color:${corPrioridade(c.prioridade)}">${labelPrioridade(c.prioridade)}</span>`)}
+      ${campo("Recorrência", labelRecorrencia(c.recorrencia))}
+      ${campo("Lembretes", (c.lembretes || []).length ? c.lembretes.map(labelLembrete).join(", ") : "—")}
+      ${campo("Próximo aviso", lembrete ? `${esc(lembrete.label)} (${formatarData(lembrete.alvo)})` : "—")}
+      ${c.pagamento ? campo("Pago em", `${formatarData(c.pagamento.data)} — ${formatarMoeda(c.pagamento.valor)}`) : ""}
+      ${c.descricao ? campo("Descrição", esc(c.descricao)) : ""}
+      ${c.observacoes ? campo("Observações", esc(c.observacoes)) : ""}
+      ${campo("Criado em", formatarDataHora(c.criadoEm))}
+    </div>
+    <div class="acoes-detalhe">
+      ${estaAberto(c) ? `<button class="btn-primario" data-acao="pagar" data-id="${c.id}">✓ Pagar / Concluir</button>` : ""}
+      ${estaAberto(c) ? `<button class="btn-secundario" data-acao="adiar" data-id="${c.id}">📅 Adiar</button>` : ""}
+      ${c.status === "pago" || c.status === "cancelado" ? `<button class="btn-secundario" data-acao="reabrir" data-id="${c.id}">↺ Reabrir</button>` : ""}
+      <button class="btn-secundario" data-acao="editar" data-id="${c.id}">✎ Editar</button>
+      ${estaAberto(c) ? `<button class="btn-secundario" data-acao="cancelar" data-id="${c.id}">🚫 Cancelar</button>` : ""}
+      <button class="btn-perigo" data-acao="excluir" data-id="${c.id}">🗑 Excluir</button>
+    </div>
+    <div class="historico">
+      <h3>Histórico (${historico.length})</h3>
+      ${historico.length ? historico.map(
+      (h) => `<div class="hist-item">
+                  <div class="quando">${formatarDataHora(h.em)} · ${esc(TIPOS_HISTORICO[h.tipo] || h.tipo)}</div>
+                  <div>${esc(h.descricao)}</div>
+                </div>`
+    ).join("") : `<p class="vazio">Sem registros.</p>`}
+    </div>`;
+    abrirModal("modal-detalhe");
+  }
+  function campo(rotulo, conteudo) {
+    return `<div class="detalhe-item"><div class="rotulo">${esc(rotulo)}</div><div class="conteudo">${conteudo}</div></div>`;
+  }
+  async function executarAcao(acao, id) {
+    const c = estado.compromissos.find((x) => x.id === id);
+    if (!c) return;
+    switch (acao) {
+      case "pagar":
+        $("#p-id").value = id;
+        $("#p-resumo").textContent = `${c.titulo} — vencimento ${formatarData(c.data)}`;
+        $("#p-data").value = hojeISO();
+        $("#p-valor").value = c.valor ?? "";
+        $("#p-obs").value = "";
+        fecharModal("modal-detalhe");
+        abrirModal("modal-pagamento");
+        break;
+      case "adiar":
+        $("#a-id").value = id;
+        $("#a-data").value = c.data;
+        $("#a-motivo").value = "";
+        fecharModal("modal-detalhe");
+        abrirModal("modal-adiar");
+        break;
+      case "editar":
+        fecharModal("modal-detalhe");
+        abrirForm(id);
+        break;
+      case "cancelar":
+        if (!confirm(`Cancelar "${c.titulo}"?`)) return;
+        await mudarStatus(id, "cancelado");
+        fecharModal("modal-detalhe");
+        toast("Compromisso cancelado.");
+        break;
+      case "reabrir":
+        await reabrir(id);
+        fecharModal("modal-detalhe");
+        toast("Compromisso reaberto.");
+        break;
+      case "excluir":
+        if (!confirm(`Excluir "${c.titulo}" definitivamente? O histórico será mantido, mas o compromisso não pode ser recuperado.`)) return;
+        await excluir(id);
+        fecharModal("modal-detalhe");
+        toast("Compromisso excluído.");
+        break;
+      default:
+        break;
+    }
+  }
+  async function confirmarPagamento(ev) {
+    ev.preventDefault();
+    const id = $("#p-id").value;
+    try {
+      const { proximo } = await marcarPago(id, {
+        data: $("#p-data").value,
+        valor: $("#p-valor").value === "" ? null : Number($("#p-valor").value),
+        observacao: $("#p-obs").value.trim()
+      });
+      fecharModal("modal-pagamento");
+      toast(proximo ? `Pago. Próximo vencimento gerado para ${formatarData(proximo.data)}.` : "Pagamento registrado.");
+    } catch (e) {
+      toast("Erro ao registrar: " + e.message, true);
+    }
+  }
+  async function confirmarAdiar(ev) {
+    ev.preventDefault();
+    try {
+      await adiar($("#a-id").value, $("#a-data").value, $("#a-motivo").value.trim());
+      fecharModal("modal-adiar");
+      toast("Compromisso adiado.");
+    } catch (e) {
+      toast("Erro ao adiar: " + e.message, true);
+    }
+  }
+  function abrirModal(id) {
+    $("#" + id).hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+  function fecharModal(id) {
+    $("#" + id).hidden = true;
+    document.body.style.overflow = "";
+  }
+  function abrirAba(aba) {
+    estado.aba = aba;
+    $$(".aba").forEach((b) => b.classList.toggle("ativa", b.dataset.aba === aba));
+    $$(".view").forEach((v) => v.classList.toggle("ativa", v.id === "view-" + aba));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function balao(msg) {
+    const div = document.createElement("div");
+    div.className = "balao " + (msg.de === "usuario" ? "usuario" : "assistente");
+    div.textContent = msg.texto;
+    if (msg.itens?.length) {
+      const lista = document.createElement("div");
+      lista.className = "itens";
+      msg.itens.slice(0, 8).forEach((c) => {
+        const linha = document.createElement("div");
+        linha.textContent = `• ${c.titulo} — ${formatarData(c.data)}${c.valor ? " — " + formatarMoeda(c.valor) : ""}`;
+        lista.appendChild(linha);
+      });
+      div.appendChild(lista);
+    }
+    const chat = $("#chat");
+    const parcial = chat.querySelector(".balao.parcial");
+    if (parcial) parcial.remove();
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+  function mostrarParcial(texto) {
+    const chat = $("#chat");
+    let el = chat.querySelector(".balao.parcial");
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "balao usuario parcial";
+      chat.appendChild(el);
+    }
+    el.textContent = texto;
+    chat.scrollTop = chat.scrollHeight;
+  }
+  async function enviarAoAssistente(texto) {
+    if (!texto.trim()) return;
+    $("#entrada-assistente").value = "";
+    const resposta = await estado.assistente.processar(texto);
+    if ($("#chk-falar").checked) falar(resposta);
+  }
+  function alternarMicrofone() {
+    const btn = $("#btn-microfone");
+    if (estado.escuta?.ativa) {
+      estado.escuta.parar();
+      btn.classList.remove("ouvindo");
+      return;
+    }
+    if (!reconhecimentoDisponivel()) {
+      toast("Este navegador não reconhece voz. Use o campo de texto — o assistente entende igual.", true);
+      return;
+    }
+    calarBoca();
+    estado.escuta = new Escuta({
+      onParcial: mostrarParcial,
+      onFinal: (texto) => {
+        btn.classList.remove("ouvindo");
+        enviarAoAssistente(texto);
+      },
+      onFim: () => btn.classList.remove("ouvindo"),
+      onErro: (e) => {
+        btn.classList.remove("ouvindo");
+        $("#chat").querySelector(".balao.parcial")?.remove();
+        toast(e.message, true);
+      }
+    });
+    if (estado.escuta.iniciar()) btn.classList.add("ouvindo");
+  }
+  async function atualizarStatusNotificacoes() {
+    const perm = permissao();
+    if (MODO_ARQUIVO2) {
+      $("#status-notificacoes").textContent = "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
+      $("#btn-permitir-notificacoes").disabled = true;
+      $("#btn-testar-notificacao").disabled = true;
+      renderChips();
+      return;
+    }
+    const textos = {
+      granted: "Notificações liberadas. Os lembretes configurados serão exibidos automaticamente.",
+      denied: "Notificações bloqueadas pelo navegador. Libere nas configurações do site para receber lembretes.",
+      default: "Ainda não autorizado. Toque em “Permitir notificações”.",
+      unsupported: "Este navegador não suporta notificações. Os lembretes continuam visíveis no painel."
+    };
+    $("#status-notificacoes").textContent = textos[perm] || textos.default;
+    renderChips();
+  }
+  async function atualizarStatusArmazenamento() {
+    const p = estado.persistencia || await garantirPersistencia();
+    estado.persistencia = p;
+    const partes = [];
+    partes.push(p.persistente ? "Armazenamento persistente concedido — os dados não são apagados pelo navegador." : "Armazenamento padrão (o navegador pode limpar em situações extremas de falta de espaço). Instale o app na tela inicial para reforçar a persistência.");
+    if (p.uso) {
+      const mb = (n) => (n / 1024 / 1024).toFixed(1) + " MB";
+      partes.push(`Uso: ${mb(p.uso.usado)} de ${mb(p.uso.cota)} disponíveis.`);
+    }
+    const ultimo = await config("ultimoBackup", null);
+    partes.push(ultimo ? `Último backup exportado em ${formatarDataHora(ultimo)}.` : "Nenhum backup exportado ainda.");
+    $("#status-armazenamento").textContent = partes.join(" ");
+  }
+  async function importarBackup(ev) {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    try {
+      const dados = await lerArquivo(file);
+      const modo = $("#chk-substituir").checked ? "substituir" : "mesclar";
+      const aviso = modo === "substituir" ? "Isso APAGA todos os dados atuais e coloca no lugar os do arquivo. Continuar?" : `Importar ${dados.compromissos?.length || 0} compromissos, mantendo os atuais?`;
+      if (!confirm(aviso)) return;
+      const r = await restaurar(dados, modo);
+      $("#status-backup").textContent = `Restaurado: ${r.compromissos} compromissos, ${r.historico} registros de histórico, ${r.categorias} categorias.`;
+      toast("Backup restaurado.");
+    } catch (e) {
+      console.error(e);
+      $("#status-backup").textContent = "Falha: " + e.message;
+      toast(e.message, true);
+    } finally {
+      ev.target.value = "";
+    }
+  }
+  function iniciar2({ persistencia } = {}) {
+    estado.persistencia = persistencia;
+    $$(".aba").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
+    $("#btn-assistente-atalho").addEventListener("click", () => abrirAba("assistente"));
+    $("#btn-novo").addEventListener("click", () => abrirForm());
+    $$("[data-fechar]").forEach((b) => b.addEventListener("click", () => fecharModal(b.dataset.fechar)));
+    $$(".modal").forEach(
+      (m) => m.addEventListener("click", (ev) => {
+        if (ev.target === m) fecharModal(m.id);
+      })
+    );
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") $$(".modal:not([hidden])").forEach((m) => fecharModal(m.id));
+    });
+    $("#form-compromisso").addEventListener("submit", submeterForm);
+    $("#c-lembretes").addEventListener("click", (ev) => {
+      const chip = ev.target.closest(".chip-lembrete");
+      if (!chip) return;
+      const dias = Number(chip.dataset.dias);
+      if (estado.lembretesSelecionados.has(dias)) estado.lembretesSelecionados.delete(dias);
+      else estado.lembretesSelecionados.add(dias);
+      renderChipsLembrete();
+    });
+    $("#btn-add-lembrete").addEventListener("click", () => {
+      const v = Number($("#c-lembrete-custom").value);
+      if (!Number.isFinite(v) || v < 0) return toast("Informe um número de dias válido.", true);
+      estado.lembretesSelecionados.add(v);
+      $("#c-lembrete-custom").value = "";
+      renderChipsLembrete();
+    });
+    $("#form-pagamento").addEventListener("submit", confirmarPagamento);
+    $("#form-adiar").addEventListener("submit", confirmarAdiar);
+    ["#lista-vencidos", "#lista-hoje", "#lista-proximos", "#lista-compromissos"].forEach((sel) => {
+      $(sel).addEventListener("click", (ev) => {
+        const item = ev.target.closest(".item[data-id]");
+        if (item) abrirDetalhe(item.dataset.id);
+      });
+    });
+    $("#aviso-lembretes").addEventListener("click", (ev) => {
+      const linha = ev.target.closest(".linha[data-id]");
+      if (linha) abrirDetalhe(linha.dataset.id);
+    });
+    $("#detalhe-conteudo").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-acao]");
+      if (btn) executarAcao(btn.dataset.acao, btn.dataset.id);
+    });
+    const aoFiltrar = () => {
+      estado.filtros = lerFiltros();
+      renderLista();
+    };
+    ["#f-texto", "#f-categoria", "#f-status", "#f-prioridade", "#f-recorrencia", "#f-de", "#f-ate", "#f-valor-min", "#f-valor-max", "#f-ordem"].forEach(
+      (sel) => {
+        $(sel).addEventListener("input", aoFiltrar);
+        $(sel).addEventListener("change", aoFiltrar);
+      }
+    );
+    $("#btn-limpar-filtros").addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ["#f-texto", "#f-categoria", "#f-status", "#f-prioridade", "#f-recorrencia", "#f-de", "#f-ate", "#f-valor-min", "#f-valor-max"].forEach(
+        (sel) => $(sel).value = ""
+      );
+      aoFiltrar();
+    });
+    estado.assistente = new Assistente({
+      getCompromissos: () => estado.compromissos,
+      getCategorias: () => estado.categorias,
+      onMensagem: balao,
+      aoSalvar: () => toast("Compromisso criado pelo assistente.")
+    });
+    balao({
+      de: "assistente",
+      texto: 'Oi! Posso cadastrar e consultar compromissos. Experimente: "cadastrar pagamento do condomínio" ou "quais contas vencem esta semana?".'
+    });
+    $("#btn-enviar").addEventListener("click", () => enviarAoAssistente($("#entrada-assistente").value));
+    $("#entrada-assistente").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") enviarAoAssistente($("#entrada-assistente").value);
+    });
+    $("#btn-microfone").addEventListener("click", alternarMicrofone);
+    $$(".dica").forEach((d) => d.addEventListener("click", () => enviarAoAssistente(d.dataset.frase)));
+    $("#btn-permitir-notificacoes").addEventListener("click", async () => {
+      const r = await pedirPermissao();
+      await atualizarStatusNotificacoes();
+      if (r === "granted") {
+        registrarVerificacaoEmSegundoPlano();
+        toast("Notificações ativadas.");
+        verificar(estado.compromissos);
+      } else toast("Permissão não concedida.", true);
+    });
+    $("#btn-testar-notificacao").addEventListener("click", async () => {
+      if (permissao() !== "granted") return toast("Permita as notificações primeiro.", true);
+      await notificarAgora("Agenda Inteligente", "Notificação de teste — está funcionando. ✅");
+    });
+    $("#btn-verificar-lembretes").addEventListener("click", async () => {
+      const r = await verificar(estado.compromissos);
+      if (r.semPermissao) {
+        toast(
+          r.devidos ? `${r.devidos} lembrete(s) prontos, mas as notificações estão bloqueadas. Libere para recebê-los.` : "Nenhum lembrete pendente agora.",
+          !!r.devidos
+        );
+      } else toast(r.disparados ? `${r.disparados} lembrete(s) enviado(s).` : "Nenhum lembrete pendente agora.");
+    });
+    $("#btn-add-categoria").addEventListener("click", async () => {
+      const nome = $("#nova-categoria").value.trim();
+      if (!nome) return toast("Informe o nome da categoria.", true);
+      await adicionarCategoria(nome);
+      $("#nova-categoria").value = "";
+      toast("Categoria adicionada.");
+    });
+    $("#lista-categorias").addEventListener("click", async (ev) => {
+      const chip = ev.target.closest("[data-categoria]");
+      if (!chip) return;
+      const nome = chip.dataset.categoria;
+      const emUso = estado.compromissos.filter((c) => c.categoria === nome).length;
+      if (emUso) return toast(`"${nome}" está em uso por ${emUso} compromisso(s).`, true);
+      if (!confirm(`Remover a categoria "${nome}"?`)) return;
+      await removerCategoria(nome);
+      toast("Categoria removida.");
+    });
+    $("#btn-exportar-json").addEventListener("click", async () => {
+      const t = await exportarJSON();
+      $("#status-backup").textContent = `Backup gerado: ${t.compromissos} compromissos e ${t.historico} registros de histórico.`;
+      atualizarStatusArmazenamento();
+    });
+    $("#btn-exportar-csv").addEventListener("click", async () => {
+      const n = await exportarCSV(estado.compromissos);
+      $("#status-backup").textContent = `CSV gerado com ${n} compromissos.`;
+    });
+    $("#arquivo-backup").addEventListener("change", importarBackup);
+    $("#chips-status").addEventListener("click", (ev) => {
+      if (ev.target.closest('[data-acao="pedir-notificacao"]')) $("#btn-permitir-notificacoes").click();
+    });
+    window.addEventListener("online", renderChips);
+    window.addEventListener("offline", renderChips);
+    onMudanca(() => carregar().catch((e) => console.error(e)));
+    atualizarStatusNotificacoes();
+    atualizarStatusArmazenamento();
+  }
+
+  // agenda-inteligente/js/app.js
+  var VERSAO = "1.2.0";
+  var MODO_ARQUIVO3 = location.protocol === "file:";
+  async function registrarServiceWorker() {
+    const alvo = document.querySelector("#status-sw");
+    if (MODO_ARQUIVO3) {
+      if (alvo)
+        alvo.textContent = "Aberto como arquivo local: tudo funciona e os dados ficam salvos no aparelho, mas o navegador desativa notificações do sistema e instalação como app. Os lembretes aparecem no painel ao abrir a agenda.";
+      return null;
+    }
+    if (!("serviceWorker" in navigator)) {
+      if (alvo) alvo.textContent = "Service worker indisponível: o app funciona, mas sem cache offline.";
+      return null;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+      definirRegistroSW(reg);
+      if (alvo) alvo.textContent = "Modo offline ativo (service worker registrado).";
+      navigator.serviceWorker.addEventListener("message", (ev) => {
+        if (ev.data?.tipo === "abrir-compromisso") {
+          abrirAba("lista");
+          document.querySelector("#f-texto").value = "";
+          toast("Compromisso do lembrete aberto na lista.");
+        }
+        if (ev.data?.tipo === "verificar-lembretes") {
+          verificar().catch(() => {
+          });
+        }
+      });
+      return reg;
+    } catch (e) {
+      console.warn("[app] falha ao registrar service worker", e);
+      if (alvo) alvo.textContent = "Não foi possível ativar o modo offline: " + e.message;
+      return null;
+    }
+  }
+  function prepararInstalacao() {
+    const btn = document.querySelector("#btn-instalar");
+    let evento = null;
+    window.addEventListener("beforeinstallprompt", (ev) => {
+      ev.preventDefault();
+      evento = ev;
+      btn.hidden = false;
+    });
+    btn.addEventListener("click", async () => {
+      if (!evento) return;
+      evento.prompt();
+      const escolha = await evento.userChoice;
+      if (escolha.outcome === "accepted") btn.hidden = true;
+      evento = null;
+    });
+    window.addEventListener("appinstalled", () => {
+      btn.hidden = true;
+      toast("App instalado. Abra pela tela inicial para receber lembretes.");
+    });
+  }
+  async function iniciar3() {
+    document.querySelector("#versao-app").textContent = "v" + VERSAO;
+    try {
+      await iniciar();
+    } catch (e) {
+      console.error("[app] banco indisponível", e);
+      document.body.insertAdjacentHTML(
+        "afterbegin",
+        `<p style="padding:16px;color:#E8445A">Não foi possível abrir o banco local (IndexedDB). Em janelas anônimas alguns navegadores bloqueiam o armazenamento — abra em uma janela normal.</p>`
+      );
+      return;
+    }
+    const persistencia = await garantirPersistencia();
+    iniciar2({ persistencia });
+    await carregar();
+    const acao = new URLSearchParams(location.search).get("acao");
+    if (acao === "novo") abrirForm();
+    if (acao === "assistente") abrirAba("assistente");
+    await registrarServiceWorker();
+    prepararInstalacao();
+    if (permissao() === "granted") {
+      registrarVerificacaoEmSegundoPlano();
+    }
+    iniciarAgendador();
+    window.addEventListener("unhandledrejection", (ev) => {
+      console.error("[app] promessa rejeitada", ev.reason);
+      toast("Ocorreu um erro: " + (ev.reason?.message || ev.reason), true);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", iniciar3);
+  } else {
+    iniciar3();
+  }
+})();
+
+    </script>
+  </body>
+</html>

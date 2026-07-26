@@ -10,8 +10,10 @@ const INTERVALO_MS = 60 * 1000;
 let timer = null;
 let registroSW = null;
 
+const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
+
 export function suportado() {
-  return typeof Notification !== "undefined";
+  return typeof Notification !== "undefined" && !MODO_ARQUIVO;
 }
 
 export function permissao() {

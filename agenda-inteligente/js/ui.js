@@ -8,7 +8,7 @@ import * as consultas from "./consultas.js";
 import * as backup from "./backup.js";
 import * as notificacoes from "./notificacoes.js";
 import { Assistente, Escuta, falar, calarBoca, reconhecimentoDisponivel } from "./voz.js";
-import { proximoLembrete } from "./lembretes.js";
+import { proximoLembrete, avisosAtivos } from "./lembretes.js";
 import {
   RECORRENCIAS,
   PRIORIDADES,
@@ -100,7 +100,35 @@ function pintarLista(elId, itens, vazio) {
   el.innerHTML = itens.length ? itens.map(itemHTML).join("") : `<p class="vazio">${vazio}</p>`;
 }
 
+/**
+ * Avisos na própria tela. É o que garante o lembrete quando o navegador não
+ * deixa notificar (app aberto como arquivo, permissão negada, iOS).
+ */
+function renderAvisos() {
+  const el = $("#aviso-lembretes");
+  const ativos = avisosAtivos(estado.compromissos);
+  if (!ativos.length) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  const semNotificacao = notificacoes.permissao() !== "granted";
+  el.hidden = false;
+  el.innerHTML = `
+    <h2>🔔 ${ativos.length} lembrete(s) ativo(s)</h2>
+    ${ativos
+      .map(
+        (a) => `<div class="linha" data-id="${a.compromisso.id}">
+          <span>${esc(a.compromisso.titulo)}${a.compromisso.valor != null ? " · " + formatarMoeda(a.compromisso.valor) : ""}</span>
+          <span class="quando">${esc(consultas.rotuloRelativo(a.compromisso.data))}</span>
+        </div>`
+      )
+      .join("")}
+    ${semNotificacao ? `<p class="nota">As notificações do sistema estão desativadas neste modo — os avisos aparecem aqui ao abrir o app.</p>` : ""}`;
+}
+
 function renderPainel() {
+  renderAvisos();
   const r = consultas.resumo(estado.compromissos);
   $("#resumo-cards").innerHTML = `
     <div class="card ${r.vencidos.length ? "perigo" : "ok"}">
@@ -217,21 +245,27 @@ function renderCategoriasAjustes() {
     .join("");
 }
 
+const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
+
 function renderChips() {
   const chips = [];
+  if (MODO_ARQUIVO) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
   chips.push(
     navigator.onLine
       ? `<span class="chip ok">● online</span>`
       : `<span class="chip alerta">● offline — tudo continua funcionando</span>`
   );
-  const perm = notificacoes.permissao();
-  const mapa = {
-    granted: `<span class="chip ok">🔔 notificações ativas</span>`,
-    denied: `<span class="chip erro">🔕 notificações bloqueadas</span>`,
-    default: `<span class="chip alerta acao" data-acao="pedir-notificacao">🔔 ativar notificações</span>`,
-    unsupported: `<span class="chip">🔕 sem suporte a notificações</span>`,
-  };
-  chips.push(mapa[perm] || mapa.default);
+  // no modo arquivo o chip acima já explica; não faz sentido oferecer algo que o navegador nega
+  if (!MODO_ARQUIVO) {
+    const perm = notificacoes.permissao();
+    const mapa = {
+      granted: `<span class="chip ok">🔔 notificações ativas</span>`,
+      denied: `<span class="chip erro">🔕 notificações bloqueadas</span>`,
+      default: `<span class="chip alerta acao" data-acao="pedir-notificacao">🔔 ativar notificações</span>`,
+      unsupported: `<span class="chip">🔕 sem suporte a notificações</span>`,
+    };
+    chips.push(mapa[perm] || mapa.default);
+  }
   if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
   $("#chips-status").innerHTML = chips.join("");
 }
@@ -529,6 +563,16 @@ function alternarMicrofone() {
 
 async function atualizarStatusNotificacoes() {
   const perm = notificacoes.permissao();
+  if (MODO_ARQUIVO) {
+    $("#status-notificacoes").textContent =
+      "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema " +
+      "nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber " +
+      "notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
+    $("#btn-permitir-notificacoes").disabled = true;
+    $("#btn-testar-notificacao").disabled = true;
+    renderChips();
+    return;
+  }
   const textos = {
     granted: "Notificações liberadas. Os lembretes configurados serão exibidos automaticamente.",
     denied: "Notificações bloqueadas pelo navegador. Libere nas configurações do site para receber lembretes.",
@@ -623,6 +667,10 @@ export function iniciar({ persistencia } = {}) {
       const item = ev.target.closest(".item[data-id]");
       if (item) abrirDetalhe(item.dataset.id);
     });
+  });
+  $("#aviso-lembretes").addEventListener("click", (ev) => {
+    const linha = ev.target.closest(".linha[data-id]");
+    if (linha) abrirDetalhe(linha.dataset.id);
   });
   $("#detalhe-conteudo").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-acao]");

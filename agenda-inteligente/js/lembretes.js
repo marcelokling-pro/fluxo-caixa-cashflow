@@ -44,6 +44,26 @@ export function lembretesDevidos(compromissos, enviados = new Set(), hoje = hoje
   return devidos.sort((a, b) => diffDias(hoje, a.compromisso.data) - diffDias(hoje, b.compromisso.data));
 }
 
+/**
+ * Compromissos que já entraram no período de aviso, um por compromisso.
+ * Independe de notificação ter sido exibida — é o que a tela mostra quando o
+ * navegador bloqueia notificações (abrir por arquivo, permissão negada, iOS).
+ */
+export function avisosAtivos(compromissos, hoje = hojeISO()) {
+  const ativos = [];
+  for (const c of compromissos) {
+    if (!estaAberto(c)) continue;
+    if (c.data < hoje) continue;
+    const disparados = (c.lembretes || [])
+      .map(Number)
+      .filter((dias) => somarDias(c.data, -dias) <= hoje);
+    if (!disparados.length) continue;
+    const dias = Math.min(...disparados);
+    ativos.push({ compromisso: c, dias, ...textoLembrete(c, dias) });
+  }
+  return ativos.sort((a, b) => diffDias(hoje, a.compromisso.data) - diffDias(hoje, b.compromisso.data));
+}
+
 /** Próximo lembrete futuro de um compromisso — usado no detalhe da tela. */
 export function proximoLembrete(c, hoje = hojeISO()) {
   const futuros = (c.lembretes || [])

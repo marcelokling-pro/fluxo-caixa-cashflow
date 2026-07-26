@@ -4,10 +4,21 @@ import * as db from "./db.js";
 import * as ui from "./ui.js";
 import * as notificacoes from "./notificacoes.js";
 
-export const VERSAO = "1.1.0";
+export const VERSAO = "1.2.0";
+
+/** Aberto direto do arquivo (sem servidor): o navegador desliga SW e notificações. */
+export const MODO_ARQUIVO = location.protocol === "file:";
 
 async function registrarServiceWorker() {
   const alvo = document.querySelector("#status-sw");
+  if (MODO_ARQUIVO) {
+    if (alvo)
+      alvo.textContent =
+        "Aberto como arquivo local: tudo funciona e os dados ficam salvos no aparelho, mas o " +
+        "navegador desativa notificações do sistema e instalação como app. Os lembretes aparecem " +
+        "no painel ao abrir a agenda.";
+    return null;
+  }
   if (!("serviceWorker" in navigator)) {
     if (alvo) alvo.textContent = "Service worker indisponível: o app funciona, mas sem cache offline.";
     return null;

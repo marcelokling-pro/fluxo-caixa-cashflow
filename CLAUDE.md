@@ -68,19 +68,25 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 ### App secundário: Agenda Inteligente (`agenda-inteligente/`)
 
-PWA **independente e somente local** em HTML/CSS/JS puro (sem React, sem Supabase, sem build).
-Roda com `npm run agenda` (= `node agenda-inteligente/servir.mjs`, servidor sem dependências)
-em http://localhost:4321. **Fora de `public/` de propósito**: o `npm run build` não inclui a
-pasta e o Vercel não publica nada dela — não existe versão em PROD. Guarda tudo em IndexedDB
-no aparelho e funciona offline. Versão própria (`v1.1.0` em `js/app.js` + `sw.js`),
-independente da versão do `App.jsx`.
+App **independente e somente local** em HTML/CSS/JS puro (sem React, sem Supabase, sem build),
+feito para rodar **no celular**. **Fora de `public/` de propósito**: o `npm run build` não
+inclui a pasta e o Vercel não publica nada dela — não existe versão em PROD. Versão própria
+(`v1.2.0` em `js/app.js` + `sw.js`), independente da versão do `App.jsx`.
+
+Dois modos de execução, e a diferença entre eles é regra de navegador, não escolha de projeto:
+
+| Modo | Como | Notificação do sistema / PWA |
+|---|---|---|
+| **Arquivo único no celular** | `npm run agenda:arquivo` gera `AgendaInteligente.html` (tudo embutido), copiado para o aparelho | Não — `file://` bloqueia. Os lembretes aparecem no topo do painel |
+| Servidor local no PC | `npm run agenda` → http://localhost:4321 | Sim — `localhost` é origem segura |
+
+**Ao alterar qualquer arquivo de `js/`, `css/` ou `index.html`, regerar o arquivo único**
+(`npm run agenda:arquivo`) — senão o app do celular fica na versão anterior. Atualizar também
+a lista `ARQUIVOS` e a constante `VERSAO` do `sw.js`.
 
 **Não misturar os dois apps**: a Agenda Inteligente não lê nem escreve no Supabase, e a aba
 `agenda` do `App.jsx` continua sendo outra coisa (compromissos recorrentes do fluxo de caixa).
-Mexer em um não deve tocar no outro. Detalhes em `public/agenda-inteligente/README.md`.
-
-Ao alterar arquivos dessa pasta, atualizar a lista `ARQUIVOS` e a constante `VERSAO` do
-`sw.js` — sem o bump de versão o service worker continua servindo o cache antigo.
+Mexer em um não deve tocar no outro. Detalhes em `agenda-inteligente/README.md`.
 
 ## Conceitos centrais
 

@@ -2,7 +2,7 @@
    Service worker clássico (sem import de módulos) para máxima compatibilidade:
    a lógica de lembretes é uma cópia mínima e autocontida de js/lembretes.js. */
 
-const VERSAO = "v1.1.0";
+const VERSAO = "v1.2.0";
 const CACHE = "agenda-inteligente-" + VERSAO;
 
 const ARQUIVOS = [

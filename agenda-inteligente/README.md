@@ -1,16 +1,56 @@
-# Agenda Inteligente de Compromissos — v1.1.0
+# Agenda Inteligente de Compromissos — v1.2.0
 
-PWA independente (HTML + CSS + JavaScript puro, sem framework e sem build) para gerenciar
-compromissos e pagamentos recorrentes com lembretes, assistente por voz e funcionamento
-100% offline. **Não compartilha código nem dados com o app de Fluxo de Caixa** — vive
-isolado nesta pasta e grava tudo no IndexedDB do próprio aparelho.
+App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
+gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e
+funcionamento 100% offline. **Não compartilha código nem dados com o app de Fluxo de Caixa**,
+não usa Supabase, não depende de Vercel nem de qualquer hospedagem — grava tudo no IndexedDB
+do próprio aparelho.
 
-## Como abrir (100% local)
+## Levar para o celular (arquivo único)
+
+**`AgendaInteligente.html`** é o app inteiro num arquivo só (121 KB): CSS, JavaScript e ícone
+embutidos, sem depender de servidor, internet, hospedagem ou build. É esse arquivo que vai
+para o aparelho.
+
+```bash
+node agenda-inteligente/gerar-arquivo-unico.mjs    # ou: npm run agenda:arquivo
+```
+Regere sempre que mexer em `js/`, `css/` ou `index.html` — o HTML do celular não se atualiza sozinho.
+
+### Android (Chrome)
+
+1. Mande o arquivo para o celular (Drive, WhatsApp, e-mail, cabo).
+2. **Baixe pelo próprio Chrome** e abra pela lista de downloads do Chrome (☰ → Downloads).
+   Isso faz a página abrir como `file://…`, que é onde o navegador guarda os dados.
+3. Menu do Chrome → **Adicionar à tela de início** cria o atalho.
+
+> Confira uma vez: cadastre um compromisso, feche o Chrome por completo, reabra pelo atalho e
+> veja se ele continua lá. Se abrir por outro aplicativo (gerenciador de arquivos), o Android
+> às vezes entrega a página como `content://…`, e nesse endereço o navegador pode não guardar
+> nada. Se o teste falhar, reabra pela lista de downloads do Chrome.
+
+### O que muda no modo arquivo
+
+| Funciona | Não funciona |
+|---|---|
+| Cadastro, recorrência, situações, busca, histórico | **Notificação do sistema** (o navegador bloqueia em `file://`) |
+| Dados salvos no aparelho e mantidos ao fechar o app | Instalar como app "de verdade" (só atalho) |
+| Assistente por texto (e por voz, onde o navegador tiver) | Service worker / cache offline (desnecessário: o arquivo já é local) |
+| Backup JSON e CSV | Armazenamento "persistente" garantido pelo navegador |
+
+Como as notificações não existem nesse modo, **os lembretes vencidos aparecem em destaque no
+topo do painel** toda vez que você abre a agenda — é o substituto direto do aviso do sistema.
+
+Para ter notificação com o app fechado é obrigatório abrir a agenda por um endereço `https://`
+ou `localhost` (regra do navegador, não do app) e instalá-la como PWA.
+
+## Rodar no computador (app completo)
 
 ```bash
 node agenda-inteligente/servir.mjs      # ou: npm run agenda
 ```
-→ http://localhost:4321
+→ http://localhost:4321 — aqui sim com notificações, service worker e instalação como app,
+porque `localhost` conta como origem segura.
 
 O `servir.mjs` usa só o Node (nenhuma dependência, nenhum `npm install`). **Não depende do
 Vite, do build nem de deploy** — a pasta está fora de `public/`, então o `npm run build` não
@@ -18,20 +58,13 @@ a inclui e o Vercel não publica nada dela.
 
 Outra porta: `node agenda-inteligente/servir.mjs 8080`.
 
-### Por que não abrir o `index.html` direto (duplo clique)?
+Para desenvolver, use este modo: o `index.html` da pasta carrega os módulos de `js/` direto,
+sem precisar regerar o arquivo único a cada alteração. Serve também para conferir no PC o
+comportamento das notificações, que o modo arquivo não tem.
 
-Service worker, modo offline, notificações e instalação como app só funcionam em **origem
-segura** — `https://` ou `localhost`. Em `file://` o navegador bloqueia tudo isso (e o Firefox
-também bloqueia IndexedDB). Por isso o servidor local: `localhost` conta como origem segura e
-o app roda completo, sem internet e sem nuvem.
-
-### No celular
-
-Como o app é local, o celular precisa alcançar a máquina: `node agenda-inteligente/servir.mjs --rede`
-mostra o endereço da rede local. **Atenção**: por IP da rede o navegador trata a origem como
-insegura, então cadastro, busca e histórico funcionam, mas service worker, modo offline e
-notificações ficam desativados. Para o app completo no celular é preciso servir por HTTPS
-(hospedagem própria ou túnel) — ou usar no desktop pelo `localhost`.
+`node agenda-inteligente/servir.mjs --rede` expõe o servidor na rede local (para abrir do
+celular sem copiar o arquivo), mas por IP o navegador trata a origem como insegura — mesmas
+limitações do modo arquivo.
 
 ## Arquitetura (módulos independentes)
 

@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import { somarDias, somarMeses, proximaData, proximaDataFutura, semanaDe, mesDe } from "./agenda-inteligente/js/recorrencia.js";
 import { novoCompromisso, statusEfetivo } from "./agenda-inteligente/js/model.js";
 import { filtrar, resumo, vencidos, proximos, proximoCompromisso, porCategoria } from "./agenda-inteligente/js/consultas.js";
-import { lembretesDevidos, chaveLembrete } from "./agenda-inteligente/js/lembretes.js";
+import { lembretesDevidos, chaveLembrete, avisosAtivos } from "./agenda-inteligente/js/lembretes.js";
 import { validarBackup } from "./agenda-inteligente/js/backup.js";
 import * as interp from "./agenda-inteligente/js/interpretador.js";
 
@@ -122,6 +122,21 @@ describe("lembretes", () => {
     const pago = compromisso({ id: "b", data: "2026-08-10", lembretes: [30], status: "pago" });
     const vencido = compromisso({ id: "c", data: "2026-07-01", lembretes: [0] });
     expect(lembretesDevidos([pago, vencido], new Set(), HOJE)).toEqual([]);
+  });
+
+  it("avisosAtivos lista cada compromisso uma vez, pela antecedência mais recente", () => {
+    const c1 = compromisso({ id: "a", titulo: "Aluguel", data: "2026-08-10", lembretes: [30, 15, 7] });
+    const c2 = compromisso({ id: "b", titulo: "IPVA", data: "2026-09-30", lembretes: [7] }); // ainda longe
+    const ativos = avisosAtivos([c1, c2], HOJE);
+    expect(ativos).toHaveLength(1);
+    expect(ativos[0].compromisso.id).toBe("a");
+    expect(ativos[0].dias).toBe(15); // o aviso mais recente que já disparou, não o de 30
+  });
+
+  it("avisosAtivos ignora pagos e vencidos (mesmo sem notificação disponível)", () => {
+    const pago = compromisso({ id: "p", data: "2026-08-10", lembretes: [30], status: "pago" });
+    const vencido = compromisso({ id: "v", data: "2026-07-01", lembretes: [30] });
+    expect(avisosAtivos([pago, vencido], HOJE)).toEqual([]);
   });
 
   it("a chave muda quando a data do compromisso muda (lembrete rearma ao adiar)", () => {
