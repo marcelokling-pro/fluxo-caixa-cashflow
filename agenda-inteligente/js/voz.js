@@ -167,11 +167,13 @@ export class Assistente {
    * @param {(msg) => void} deps.onMensagem    ({ de, texto, itens })
    * @param {() => void} deps.aoSalvar         chamado após gravar
    */
-  constructor({ getCompromissos, getCategorias, onMensagem, aoSalvar } = {}) {
+  constructor({ getCompromissos, getCategorias, onMensagem, aoSalvar, getModo } = {}) {
     this.getCompromissos = getCompromissos || (() => []);
     this.getCategorias = getCategorias || (() => []);
     this.onMensagem = onMensagem || (() => {});
     this.aoSalvar = aoSalvar || (() => {});
+    /** "guiado" | "automatico" | "rapido" — ver MODOS_ASSISTENTE. */
+    this.getModo = getModo || (() => "automatico");
     this.etapa = "ocioso";
     this.rascunho = null;
   }
@@ -210,7 +212,7 @@ export class Assistente {
     }
 
     if (intencao.tipo === "cadastrar") {
-      return this.iniciarCadastro(intencao);
+      return this.iniciarCadastro(texto);
     }
 
     return this.responder(
@@ -218,17 +220,38 @@ export class Assistente {
     );
   }
 
-  iniciarCadastro(intencao) {
-    const titulo = intencao.titulo || "";
+  /**
+   * No modo guiado só o título é aproveitado da frase — o resto é perguntado,
+   * porque quem não sabe o formato precisa ser conduzido. Nos outros modos, tudo
+   * o que veio na frase já entra preenchido.
+   */
+  iniciarCadastro(frase) {
+    const modo = this.getModo();
+    const lido = interp.interpretarFrase(frase, hojeISO());
+    const titulo = lido.titulo || "";
+    const guiado = modo === "guiado";
+
     this.rascunho = {
       titulo,
-      valor: intencao.valor ?? null,
-      data: intencao.data || null,
-      recorrencia: intencao.recorrencia || null,
-      lembretes: [],
+      valor: guiado ? null : lido.valor,
+      data: guiado ? null : lido.data,
+      hora: guiado ? "" : lido.hora || "",
+      recorrencia: guiado ? null : lido.recorrencia,
+      lembretes: guiado ? [] : lido.lembretes,
       categoria: interp.sugerirCategoria(titulo, this.getCategorias()),
       prioridade: "media",
     };
+
+    // Rápido: o que não foi dito assume padrão em vez de virar pergunta.
+    if (modo === "rapido") {
+      if (this.rascunho.valor == null) this.rascunho.valorPulado = true;
+      if (!this.rascunho.recorrencia) this.rascunho.recorrencia = "unico";
+      if (!this.rascunho.lembretes.length) {
+        this.rascunho.lembretes = [1];
+        this.rascunho.lembretePulado = true;
+      }
+    }
+
     if (!titulo) {
       this.etapa = "titulo";
       return this.responder("O que você quer cadastrar?");
@@ -267,7 +290,7 @@ export class Assistente {
     const r = this.rascunho;
     const partes = [r.titulo];
     if (r.valor != null) partes.push(`no valor de ${formatarMoeda(r.valor)}`);
-    partes.push(`com vencimento em ${formatarData(r.data)}`);
+    partes.push(`com vencimento em ${formatarData(r.data)}${r.hora ? " às " + r.hora : ""}`);
     partes.push(`recorrência ${labelRecorrencia(r.recorrencia).toLowerCase()}`);
     if (r.lembretes.length) partes.push(`aviso ${r.lembretes.map(labelLembrete).join(" e ").toLowerCase()}`);
     else partes.push("sem lembrete");
@@ -351,6 +374,7 @@ export class Assistente {
       titulo: r.titulo,
       valor: r.valor,
       data: r.data,
+      hora: r.hora || "",
       recorrencia: r.recorrencia || "unico",
       lembretes: r.lembretes.length ? r.lembretes : [],
       categoria: r.categoria,

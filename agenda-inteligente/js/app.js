@@ -88,11 +88,12 @@ async function iniciar() {
   const persistencia = await db.garantirPersistencia();
   ui.iniciar({ persistencia });
   await ui.carregar();
+  const { abaInicial } = await ui.carregarPreferencias();
 
-  // atalhos do manifest (ícone longo-pressionado na tela inicial)
+  // atalhos do manifest (ícone longo-pressionado na tela inicial) e preferência de abertura
   const acao = new URLSearchParams(location.search).get("acao");
   if (acao === "novo") ui.abrirForm();
-  if (acao === "assistente") ui.abrirAba("assistente");
+  else if (acao === "assistente" || abaInicial === "assistente") ui.focarAssistente();
 
   await registrarServiceWorker();
   prepararInstalacao();

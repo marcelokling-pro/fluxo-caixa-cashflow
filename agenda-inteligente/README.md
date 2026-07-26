@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.4.3
+# Agenda Inteligente de Compromissos — v1.5.0
 
 App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
 gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e
@@ -133,8 +133,24 @@ Funciona por voz (`🎤`) ou por texto — o mesmo interpretador atende aos dois
 navegadores sem `SpeechRecognition` (Firefox, iOS antigo) continuam com o assistente completo
 pelo campo de digitação.
 
-**Cadastro:** "Cadastrar pagamento do condomínio" → o assistente pergunta valor, vencimento,
-recorrência, frequência e antecedência do aviso, mostra o resumo e só grava após o "sim".
+**Cadastro:** dá para dizer tudo numa frase — *"paga o condomínio dia 10 todo mês, 450, me
+avisa 5 dias antes"* — ou só começar: *"cadastrar pagamento do condomínio"*, e o assistente
+pergunta o que faltou. Em qualquer caso mostra o resumo e só grava após o "sim".
+
+**Modo do assistente** (Ajustes → Assistente), porque nem todo mundo sabe ou lembra o que
+precisa informar:
+
+| Modo | Comportamento |
+|---|---|
+| Guiado | Pergunta uma coisa de cada vez, mesmo que a frase já tenha tudo |
+| Automático *(padrão)* | Aproveita o que veio na frase e pergunta só o que faltou |
+| Rápido | Só pergunta título e data; o resto assume padrão |
+
+A barra acima do campo mostra a pergunta atual e permite cancelar. O botão **"O que posso
+dizer?"** lista os comandos aceitos.
+
+**Abertura**: em Ajustes dá para escolher se o app abre no Painel ou direto no Assistente com
+o campo focado — nesse caso, o 🎤 do teclado fica a um toque.
 
 **Consultas:** "Quais contas vencem esta semana?", "Tenho algum compromisso amanhã?",
 "Quanto preciso pagar este mês?", "Qual o próximo compromisso?", "O que está vencido?".

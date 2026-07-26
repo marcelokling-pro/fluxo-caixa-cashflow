@@ -29,6 +29,8 @@ import {
   estaAberto,
   VERSAO,
   MODO_ARQUIVO,
+  MODOS_ASSISTENTE,
+  ABAS_INICIAIS,
 } from "./model.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -37,6 +39,8 @@ const $$ = (sel) => [...document.querySelectorAll(sel)];
 const estado = {
   compromissos: [],
   categorias: [],
+  modoAssistente: "automatico",
+  abaInicial: "painel",
   aba: "painel",
   filtros: {},
   lembretesSelecionados: new Set(),
@@ -613,6 +617,35 @@ function alternarMicrofone() {
   if (estado.escuta.iniciar()) btn.classList.add("ouvindo");
 }
 
+/* ---------- Preferências ---------- */
+
+const AJUDA_MODO = {
+  guiado: "Pergunta uma coisa de cada vez, mesmo que você já tenha dito tudo. Melhor para quem não lembra o que precisa informar.",
+  automatico: "Aproveita o que veio na frase e pergunta só o que faltou. Você pode dizer tudo de uma vez ou aos poucos.",
+  rapido: "Só pergunta título e data. O que não for dito vira padrão: sem valor, único, aviso 1 dia antes.",
+};
+
+export async function carregarPreferencias() {
+  estado.modoAssistente = await db.config("modoAssistente", "automatico");
+  estado.abaInicial = await db.config("abaInicial", "painel");
+  const sel = $("#cfg-modo-assistente");
+  sel.innerHTML = opcoes(MODOS_ASSISTENTE);
+  sel.value = estado.modoAssistente;
+  const aba = $("#cfg-aba-inicial");
+  aba.innerHTML = opcoes(ABAS_INICIAIS);
+  aba.value = estado.abaInicial;
+  $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
+  return { abaInicial: estado.abaInicial };
+}
+
+/** Abre o assistente já com o campo focado — um toque do 🎤 do teclado. */
+export function focarAssistente() {
+  abrirAba("assistente");
+  const campo = $("#entrada-assistente");
+  campo.focus({ preventScroll: false });
+  campo.click();
+}
+
 /* ---------- Ajustes ---------- */
 
 async function atualizarStatusNotificacoes() {
@@ -692,7 +725,7 @@ export function iniciar({ persistencia } = {}) {
   estado.persistencia = persistencia;
 
   $$(".aba").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
-  $("#btn-assistente-atalho").addEventListener("click", () => abrirAba("assistente"));
+  $("#btn-assistente-atalho").addEventListener("click", () => focarAssistente());
   $("#btn-novo").addEventListener("click", () => abrirForm());
 
   // fechar modais
@@ -768,6 +801,7 @@ export function iniciar({ persistencia } = {}) {
     getCategorias: () => estado.categorias,
     onMensagem: balao,
     aoSalvar: () => toast("Compromisso criado pelo assistente."),
+    getModo: () => estado.modoAssistente,
   });
   balao({
     de: "assistente",
@@ -814,6 +848,17 @@ export function iniciar({ persistencia } = {}) {
     } else toast(r.disparados ? `${r.disparados} lembrete(s) enviado(s).` : "Nenhum lembrete pendente agora.");
   });
 
+  $("#cfg-modo-assistente").addEventListener("change", async (ev) => {
+    estado.modoAssistente = ev.target.value;
+    $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
+    await db.setConfig("modoAssistente", estado.modoAssistente);
+    toast("Modo do assistente: " + (MODOS_ASSISTENTE.find((m) => m.id === estado.modoAssistente)?.label || ""));
+  });
+  $("#cfg-aba-inicial").addEventListener("change", async (ev) => {
+    estado.abaInicial = ev.target.value;
+    await db.setConfig("abaInicial", estado.abaInicial);
+    toast("O app passará a abrir em: " + (ABAS_INICIAIS.find((a) => a.id === estado.abaInicial)?.label || ""));
+  });
   $("#btn-add-categoria").addEventListener("click", async () => {
     const nome = $("#nova-categoria").value.trim();
     if (!nome) return toast("Informe o nome da categoria.", true);

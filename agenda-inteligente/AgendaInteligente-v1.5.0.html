@@ -581,6 +581,36 @@ label textarea {
   gap: 2px;
 }
 
+.ajuda-assistente {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 10px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--texto-fraco);
+}
+
+.ajuda-assistente summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.ajuda-assistente ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+
+.ajuda-assistente li {
+  margin-bottom: 3px;
+}
+
+.ajuda-assistente p {
+  margin: 8px 0 4px;
+}
+
 .dicas {
   display: flex;
   gap: 6px;
@@ -933,8 +963,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.4.3</title>
-    <!-- Agenda Inteligente v1.4.3 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.5.0</title>
+    <!-- Agenda Inteligente v1.5.0 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1021,6 +1051,28 @@ fieldset.lembretes legend {
       <!-- ASSISTENTE -->
       <section id="view-assistente" class="view">
         <div id="chat" class="chat" aria-live="polite"></div>
+        <details class="ajuda-assistente">
+          <summary>O que posso dizer?</summary>
+          <p><strong>Cadastrar</strong> — tudo numa frase, ou só o começo que eu pergunto o resto:</p>
+          <ul>
+            <li>"paga o condomínio dia 10 todo mês, 450, me avisa 5 dias antes"</li>
+            <li>"conta de luz 250 reais dia 15 mensal"</li>
+            <li>"dentista amanhã às 14:30"</li>
+            <li>"cadastrar pagamento do condomínio" <em>(eu pergunto o resto)</em></li>
+          </ul>
+          <p><strong>Consultar</strong>:</p>
+          <ul>
+            <li>"quais contas vencem esta semana?"</li>
+            <li>"tenho algum compromisso amanhã?"</li>
+            <li>"quanto preciso pagar este mês?"</li>
+            <li>"qual o próximo compromisso?"</li>
+            <li>"o que está vencido?"</li>
+          </ul>
+          <p>Entendo datas ("amanhã", "dia 10", "10 de agosto", "10/08/2026", "daqui a 5 dias"),
+          valores ("450 reais", "R$ 1.250,50", "quatrocentos e cinquenta") e frequências
+          ("todo mês", "semanal", "anual"). Nada é salvo sem você confirmar.</p>
+          <p class="ajuda">Como eu conduzo o cadastro é configurável em Ajustes → Assistente.</p>
+        </details>
         <div id="assistente-dicas" class="dicas">
           <button class="dica" data-frase="Cadastrar pagamento do condomínio">Cadastrar pagamento do condomínio</button>
           <button class="dica" data-frase="Quais contas vencem esta semana?">Quais contas vencem esta semana?</button>
@@ -1049,6 +1101,19 @@ fieldset.lembretes legend {
             <button id="btn-testar-notificacao" class="btn-secundario">Testar</button>
           </div>
           <button id="btn-verificar-lembretes" class="btn-secundario largo">Verificar lembretes agora</button>
+        </div>
+
+        <div class="bloco">
+          <h2>Assistente</h2>
+          <label>Como conduzir o cadastro
+            <select id="cfg-modo-assistente"></select>
+          </label>
+          <p id="ajuda-modo" class="ajuda"></p>
+          <label>Abrir o app em
+            <select id="cfg-aba-inicial"></select>
+          </label>
+          <p class="ajuda">Abrindo no Assistente, o campo de texto já vem focado — daí é um toque
+          no 🎤 do teclado para falar.</p>
         </div>
 
         <div class="bloco">
@@ -1093,7 +1158,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.4.3</span>
+        <span id="rodape-versao">v1.5.0</span>
       </footer>
     </main>
 
@@ -1225,7 +1290,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.4.3";
+  var VERSAO = "1.5.0";
   function ehOrigemLocal(protocolo) {
     return !/^https?:$/.test(String(protocolo || ""));
   }
@@ -1240,6 +1305,15 @@ fieldset.lembretes legend {
     { id: "trimestral", label: "Trimestral", meses: 3 },
     { id: "semestral", label: "Semestral", meses: 6 },
     { id: "anual", label: "Anual", meses: 12 }
+  ];
+  var MODOS_ASSISTENTE = [
+    { id: "guiado", label: "Guiado — pergunta uma coisa de cada vez" },
+    { id: "automatico", label: "Automático — aproveita o que você já disse" },
+    { id: "rapido", label: "Rápido — só pergunta o essencial" }
+  ];
+  var ABAS_INICIAIS = [
+    { id: "painel", label: "Painel" },
+    { id: "assistente", label: "Assistente (com o teclado pronto)" }
   ];
   var PRIORIDADES = [
     { id: "baixa", label: "Baixa", cor: "#5B7085" },
@@ -2397,6 +2471,7 @@ fieldset.lembretes legend {
     if (!str) return null;
     let s = String(str).trim();
     if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+    else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
     else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
@@ -2492,6 +2567,15 @@ fieldset.lembretes legend {
     if (soAno) return soAno[1] === "mes" ? somarMeses(hoje, 1) : somarMeses(hoje, 12);
     return null;
   }
+  function extrairHora(texto) {
+    const t = normalizar2(texto);
+    const m = t.match(/\b(\d{1,2})(?:[:h](\d{2}))?\s*(?:horas?|h)\b/) || t.match(/\bas\s+(\d{1,2})(?:[:h](\d{2}))?/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = m[2] ? Number(m[2]) : 0;
+    if (h > 23 || min > 59) return null;
+    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  }
   function extrairFrequencia(texto) {
     const t = normalizar2(texto);
     if (/\b(nao|nenhuma|unico|unica|so uma vez|uma vez so|apenas uma vez)\b/.test(t) && !/\bmensal|todo mes\b/.test(t))
@@ -2536,7 +2620,110 @@ fieldset.lembretes legend {
   function ehPular(texto) {
     return /\b(pular|pula|nao sei|nao tem|sem valor|depois|deixa em branco|nenhum)\b/.test(normalizar2(texto));
   }
-  var VERBOS_CADASTRO = /^(cadastrar|cadastre|cadastra|agendar|agende|agenda|anotar|anote|anota|criar|crie|cria|adicionar|adicione|adiciona|marcar|marque|marca|lembrar|lembre|lembra|novo|nova|registrar|registre)\b/;
+  function semAcento(txt) {
+    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+  function apagarTrecho(texto, inicio, fim) {
+    return texto.slice(0, inicio) + " ".repeat(fim - inicio) + texto.slice(fim);
+  }
+  function consumir(texto, regexes) {
+    const plano = semAcento(texto);
+    for (const re of regexes) {
+      const m = plano.match(re);
+      if (m) return { m, restante: apagarTrecho(texto, m.index, m.index + m[0].length) };
+    }
+    return { m: null, restante: texto };
+  }
+  var RE_ANTECEDENCIA = [
+    /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre|alert[ae]r?)[^,.;]*?\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
+    /\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
+    /\b(uma semana|duas semanas|quinze dias|um mes|trinta dias|vespera)\s+antes\b/,
+    /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre)\s+(?:me\s+)?no dia\b/,
+    /\bno (?:proprio )?dia\b(?=[^\d]|$)/
+  ];
+  var RE_FREQUENCIA = [
+    /\b(todo dia|todos os dias|diariamente|diario)\b/,
+    /\b(toda semana|semanalmente|semanal|por semana)\b/,
+    /\b(quinzenal|a cada quinze dias|de quinze em quinze dias)\b/,
+    /\b(todo mes|mensalmente|mensal|por mes|mes a mes)\b/,
+    /\b(bimestral|a cada dois meses)\b/,
+    /\b(trimestral|a cada tres meses)\b/,
+    /\b(semestral|a cada seis meses)\b/,
+    /\b(todo ano|anualmente|anual|por ano)\b/
+  ];
+  var RE_DATA = [
+    /\b(?:depois de amanha|amanha|hoje)\b/,
+    /\b(?:daqui a|dentro de|em)\s+\d{1,3}\s+(?:dias?|semanas?|mes(?:es)?)\b/,
+    /\b\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?\b/,
+    /\b(?:todo\s+)?(?:dia\s+)?\d{1,2}\s+de\s+[a-z]+(?:\s+de\s+\d{4})?\b/,
+    /\b(?:todo\s+)?dia\s+\d{1,2}\b/,
+    /\b(?:proxima|proximo|na|no)\s+(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)(?:-feira)?\b/
+  ];
+  var RE_HORA = [/\bas\s+\d{1,2}(?:[:h]\d{2})?\b/, /\b\d{1,2}[:h]\d{2}\b/, /\b\d{1,2}\s+horas?\b/];
+  var RE_VALOR = [
+    /\br\$\s*[\d.,]+/,
+    /\b[\d.,]+\s*reais\b/,
+    /\bvalor\s+(?:de\s+)?[\d.,]+/,
+    /\b[\d.]{1,3}(?:\.\d{3})*,\d{2}\b/,
+    /\b\d{2,}\b/
+    // sobrou um número solto depois de data/hora/antecedência: é o valor
+  ];
+  var VERBOS_TITULO = /^(?:cadastr\w*|agend\w*|anot\w*|cri[ae]r?|crie|adicion\w*|marc\w*|registr\w*|lembr\w*|pag[ao]r?|pague|coloc\w*|bota?r?|inclu\w*|novo|nova)\b\s*/;
+  var CONECTIVOS_TITULO = /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete)\b\s*/;
+  function interpretarFrase(texto, hoje = hojeISO()) {
+    let resto = String(texto || "");
+    const fora = { antecedencia: null, recorrencia: null, data: null, hora: null, valor: null };
+    const ant = consumir(resto, RE_ANTECEDENCIA);
+    if (ant.m) {
+      fora.antecedencia = extrairAntecedencia(ant.m[0]);
+      resto = ant.restante;
+    }
+    const freq = consumir(resto, RE_FREQUENCIA);
+    if (freq.m) {
+      fora.recorrencia = extrairFrequencia(freq.m[0]);
+      resto = freq.restante;
+    }
+    const data = consumir(resto, RE_DATA);
+    if (data.m) {
+      fora.data = extrairData(data.m[0], hoje);
+      if (fora.data) resto = data.restante;
+    }
+    const hora = consumir(resto, RE_HORA);
+    if (hora.m) {
+      fora.hora = extrairHora(hora.m[0]);
+      if (fora.hora) resto = hora.restante;
+    }
+    const valor = consumir(resto, RE_VALOR);
+    if (valor.m) {
+      fora.valor = extrairValor(valor.m[0]);
+      if (fora.valor != null) resto = valor.restante;
+    }
+    return {
+      titulo: limparTitulo(resto),
+      valor: fora.valor,
+      data: fora.data,
+      hora: fora.hora,
+      recorrencia: fora.recorrencia,
+      lembretes: fora.antecedencia == null ? [] : [fora.antecedencia]
+    };
+  }
+  function limparTitulo(resto) {
+    const primeiro = String(resto || "").split(/[,;.]/).map((p) => p.trim()).find((p) => /[a-zà-ú]/i.test(p)) || "";
+    let t = primeiro.replace(/\s+/g, " ").trim();
+    let anterior;
+    do {
+      anterior = t;
+      const plano = semAcento(t);
+      const verbo = plano.match(VERBOS_TITULO);
+      if (verbo) t = t.slice(verbo[0].length).trim();
+      const conectivo = semAcento(t).match(CONECTIVOS_TITULO);
+      if (conectivo) t = t.slice(conectivo[0].length).trim();
+    } while (t !== anterior && t);
+    t = t.replace(/\s+(de|do|da|com|para|pra|e)$/i, "").trim();
+    if (!t) return "";
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+  var VERBOS_CADASTRO = /^(cadastrar|cadastre|cadastra|agendar|agende|agenda|anotar|anote|anota|criar|crie|cria|adicionar|adicione|adiciona|marcar|marque|marca|lembrar|lembre|lembra|novo|nova|registrar|registre|pagar|paga|pague|colocar|coloca|incluir|inclui)\b/;
   var STOPWORDS_TITULO = /* @__PURE__ */ new Set([
     "compromisso",
     "um",
@@ -2587,15 +2774,10 @@ fieldset.lembretes legend {
       for (const c of CONSULTAS) if (c.re.test(t)) return { tipo: "consulta", consulta: c.id };
       return { tipo: "consulta", consulta: "resumo" };
     }
-    if (VERBOS_CADASTRO.test(t)) {
-      return {
-        tipo: "cadastrar",
-        titulo: extrairTitulo(texto),
-        valor: extrairValor(texto, true),
-        data: extrairData(texto),
-        recorrencia: extrairFrequencia(texto)
-      };
-    }
+    if (VERBOS_CADASTRO.test(t)) return { tipo: "cadastrar", ...interpretarFrase(texto) };
+    const lido = interpretarFrase(texto);
+    const temDados = lido.titulo && (lido.data || lido.valor != null || lido.recorrencia || lido.lembretes.length);
+    if (temDados) return { tipo: "cadastrar", ...lido };
     for (const c of CONSULTAS) if (c.re.test(t)) return { tipo: "consulta", consulta: c.id };
     return { tipo: "desconhecido" };
   }
@@ -2820,13 +3002,14 @@ fieldset.lembretes legend {
      * @param {(msg) => void} deps.onMensagem    ({ de, texto, itens })
      * @param {() => void} deps.aoSalvar         chamado após gravar
      */
-    constructor({ getCompromissos, getCategorias, onMensagem, aoSalvar } = {}) {
+    constructor({ getCompromissos, getCategorias, onMensagem, aoSalvar, getModo } = {}) {
       this.getCompromissos = getCompromissos || (() => []);
       this.getCategorias = getCategorias || (() => []);
       this.onMensagem = onMensagem || (() => {
       });
       this.aoSalvar = aoSalvar || (() => {
       });
+      this.getModo = getModo || (() => "automatico");
       this.etapa = "ocioso";
       this.rascunho = null;
     }
@@ -2857,23 +3040,40 @@ fieldset.lembretes legend {
         return this.responder(r.texto, r.itens);
       }
       if (intencao.tipo === "cadastrar") {
-        return this.iniciarCadastro(intencao);
+        return this.iniciarCadastro(texto);
       }
       return this.responder(
         'Não entendi. Você pode dizer "cadastrar pagamento do condomínio" ou perguntar "quais contas vencem esta semana?".'
       );
     }
-    iniciarCadastro(intencao) {
-      const titulo = intencao.titulo || "";
+    /**
+     * No modo guiado só o título é aproveitado da frase — o resto é perguntado,
+     * porque quem não sabe o formato precisa ser conduzido. Nos outros modos, tudo
+     * o que veio na frase já entra preenchido.
+     */
+    iniciarCadastro(frase) {
+      const modo = this.getModo();
+      const lido = interpretarFrase(frase, hojeISO());
+      const titulo = lido.titulo || "";
+      const guiado = modo === "guiado";
       this.rascunho = {
         titulo,
-        valor: intencao.valor ?? null,
-        data: intencao.data || null,
-        recorrencia: intencao.recorrencia || null,
-        lembretes: [],
+        valor: guiado ? null : lido.valor,
+        data: guiado ? null : lido.data,
+        hora: guiado ? "" : lido.hora || "",
+        recorrencia: guiado ? null : lido.recorrencia,
+        lembretes: guiado ? [] : lido.lembretes,
         categoria: sugerirCategoria(titulo, this.getCategorias()),
         prioridade: "media"
       };
+      if (modo === "rapido") {
+        if (this.rascunho.valor == null) this.rascunho.valorPulado = true;
+        if (!this.rascunho.recorrencia) this.rascunho.recorrencia = "unico";
+        if (!this.rascunho.lembretes.length) {
+          this.rascunho.lembretes = [1];
+          this.rascunho.lembretePulado = true;
+        }
+      }
       if (!titulo) {
         this.etapa = "titulo";
         return this.responder("O que você quer cadastrar?");
@@ -2910,7 +3110,7 @@ fieldset.lembretes legend {
       const r = this.rascunho;
       const partes = [r.titulo];
       if (r.valor != null) partes.push(`no valor de ${formatarMoeda(r.valor)}`);
-      partes.push(`com vencimento em ${formatarData(r.data)}`);
+      partes.push(`com vencimento em ${formatarData(r.data)}${r.hora ? " às " + r.hora : ""}`);
       partes.push(`recorrência ${labelRecorrencia(r.recorrencia).toLowerCase()}`);
       if (r.lembretes.length) partes.push(`aviso ${r.lembretes.map(labelLembrete).join(" e ").toLowerCase()}`);
       else partes.push("sem lembrete");
@@ -2991,6 +3191,7 @@ fieldset.lembretes legend {
         titulo: r.titulo,
         valor: r.valor,
         data: r.data,
+        hora: r.hora || "",
         recorrencia: r.recorrencia || "unico",
         lembretes: r.lembretes.length ? r.lembretes : [],
         categoria: r.categoria,
@@ -3013,6 +3214,8 @@ fieldset.lembretes legend {
   var estado = {
     compromissos: [],
     categorias: [],
+    modoAssistente: "automatico",
+    abaInicial: "painel",
     aba: "painel",
     filtros: {},
     lembretesSelecionados: /* @__PURE__ */ new Set(),
@@ -3498,6 +3701,29 @@ fieldset.lembretes legend {
     });
     if (estado.escuta.iniciar()) btn.classList.add("ouvindo");
   }
+  var AJUDA_MODO = {
+    guiado: "Pergunta uma coisa de cada vez, mesmo que você já tenha dito tudo. Melhor para quem não lembra o que precisa informar.",
+    automatico: "Aproveita o que veio na frase e pergunta só o que faltou. Você pode dizer tudo de uma vez ou aos poucos.",
+    rapido: "Só pergunta título e data. O que não for dito vira padrão: sem valor, único, aviso 1 dia antes."
+  };
+  async function carregarPreferencias() {
+    estado.modoAssistente = await config("modoAssistente", "automatico");
+    estado.abaInicial = await config("abaInicial", "painel");
+    const sel = $("#cfg-modo-assistente");
+    sel.innerHTML = opcoes(MODOS_ASSISTENTE);
+    sel.value = estado.modoAssistente;
+    const aba = $("#cfg-aba-inicial");
+    aba.innerHTML = opcoes(ABAS_INICIAIS);
+    aba.value = estado.abaInicial;
+    $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
+    return { abaInicial: estado.abaInicial };
+  }
+  function focarAssistente() {
+    abrirAba("assistente");
+    const campo2 = $("#entrada-assistente");
+    campo2.focus({ preventScroll: false });
+    campo2.click();
+  }
   async function atualizarStatusNotificacoes() {
     const perm = permissao();
     if (MODO_ARQUIVO) {
@@ -3560,7 +3786,7 @@ fieldset.lembretes legend {
   function iniciar2({ persistencia } = {}) {
     estado.persistencia = persistencia;
     $$(".aba").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
-    $("#btn-assistente-atalho").addEventListener("click", () => abrirAba("assistente"));
+    $("#btn-assistente-atalho").addEventListener("click", () => focarAssistente());
     $("#btn-novo").addEventListener("click", () => abrirForm());
     $$("[data-fechar]").forEach((b) => b.addEventListener("click", () => fecharModal(b.dataset.fechar)));
     $$(".modal").forEach(
@@ -3624,7 +3850,8 @@ fieldset.lembretes legend {
       getCompromissos: () => estado.compromissos,
       getCategorias: () => estado.categorias,
       onMensagem: balao,
-      aoSalvar: () => toast("Compromisso criado pelo assistente.")
+      aoSalvar: () => toast("Compromisso criado pelo assistente."),
+      getModo: () => estado.modoAssistente
     });
     balao({
       de: "assistente",
@@ -3664,6 +3891,17 @@ fieldset.lembretes legend {
           !!r.devidos
         );
       } else toast(r.disparados ? `${r.disparados} lembrete(s) enviado(s).` : "Nenhum lembrete pendente agora.");
+    });
+    $("#cfg-modo-assistente").addEventListener("change", async (ev) => {
+      estado.modoAssistente = ev.target.value;
+      $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
+      await setConfig("modoAssistente", estado.modoAssistente);
+      toast("Modo do assistente: " + (MODOS_ASSISTENTE.find((m) => m.id === estado.modoAssistente)?.label || ""));
+    });
+    $("#cfg-aba-inicial").addEventListener("change", async (ev) => {
+      estado.abaInicial = ev.target.value;
+      await setConfig("abaInicial", estado.abaInicial);
+      toast("O app passará a abrir em: " + (ABAS_INICIAIS.find((a) => a.id === estado.abaInicial)?.label || ""));
     });
     $("#btn-add-categoria").addEventListener("click", async () => {
       const nome = $("#nova-categoria").value.trim();
@@ -3773,9 +4011,10 @@ fieldset.lembretes legend {
     const persistencia = await garantirPersistencia();
     iniciar2({ persistencia });
     await carregar();
+    const { abaInicial } = await carregarPreferencias();
     const acao = new URLSearchParams(location.search).get("acao");
     if (acao === "novo") abrirForm();
-    if (acao === "assistente") abrirAba("assistente");
+    else if (acao === "assistente" || abaInicial === "assistente") focarAssistente();
     await registrarServiceWorker();
     prepararInstalacao();
     if (permissao() === "granted") {

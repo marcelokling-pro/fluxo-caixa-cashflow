@@ -207,6 +207,52 @@ describe("interpretador de voz", () => {
     const cad = interp.detectarIntencao("Cadastrar pagamento do condomínio");
     expect(cad.tipo).toBe("cadastrar");
     expect(cad.titulo).toBe("Pagamento do condomínio");
+    // "paga ... todo mês" não pode virar consulta do mês (bug pego no teste do celular)
+    const semVerbo = interp.detectarIntencao("paga o condomínio dia 10 todo mês, 450");
+    expect(semVerbo.tipo).toBe("cadastrar");
+    expect(semVerbo.titulo).toBe("Condomínio");
+    expect(interp.detectarIntencao("dentista amanhã").tipo).toBe("cadastrar");
+    // e uma frase sem dados continua sendo consulta
+    expect(interp.detectarIntencao("o que vence esta semana").tipo).toBe("consulta");
+  });
+
+  it("interpreta a frase inteira de uma vez", () => {
+    const r = interp.interpretarFrase("paga o condomínio dia 10 todo mês, 450, me avisa 5 dias antes", HOJE);
+    expect(r.titulo).toBe("Condomínio");
+    expect(r.data).toBe("2026-08-10");
+    expect(r.recorrencia).toBe("mensal");
+    expect(r.valor).toBe(450);
+    expect(r.lembretes).toEqual([5]);
+  });
+
+  it("não confunde o número do dia nem o da antecedência com o valor", () => {
+    const r = interp.interpretarFrase("IPVA 642,30 dia 15 de agosto anual me lembra 15 dias antes", HOJE);
+    expect(r.titulo).toBe("IPVA");
+    expect(r.valor).toBe(642.3);
+    expect(r.data).toBe("2026-08-15");
+    expect(r.lembretes).toEqual([15]);
+  });
+
+  it("entende ponto como separador de milhar (2.800 = 2800)", () => {
+    expect(interp.interpretarFrase("aluguel todo mês dia 5 R$ 2.800", HOJE).valor).toBe(2800);
+    expect(interp.extrairValor("R$ 1.250,50")).toBe(1250.5);
+    expect(interp.extrairValor("10.55")).toBe(10.55);
+  });
+
+  it("aceita frase incompleta, deixando o resto para o assistente perguntar", () => {
+    const r = interp.interpretarFrase("cadastrar pagamento do condomínio", HOJE);
+    expect(r.titulo).toBe("Pagamento do condomínio");
+    expect(r.data).toBe(null);
+    expect(r.valor).toBe(null);
+    expect(r.recorrencia).toBe(null);
+    expect(r.lembretes).toEqual([]);
+  });
+
+  it("pega hora junto da data", () => {
+    const r = interp.interpretarFrase("dentista amanhã às 14:30", HOJE);
+    expect(r.titulo).toBe("Dentista");
+    expect(r.data).toBe("2026-07-27");
+    expect(r.hora).toBe("14:30");
   });
 
   it("sugere categoria a partir do título", () => {

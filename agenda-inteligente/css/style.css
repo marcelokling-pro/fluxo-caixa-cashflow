@@ -567,6 +567,36 @@ label textarea {
   gap: 2px;
 }
 
+.ajuda-assistente {
+  background: var(--card);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 10px 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--texto-fraco);
+}
+
+.ajuda-assistente summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.ajuda-assistente ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+
+.ajuda-assistente li {
+  margin-bottom: 3px;
+}
+
+.ajuda-assistente p {
+  margin: 8px 0 4px;
+}
+
 .dicas {
   display: flex;
   gap: 6px;

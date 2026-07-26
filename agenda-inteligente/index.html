@@ -100,6 +100,28 @@
       <!-- ASSISTENTE -->
       <section id="view-assistente" class="view">
         <div id="chat" class="chat" aria-live="polite"></div>
+        <details class="ajuda-assistente">
+          <summary>O que posso dizer?</summary>
+          <p><strong>Cadastrar</strong> — tudo numa frase, ou só o começo que eu pergunto o resto:</p>
+          <ul>
+            <li>"paga o condomínio dia 10 todo mês, 450, me avisa 5 dias antes"</li>
+            <li>"conta de luz 250 reais dia 15 mensal"</li>
+            <li>"dentista amanhã às 14:30"</li>
+            <li>"cadastrar pagamento do condomínio" <em>(eu pergunto o resto)</em></li>
+          </ul>
+          <p><strong>Consultar</strong>:</p>
+          <ul>
+            <li>"quais contas vencem esta semana?"</li>
+            <li>"tenho algum compromisso amanhã?"</li>
+            <li>"quanto preciso pagar este mês?"</li>
+            <li>"qual o próximo compromisso?"</li>
+            <li>"o que está vencido?"</li>
+          </ul>
+          <p>Entendo datas ("amanhã", "dia 10", "10 de agosto", "10/08/2026", "daqui a 5 dias"),
+          valores ("450 reais", "R$ 1.250,50", "quatrocentos e cinquenta") e frequências
+          ("todo mês", "semanal", "anual"). Nada é salvo sem você confirmar.</p>
+          <p class="ajuda">Como eu conduzo o cadastro é configurável em Ajustes → Assistente.</p>
+        </details>
         <div id="assistente-dicas" class="dicas">
           <button class="dica" data-frase="Cadastrar pagamento do condomínio">Cadastrar pagamento do condomínio</button>
           <button class="dica" data-frase="Quais contas vencem esta semana?">Quais contas vencem esta semana?</button>
@@ -128,6 +150,19 @@
             <button id="btn-testar-notificacao" class="btn-secundario">Testar</button>
           </div>
           <button id="btn-verificar-lembretes" class="btn-secundario largo">Verificar lembretes agora</button>
+        </div>
+
+        <div class="bloco">
+          <h2>Assistente</h2>
+          <label>Como conduzir o cadastro
+            <select id="cfg-modo-assistente"></select>
+          </label>
+          <p id="ajuda-modo" class="ajuda"></p>
+          <label>Abrir o app em
+            <select id="cfg-aba-inicial"></select>
+          </label>
+          <p class="ajuda">Abrindo no Assistente, o campo de texto já vem focado — daí é um toque
+          no 🎤 do teclado para falar.</p>
         </div>
 
         <div class="bloco">
@@ -172,7 +207,7 @@
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.4.3</span>
+        <span id="rodape-versao">v1.5.0</span>
       </footer>
     </main>
 

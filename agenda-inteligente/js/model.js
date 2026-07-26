@@ -2,7 +2,7 @@
 // Módulo puro: não toca em DOM nem em IndexedDB.
 
 /** Versão do app — fonte única: título, chip do topo, rodapé, "Sobre" e nome do arquivo. */
-export const VERSAO = "1.4.3";
+export const VERSAO = "1.5.0";
 
 /**
  * Uma página só tem origem de verdade em http/https. O Android entrega HTML local como
@@ -26,6 +26,18 @@ export const RECORRENCIAS = [
   { id: "trimestral", label: "Trimestral", meses: 3 },
   { id: "semestral", label: "Semestral", meses: 6 },
   { id: "anual", label: "Anual", meses: 12 },
+];
+
+/** Como o assistente conduz o cadastro. Configurável em Ajustes. */
+export const MODOS_ASSISTENTE = [
+  { id: "guiado", label: "Guiado — pergunta uma coisa de cada vez" },
+  { id: "automatico", label: "Automático — aproveita o que você já disse" },
+  { id: "rapido", label: "Rápido — só pergunta o essencial" },
+];
+
+export const ABAS_INICIAIS = [
+  { id: "painel", label: "Painel" },
+  { id: "assistente", label: "Assistente (com o teclado pronto)" },
 ];
 
 export const PRIORIDADES = [

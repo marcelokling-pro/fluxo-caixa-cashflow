@@ -76,6 +76,9 @@ function numeroBR(str) {
   if (!str) return null;
   let s = String(str).trim();
   if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  // em pt-BR o ponto é milhar: "2.800" = 2800, "1.250.000" = 1250000.
+  // Só sobra como decimal quando não forma grupos de três ("2.8", "10.55").
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
   else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, "");
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
@@ -237,10 +240,161 @@ export function ehPular(texto) {
   return /\b(pular|pula|nao sei|nao tem|sem valor|depois|deixa em branco|nenhum)\b/.test(normalizar(texto));
 }
 
+/* ---------- Frase única: tudo de uma vez ---------- */
+
+/**
+ * Igual a `normalizar`, mas SEM mexer nos espaços — assim cada caractere continua
+ * na mesma posição do texto original (acento composto vira 1 caractere de novo),
+ * e dá para apagar do original exatamente o trecho que já foi interpretado.
+ */
+function semAcento(txt) {
+  return String(txt || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function apagarTrecho(texto, inicio, fim) {
+  return texto.slice(0, inicio) + " ".repeat(fim - inicio) + texto.slice(fim);
+}
+
+/** Procura a primeira regex que casar e devolve o casamento + o texto sem aquele trecho. */
+function consumir(texto, regexes) {
+  const plano = semAcento(texto);
+  for (const re of regexes) {
+    const m = plano.match(re);
+    if (m) return { m, restante: apagarTrecho(texto, m.index, m.index + m[0].length) };
+  }
+  return { m: null, restante: texto };
+}
+
+const RE_ANTECEDENCIA = [
+  /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre|alert[ae]r?)[^,.;]*?\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
+  /\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
+  /\b(uma semana|duas semanas|quinze dias|um mes|trinta dias|vespera)\s+antes\b/,
+  /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre)\s+(?:me\s+)?no dia\b/,
+  /\bno (?:proprio )?dia\b(?=[^\d]|$)/,
+];
+
+const RE_FREQUENCIA = [
+  /\b(todo dia|todos os dias|diariamente|diario)\b/,
+  /\b(toda semana|semanalmente|semanal|por semana)\b/,
+  /\b(quinzenal|a cada quinze dias|de quinze em quinze dias)\b/,
+  /\b(todo mes|mensalmente|mensal|por mes|mes a mes)\b/,
+  /\b(bimestral|a cada dois meses)\b/,
+  /\b(trimestral|a cada tres meses)\b/,
+  /\b(semestral|a cada seis meses)\b/,
+  /\b(todo ano|anualmente|anual|por ano)\b/,
+];
+
+const RE_DATA = [
+  /\b(?:depois de amanha|amanha|hoje)\b/,
+  /\b(?:daqui a|dentro de|em)\s+\d{1,3}\s+(?:dias?|semanas?|mes(?:es)?)\b/,
+  /\b\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?\b/,
+  /\b(?:todo\s+)?(?:dia\s+)?\d{1,2}\s+de\s+[a-z]+(?:\s+de\s+\d{4})?\b/,
+  /\b(?:todo\s+)?dia\s+\d{1,2}\b/,
+  /\b(?:proxima|proximo|na|no)\s+(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)(?:-feira)?\b/,
+];
+
+const RE_HORA = [/\bas\s+\d{1,2}(?:[:h]\d{2})?\b/, /\b\d{1,2}[:h]\d{2}\b/, /\b\d{1,2}\s+horas?\b/];
+
+const RE_VALOR = [
+  /\br\$\s*[\d.,]+/,
+  /\b[\d.,]+\s*reais\b/,
+  /\bvalor\s+(?:de\s+)?[\d.,]+/,
+  /\b[\d.]{1,3}(?:\.\d{3})*,\d{2}\b/,
+  /\b\d{2,}\b/, // sobrou um número solto depois de data/hora/antecedência: é o valor
+];
+
+const VERBOS_TITULO =
+  /^(?:cadastr\w*|agend\w*|anot\w*|cri[ae]r?|crie|adicion\w*|marc\w*|registr\w*|lembr\w*|pag[ao]r?|pague|coloc\w*|bota?r?|inclu\w*|novo|nova)\b\s*/;
+
+const CONECTIVOS_TITULO = /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete)\b\s*/;
+
+/**
+ * Lê uma frase inteira e extrai tudo o que der: título, valor, data, hora,
+ * recorrência e antecedência do lembrete. O que não vier fica null, e o
+ * assistente pergunta só isso.
+ *
+ * "paga o condomínio dia 10 todo mês, 450, me avisa 5 dias antes"
+ *   → { titulo: "Condomínio", data: 10 do mês que vem, recorrencia: "mensal",
+ *       valor: 450, lembretes: [5] }
+ *
+ * A ordem importa: antecedência e data saem antes do valor, senão o "5" de
+ * "5 dias antes" ou o "10" de "dia 10" seriam confundidos com dinheiro.
+ */
+export function interpretarFrase(texto, hoje = hojeISO()) {
+  let resto = String(texto || "");
+  const fora = { antecedencia: null, recorrencia: null, data: null, hora: null, valor: null };
+
+  const ant = consumir(resto, RE_ANTECEDENCIA);
+  if (ant.m) {
+    fora.antecedencia = extrairAntecedencia(ant.m[0]);
+    resto = ant.restante;
+  }
+
+  const freq = consumir(resto, RE_FREQUENCIA);
+  if (freq.m) {
+    fora.recorrencia = extrairFrequencia(freq.m[0]);
+    resto = freq.restante;
+  }
+
+  const data = consumir(resto, RE_DATA);
+  if (data.m) {
+    fora.data = extrairData(data.m[0], hoje);
+    if (fora.data) resto = data.restante;
+  }
+
+  const hora = consumir(resto, RE_HORA);
+  if (hora.m) {
+    fora.hora = extrairHora(hora.m[0]);
+    if (fora.hora) resto = hora.restante;
+  }
+
+  const valor = consumir(resto, RE_VALOR);
+  if (valor.m) {
+    fora.valor = extrairValor(valor.m[0]);
+    if (fora.valor != null) resto = valor.restante;
+  }
+
+  return {
+    titulo: limparTitulo(resto),
+    valor: fora.valor,
+    data: fora.data,
+    hora: fora.hora,
+    recorrencia: fora.recorrencia,
+    lembretes: fora.antecedencia == null ? [] : [fora.antecedencia],
+  };
+}
+
+/** Sobra da frase → título apresentável. */
+function limparTitulo(resto) {
+  const primeiro =
+    String(resto || "")
+      .split(/[,;.]/)
+      .map((p) => p.trim())
+      .find((p) => /[a-zà-ú]/i.test(p)) || "";
+
+  let t = primeiro.replace(/\s+/g, " ").trim();
+  let anterior;
+  do {
+    anterior = t;
+    const plano = semAcento(t);
+    const verbo = plano.match(VERBOS_TITULO);
+    if (verbo) t = t.slice(verbo[0].length).trim();
+    const conectivo = semAcento(t).match(CONECTIVOS_TITULO);
+    if (conectivo) t = t.slice(conectivo[0].length).trim();
+  } while (t !== anterior && t);
+
+  t = t.replace(/\s+(de|do|da|com|para|pra|e)$/i, "").trim();
+  if (!t) return "";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /* ---------- Intenção ---------- */
 
 const VERBOS_CADASTRO =
-  /^(cadastrar|cadastre|cadastra|agendar|agende|agenda|anotar|anote|anota|criar|crie|cria|adicionar|adicione|adiciona|marcar|marque|marca|lembrar|lembre|lembra|novo|nova|registrar|registre)\b/;
+  /^(cadastrar|cadastre|cadastra|agendar|agende|agenda|anotar|anote|anota|criar|crie|cria|adicionar|adicione|adiciona|marcar|marque|marca|lembrar|lembre|lembra|novo|nova|registrar|registre|pagar|paga|pague|colocar|coloca|incluir|inclui)\b/;
 
 const STOPWORDS_TITULO = new Set([
   "compromisso", "um", "uma", "o", "a", "os", "as", "de", "do", "da", "dos",
@@ -296,15 +450,15 @@ export function detectarIntencao(texto) {
     return { tipo: "consulta", consulta: "resumo" };
   }
 
-  if (VERBOS_CADASTRO.test(t)) {
-    return {
-      tipo: "cadastrar",
-      titulo: extrairTitulo(texto),
-      valor: extrairValor(texto, true),
-      data: extrairData(texto),
-      recorrencia: extrairFrequencia(texto),
-    };
-  }
+  if (VERBOS_CADASTRO.test(t)) return { tipo: "cadastrar", ...interpretarFrase(texto) };
+
+  // Sem verbo de comando: se a frase carrega dados de compromisso (título + data,
+  // valor, recorrência ou aviso), é cadastro. Isso vem ANTES das consultas porque
+  // "todo mês" e "dia 10" apareciam como se fossem pergunta sobre o mês.
+  const lido = interpretarFrase(texto);
+  const temDados =
+    lido.titulo && (lido.data || lido.valor != null || lido.recorrencia || lido.lembretes.length);
+  if (temDados) return { tipo: "cadastrar", ...lido };
 
   for (const c of CONSULTAS) if (c.re.test(t)) return { tipo: "consulta", consulta: c.id };
 
