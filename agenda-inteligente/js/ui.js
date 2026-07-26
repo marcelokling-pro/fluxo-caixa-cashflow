@@ -653,6 +653,9 @@ const AJUDA_MODO = {
 export async function carregarPreferencias() {
   estado.modoAssistente = await db.config("modoAssistente", "automatico");
   estado.abaInicial = await db.config("abaInicial", "painel");
+  estado.telaCheiaAuto = await db.config("telaCheiaAuto", false);
+  $("#cfg-tela-cheia").checked = !!estado.telaCheiaAuto;
+  if (estado.telaCheiaAuto) armarTelaCheiaNoPrimeiroToque();
   const sel = $("#cfg-modo-assistente");
   sel.innerHTML = opcoes(MODOS_ASSISTENTE);
   sel.value = estado.modoAssistente;
@@ -661,6 +664,20 @@ export async function carregarPreferencias() {
   aba.value = estado.abaInicial;
   $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
   return { abaInicial: estado.abaInicial };
+}
+
+/**
+ * Tela cheia exige gesto do usuário: não dá para entrar sozinho ao carregar.
+ * Então fica armado para o primeiro toque em qualquer lugar da tela.
+ */
+function armarTelaCheiaNoPrimeiroToque() {
+  const entrar = () => {
+    document.removeEventListener("pointerdown", entrar);
+    if (document.fullscreenElement) return;
+    const raiz = document.documentElement;
+    Promise.resolve(raiz.requestFullscreen?.({ navigationUI: "hide" })).catch(() => {});
+  };
+  document.addEventListener("pointerdown", entrar, { once: false });
 }
 
 /** Abre o assistente já com o campo focado — um toque do 🎤 do teclado. */
@@ -883,6 +900,14 @@ export function iniciar({ persistencia } = {}) {
     $("#ajuda-modo").textContent = AJUDA_MODO[estado.modoAssistente] || "";
     await db.setConfig("modoAssistente", estado.modoAssistente);
     toast("Modo do assistente: " + (MODOS_ASSISTENTE.find((m) => m.id === estado.modoAssistente)?.label || ""));
+  });
+  $("#cfg-tela-cheia").addEventListener("change", async (ev) => {
+    estado.telaCheiaAuto = ev.target.checked;
+    await db.setConfig("telaCheiaAuto", estado.telaCheiaAuto);
+    if (estado.telaCheiaAuto) {
+      alternarTelaCheia();
+      toast("A partir de agora o app entra em tela cheia no primeiro toque.");
+    } else toast("Tela cheia automática desligada.");
   });
   $("#cfg-aba-inicial").addEventListener("change", async (ev) => {
     estado.abaInicial = ev.target.value;
