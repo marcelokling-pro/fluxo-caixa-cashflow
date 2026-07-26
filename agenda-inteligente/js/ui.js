@@ -28,6 +28,7 @@ import {
   statusEfetivo,
   estaAberto,
   VERSAO,
+  MODO_ARQUIVO,
 } from "./model.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -262,8 +263,6 @@ function renderCategoriasAjustes() {
     .map((c) => `<span class="chip acao remover" data-categoria="${esc(c)}">${esc(c)}</span>`)
     .join("");
 }
-
-const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
 
 function renderChips() {
   // a versão vem primeiro: sem ela não dá para saber se um problema é bug ou cópia velha

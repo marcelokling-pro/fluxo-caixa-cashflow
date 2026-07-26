@@ -2,7 +2,19 @@
 // Módulo puro: não toca em DOM nem em IndexedDB.
 
 /** Versão do app — fonte única: título, chip do topo, rodapé, "Sobre" e nome do arquivo. */
-export const VERSAO = "1.4.2";
+export const VERSAO = "1.4.3";
+
+/**
+ * Uma página só tem origem de verdade em http/https. O Android entrega HTML local como
+ * `content://` (pelo gerenciador de arquivos) ou `file://` (pelos downloads do Chrome) —
+ * checar apenas `file:` deixava o caso mais comum passando batido.
+ * Sem origem, o navegador nega microfone, notificação, service worker e instalação.
+ */
+export function ehOrigemLocal(protocolo) {
+  return !/^https?:$/.test(String(protocolo || ""));
+}
+
+export const MODO_ARQUIVO = typeof location !== "undefined" && ehOrigemLocal(location.protocol);
 
 export const RECORRENCIAS = [
   { id: "unico", label: "Único" },

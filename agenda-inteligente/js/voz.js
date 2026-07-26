@@ -10,13 +10,13 @@ import {
   formatarMoeda,
   labelRecorrencia,
   labelLembrete,
+  MODO_ARQUIVO,
 } from "./model.js";
 
 const Reconhecimento =
   typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
 
-/** Página aberta como arquivo: sem origem própria, o Android não dá microfone a ela. */
-export const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
+export { MODO_ARQUIVO };
 
 export function reconhecimentoDisponivel() {
   return !!Reconhecimento;

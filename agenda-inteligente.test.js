@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { somarDias, somarMeses, proximaData, proximaDataFutura, semanaDe, mesDe } from "./agenda-inteligente/js/recorrencia.js";
-import { novoCompromisso, statusEfetivo } from "./agenda-inteligente/js/model.js";
+import { novoCompromisso, statusEfetivo, ehOrigemLocal } from "./agenda-inteligente/js/model.js";
 import { filtrar, resumo, vencidos, proximos, proximoCompromisso, porCategoria } from "./agenda-inteligente/js/consultas.js";
 import { lembretesDevidos, chaveLembrete, avisosAtivos } from "./agenda-inteligente/js/lembretes.js";
 import { validarBackup } from "./agenda-inteligente/js/backup.js";
@@ -57,6 +57,25 @@ describe("status derivado", () => {
 
   it("pago no passado continua pago", () => {
     expect(statusEfetivo(compromisso({ data: "2026-07-20", status: "pago" }), HOJE)).toBe("pago");
+  });
+});
+
+describe("detecção de origem local", () => {
+  it("reconhece content:// — é assim que o Android abre HTML pelo gerenciador de arquivos", () => {
+    expect(ehOrigemLocal("content:")).toBe(true);
+  });
+
+  it("reconhece file:// — abertura pelos downloads do Chrome", () => {
+    expect(ehOrigemLocal("file:")).toBe(true);
+  });
+
+  it("http e https continuam sendo origem de verdade (microfone e notificação liberados)", () => {
+    expect(ehOrigemLocal("http:")).toBe(false);
+    expect(ehOrigemLocal("https:")).toBe(false);
+  });
+
+  it("qualquer outro esquema conta como local, por segurança", () => {
+    ["blob:", "data:", "about:", "", null].forEach((p) => expect(ehOrigemLocal(p)).toBe(true));
   });
 });
 

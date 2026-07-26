@@ -3,14 +3,12 @@
 // quem checa é o service worker (periodicsync / sync), usando as mesmas chaves.
 
 import * as db from "./db.js";
-import { agoraISO, hojeISO } from "./model.js";
+import { agoraISO, hojeISO, MODO_ARQUIVO } from "./model.js";
 import { lembretesDevidos } from "./lembretes.js";
 
 const INTERVALO_MS = 60 * 1000;
 let timer = null;
 let registroSW = null;
-
-const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
 
 export function suportado() {
   return typeof Notification !== "undefined" && !MODO_ARQUIVO;

@@ -933,8 +933,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.4.2</title>
-    <!-- Agenda Inteligente v1.4.2 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.4.3</title>
+    <!-- Agenda Inteligente v1.4.3 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1093,7 +1093,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.4.2</span>
+        <span id="rodape-versao">v1.4.3</span>
       </footer>
     </main>
 
@@ -1225,7 +1225,11 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.4.2";
+  var VERSAO = "1.4.3";
+  function ehOrigemLocal(protocolo) {
+    return !/^https?:$/.test(String(protocolo || ""));
+  }
+  var MODO_ARQUIVO = typeof location !== "undefined" && ehOrigemLocal(location.protocol);
   var RECORRENCIAS = [
     { id: "unico", label: "Único" },
     { id: "diario", label: "Diário", dias: 1 },
@@ -2200,7 +2204,6 @@ fieldset.lembretes legend {
   var INTERVALO_MS = 60 * 1e3;
   var timer = null;
   var registroSW = null;
-  var MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
   function suportado() {
     return typeof Notification !== "undefined" && !MODO_ARQUIVO;
   }
@@ -2698,7 +2701,6 @@ fieldset.lembretes legend {
 
   // agenda-inteligente/js/voz.js
   var Reconhecimento = typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
-  var MODO_ARQUIVO2 = typeof location !== "undefined" && location.protocol === "file:";
   function reconhecimentoDisponivel() {
     return !!Reconhecimento;
   }
@@ -2776,7 +2778,7 @@ fieldset.lembretes legend {
       };
       rec.onerror = (ev) => {
         this.ativa = false;
-        const semOrigem = MODO_ARQUIVO2 ? "No modo arquivo o Android não libera o microfone para a página. Toque no campo de texto e use o microfone do próprio teclado — o assistente entende igual." : null;
+        const semOrigem = MODO_ARQUIVO ? "No modo arquivo o Android não libera o microfone para a página. Toque no campo de texto e use o microfone do próprio teclado — o assistente entende igual." : null;
         const mensagens = {
           "not-allowed": semOrigem || "Microfone bloqueado. Toque no ícone à esquerda do endereço → Permissões → Microfone → Permitir. Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. Enquanto isso, o assistente funciona igual pelo campo de texto.",
           "service-not-allowed": semOrigem || "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
@@ -3199,14 +3201,13 @@ fieldset.lembretes legend {
   function renderCategoriasAjustes() {
     $("#lista-categorias").innerHTML = estado.categorias.map((c) => `<span class="chip acao remover" data-categoria="${esc(c)}">${esc(c)}</span>`).join("");
   }
-  var MODO_ARQUIVO3 = typeof location !== "undefined" && location.protocol === "file:";
   function renderChips() {
     const chips = [`<span class="chip versao">v${VERSAO}</span>`];
-    if (MODO_ARQUIVO3) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
+    if (MODO_ARQUIVO) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
     chips.push(
       navigator.onLine ? `<span class="chip ok">● online</span>` : `<span class="chip alerta">● offline — tudo continua funcionando</span>`
     );
-    if (!MODO_ARQUIVO3) {
+    if (!MODO_ARQUIVO) {
       const perm = permissao();
       const mapa = {
         granted: `<span class="chip ok">🔔 notificações ativas</span>`,
@@ -3472,7 +3473,7 @@ fieldset.lembretes legend {
       btn.classList.remove("ouvindo");
       return;
     }
-    if (MODO_ARQUIVO3 || !reconhecimentoDisponivel()) {
+    if (MODO_ARQUIVO || !reconhecimentoDisponivel()) {
       balao({
         de: "assistente",
         texto: "Neste modo o microfone do app fica bloqueado pelo Android.\n\nToque no campo de texto aqui embaixo e use o 🎤 do seu próprio teclado. Eu entendo exatamente igual — pode falar “cadastrar pagamento do condomínio” ou “quais contas vencem esta semana”."
@@ -3499,7 +3500,7 @@ fieldset.lembretes legend {
   }
   async function atualizarStatusNotificacoes() {
     const perm = permissao();
-    if (MODO_ARQUIVO3) {
+    if (MODO_ARQUIVO) {
       $("#status-notificacoes").textContent = "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
       $("#btn-permitir-notificacoes").disabled = true;
       $("#btn-testar-notificacao").disabled = true;
@@ -3633,7 +3634,7 @@ fieldset.lembretes legend {
     $("#entrada-assistente").addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") enviarAoAssistente($("#entrada-assistente").value);
     });
-    if (MODO_ARQUIVO3) $("#btn-microfone").title = "Usar o microfone do teclado";
+    if (MODO_ARQUIVO) $("#btn-microfone").title = "Usar o microfone do teclado";
     $("#btn-microfone").addEventListener("click", alternarMicrofone);
     $("#estado-assistente").addEventListener("click", (ev) => {
       if (!ev.target.closest("#btn-cancelar-cadastro")) return;
@@ -3702,10 +3703,9 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var MODO_ARQUIVO4 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");
-    if (MODO_ARQUIVO4) {
+    if (MODO_ARQUIVO) {
       if (alvo)
         alvo.textContent = "Aberto como arquivo local: tudo funciona e os dados ficam salvos no aparelho, mas o navegador desativa notificações do sistema e instalação como app. Os lembretes aparecem no painel ao abrir a agenda.";
       return null;
