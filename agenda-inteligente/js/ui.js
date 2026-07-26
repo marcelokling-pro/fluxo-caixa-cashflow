@@ -106,6 +106,16 @@ function pintarLista(elId, itens, vazio) {
  */
 function renderAvisos() {
   const el = $("#aviso-lembretes");
+  // sem persistência, o aviso mais importante é esse — vem antes de qualquer lembrete
+  if (db.modoArmazenamento() === "memoria") {
+    el.hidden = false;
+    el.innerHTML = `
+      <h2>⚠ Os dados não estão sendo salvos</h2>
+      <p class="nota">Este navegador (ou visualizador de arquivo) bloqueou o armazenamento local.
+      Tudo que você cadastrar some ao fechar a tela. Abra o arquivo pelo Chrome — pelos Downloads
+      do próprio Chrome — para o app voltar a salvar.</p>`;
+    return;
+  }
   const ativos = avisosAtivos(estado.compromissos);
   if (!ativos.length) {
     el.hidden = true;
@@ -266,7 +276,11 @@ function renderChips() {
     };
     chips.push(mapa[perm] || mapa.default);
   }
-  if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
+  const modo = db.modoArmazenamento();
+  if (modo === "memoria")
+    chips.push(`<span class="chip erro">⚠ dados não estão sendo salvos</span>`);
+  else if (modo === "local") chips.push(`<span class="chip alerta">💾 armazenamento simples</span>`);
+  else if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
   $("#chips-status").innerHTML = chips.join("");
 }
 
@@ -587,7 +601,19 @@ async function atualizarStatusArmazenamento() {
   const p = estado.persistencia || (await db.garantirPersistencia());
   estado.persistencia = p;
   const partes = [];
-  partes.push(p.persistente ? "Armazenamento persistente concedido — os dados não são apagados pelo navegador." : "Armazenamento padrão (o navegador pode limpar em situações extremas de falta de espaço). Instale o app na tela inicial para reforçar a persistência.");
+  const modo = db.modoArmazenamento();
+  if (modo === "memoria")
+    partes.push(
+      "ATENÇÃO: este navegador bloqueou IndexedDB e localStorage, então nada está sendo salvo — " +
+        "ao fechar a tela os dados somem. Isso costuma acontecer ao abrir o arquivo dentro de outro " +
+        "aplicativo (visualizador de anexo). Baixe o arquivo e abra pelo Chrome."
+    );
+  else if (modo === "local")
+    partes.push(
+      "Usando armazenamento simples (localStorage) porque o IndexedDB não está disponível aqui. " +
+        "Os dados ficam salvos no aparelho normalmente; só não há transação atômica."
+    );
+  else partes.push(p.persistente ? "Armazenamento persistente concedido — os dados não são apagados pelo navegador." : "Armazenamento padrão (o navegador pode limpar em situações extremas de falta de espaço). Instale o app na tela inicial para reforçar a persistência.");
   if (p.uso) {
     const mb = (n) => (n / 1024 / 1024).toFixed(1) + " MB";
     partes.push(`Uso: ${mb(p.uso.usado)} de ${mb(p.uso.cota)} disponíveis.`);

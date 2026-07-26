@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.2.0
+# Agenda Inteligente de Compromissos — v1.3.0
 
 App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
 gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e
@@ -24,10 +24,13 @@ Regere sempre que mexer em `js/`, `css/` ou `index.html` — o HTML do celular n
    Isso faz a página abrir como `file://…`, que é onde o navegador guarda os dados.
 3. Menu do Chrome → **Adicionar à tela de início** cria o atalho.
 
+> **Não abra o arquivo pelo visualizador de anexos de outro aplicativo** (o preview do
+> WhatsApp, do Gmail, do Claude). Ali o Android roda a página num WebView que bloqueia o
+> armazenamento; o app abre, mas com o aviso vermelho "os dados não estão sendo salvos".
+> Baixe primeiro (ícone ⬇) e abra pelo Chrome.
+>
 > Confira uma vez: cadastre um compromisso, feche o Chrome por completo, reabra pelo atalho e
-> veja se ele continua lá. Se abrir por outro aplicativo (gerenciador de arquivos), o Android
-> às vezes entrega a página como `content://…`, e nesse endereço o navegador pode não guardar
-> nada. Se o teste falhar, reabra pela lista de downloads do Chrome.
+> veja se ele continua lá. O chip no topo mostra em que modo o armazenamento está.
 
 ### O que muda no modo arquivo
 
@@ -89,8 +92,20 @@ cobertos por `agenda-inteligente.test.js` na raiz do repositório (`npm run test
 
 ## Persistência
 
-- Tudo é gravado no IndexedDB (`agenda-inteligente`): compromissos, histórico, categorias,
-  configurações e o controle de lembretes já disparados.
+O armazenamento escolhe sozinho o melhor disponível, na ordem:
+
+| Modo | Quando | Salva? |
+|---|---|---|
+| **IndexedDB** | normal | Sim, com transações atômicas |
+| **localStorage** | navegador bloqueia IndexedDB (WebView de outro app, aba anônima) | Sim, sem atomicidade |
+| **memória** | tudo bloqueado | **Não** — o app avisa em vermelho no painel e no topo |
+
+Isso existe porque abrir o arquivo dentro do visualizador de outro aplicativo (anexo de
+mensageiro, por exemplo) faz o Android bloquear o IndexedDB — antes disso o app simplesmente
+não abria. O modo em uso aparece sempre no chip do topo e em Ajustes → Armazenamento.
+
+- Guarda compromissos, histórico, categorias, configurações e o controle de lembretes
+  já disparados.
 - Na abertura o app chama `navigator.storage.persist()` para pedir armazenamento
   **persistente** — o navegador deixa de descartar os dados por falta de espaço.
 - Compromisso e histórico são gravados na **mesma transação**: nunca existe um sem o outro.

@@ -1277,8 +1277,20 @@ fieldset.lembretes legend {
     config: "config",
     lembretes: "lembretes_enviados"
   };
-  var _db = null;
+  var CHAVES = {
+    compromissos: "id",
+    historico: "id",
+    categorias: "nome",
+    config: "chave",
+    lembretes_enviados: "id"
+  };
+  var TODAS = Object.values(STORES);
+  var backend = null;
+  var promessaInicio = null;
   var ouvintes = /* @__PURE__ */ new Set();
+  function modoArmazenamento() {
+    return backend?.modo || null;
+  }
   function onMudanca(fn) {
     ouvintes.add(fn);
     return () => ouvintes.delete(fn);
@@ -1291,51 +1303,6 @@ fieldset.lembretes legend {
         console.error("[db] ouvinte falhou", e);
       }
     });
-  }
-  function abrir() {
-    if (_db) return Promise.resolve(_db);
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NOME, DB_VERSAO);
-      req.onupgradeneeded = (ev) => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORES.compromissos)) {
-          const s = db.createObjectStore(STORES.compromissos, { keyPath: "id" });
-          s.createIndex("data", "data");
-          s.createIndex("status", "status");
-          s.createIndex("categoria", "categoria");
-          s.createIndex("serieId", "serieId");
-        }
-        if (!db.objectStoreNames.contains(STORES.historico)) {
-          const h = db.createObjectStore(STORES.historico, { keyPath: "id" });
-          h.createIndex("compromissoId", "compromissoId");
-          h.createIndex("em", "em");
-        }
-        if (!db.objectStoreNames.contains(STORES.categorias)) {
-          db.createObjectStore(STORES.categorias, { keyPath: "nome" });
-        }
-        if (!db.objectStoreNames.contains(STORES.config)) {
-          db.createObjectStore(STORES.config, { keyPath: "chave" });
-        }
-        if (!db.objectStoreNames.contains(STORES.lembretes)) {
-          const l = db.createObjectStore(STORES.lembretes, { keyPath: "id" });
-          l.createIndex("compromissoId", "compromissoId");
-        }
-        console.info("[db] schema criado/atualizado para v" + DB_VERSAO, ev.oldVersion);
-      };
-      req.onsuccess = () => {
-        _db = req.result;
-        _db.onversionchange = () => {
-          _db.close();
-          _db = null;
-        };
-        resolve(_db);
-      };
-      req.onerror = () => reject(req.error);
-      req.onblocked = () => console.warn("[db] abertura bloqueada por outra aba");
-    });
-  }
-  function tx(stores, modo = "readonly") {
-    return abrir().then((db) => db.transaction(stores, modo));
   }
   function pedido(req) {
     return new Promise((resolve, reject) => {
@@ -1350,39 +1317,192 @@ fieldset.lembretes legend {
       transacao.onabort = () => reject(transacao.error || new Error("transação abortada"));
     });
   }
+  async function abrirIndexedDB() {
+    if (typeof indexedDB === "undefined" || !indexedDB) throw new Error("IndexedDB indisponível");
+    const db = await new Promise((resolve, reject) => {
+      let req;
+      try {
+        req = indexedDB.open(DB_NOME, DB_VERSAO);
+      } catch (e) {
+        reject(e);
+        return;
+      }
+      const limite = setTimeout(() => reject(new Error("IndexedDB não respondeu")), 4e3);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        if (!d.objectStoreNames.contains(STORES.compromissos)) {
+          const s = d.createObjectStore(STORES.compromissos, { keyPath: "id" });
+          s.createIndex("data", "data");
+          s.createIndex("status", "status");
+          s.createIndex("categoria", "categoria");
+          s.createIndex("serieId", "serieId");
+        }
+        if (!d.objectStoreNames.contains(STORES.historico)) {
+          const h = d.createObjectStore(STORES.historico, { keyPath: "id" });
+          h.createIndex("compromissoId", "compromissoId");
+          h.createIndex("em", "em");
+        }
+        if (!d.objectStoreNames.contains(STORES.categorias)) d.createObjectStore(STORES.categorias, { keyPath: "nome" });
+        if (!d.objectStoreNames.contains(STORES.config)) d.createObjectStore(STORES.config, { keyPath: "chave" });
+        if (!d.objectStoreNames.contains(STORES.lembretes)) {
+          const l = d.createObjectStore(STORES.lembretes, { keyPath: "id" });
+          l.createIndex("compromissoId", "compromissoId");
+        }
+      };
+      req.onsuccess = () => {
+        clearTimeout(limite);
+        resolve(req.result);
+      };
+      req.onerror = () => {
+        clearTimeout(limite);
+        reject(req.error || new Error("falha ao abrir IndexedDB"));
+      };
+      req.onblocked = () => console.warn("[db] abertura bloqueada por outra aba");
+    });
+    for (const store of TODAS) {
+      if (!db.objectStoreNames.contains(store)) throw new Error("schema incompleto: falta " + store);
+    }
+    db.onversionchange = () => db.close();
+    return {
+      modo: "indexeddb",
+      listar: (store) => pedido(db.transaction(store, "readonly").objectStore(store).getAll()),
+      obter: (store, chave) => pedido(db.transaction(store, "readonly").objectStore(store).get(chave)),
+      /** entradas: [{ store, registro }] — uma transação só, tudo ou nada. */
+      gravarMulti: async (entradas) => {
+        if (!entradas.length) return;
+        const stores = [...new Set(entradas.map((e) => e.store))];
+        const t = db.transaction(stores, "readwrite");
+        entradas.forEach((e) => t.objectStore(e.store).put(e.registro));
+        await concluir(t);
+      },
+      remover: async (store, chave) => {
+        const t = db.transaction(store, "readwrite");
+        t.objectStore(store).delete(chave);
+        await concluir(t);
+      },
+      /** Remoções e gravações juntas — usado ao excluir preservando o histórico. */
+      misto: async ({ remocoes = [], gravacoes = [] }) => {
+        const stores = [.../* @__PURE__ */ new Set([...remocoes.map((r) => r.store), ...gravacoes.map((g) => g.store)])];
+        const t = db.transaction(stores, "readwrite");
+        remocoes.forEach((r) => t.objectStore(r.store).delete(r.chave));
+        gravacoes.forEach((g) => t.objectStore(g.store).put(g.registro));
+        await concluir(t);
+      },
+      limpar: async (store) => {
+        const t = db.transaction(store, "readwrite");
+        t.objectStore(store).clear();
+        await concluir(t);
+      }
+    };
+  }
+  function backendLocal() {
+    const teste = `${DB_NOME}:teste`;
+    localStorage.setItem(teste, "1");
+    localStorage.removeItem(teste);
+    const chaveStore = (store) => `${DB_NOME}:${store}`;
+    const ler = (store) => {
+      try {
+        return JSON.parse(localStorage.getItem(chaveStore(store)) || "[]");
+      } catch {
+        return [];
+      }
+    };
+    const escrever = (store, lista) => localStorage.setItem(chaveStore(store), JSON.stringify(lista));
+    const gravarUm = (store, registro) => {
+      const kp = CHAVES[store];
+      const lista = ler(store);
+      const i = lista.findIndex((r) => r[kp] === registro[kp]);
+      if (i >= 0) lista[i] = registro;
+      else lista.push(registro);
+      escrever(store, lista);
+    };
+    return {
+      modo: "local",
+      listar: async (store) => ler(store),
+      obter: async (store, chave) => ler(store).find((r) => r[CHAVES[store]] === chave),
+      gravarMulti: async (entradas) => entradas.forEach((e) => gravarUm(e.store, e.registro)),
+      remover: async (store, chave) => escrever(store, ler(store).filter((r) => r[CHAVES[store]] !== chave)),
+      misto: async ({ remocoes = [], gravacoes = [] }) => {
+        remocoes.forEach((r) => escrever(r.store, ler(r.store).filter((x) => x[CHAVES[r.store]] !== r.chave)));
+        gravacoes.forEach((g) => gravarUm(g.store, g.registro));
+      },
+      limpar: async (store) => escrever(store, [])
+    };
+  }
+  function backendMemoria() {
+    const dados = new Map(TODAS.map((s) => [s, []]));
+    const lista = (store) => dados.get(store) || [];
+    const gravarUm = (store, registro) => {
+      const kp = CHAVES[store];
+      const atual = lista(store);
+      const i = atual.findIndex((r) => r[kp] === registro[kp]);
+      if (i >= 0) atual[i] = registro;
+      else atual.push(registro);
+      dados.set(store, atual);
+    };
+    return {
+      modo: "memoria",
+      listar: async (store) => [...lista(store)],
+      obter: async (store, chave) => lista(store).find((r) => r[CHAVES[store]] === chave),
+      gravarMulti: async (entradas) => entradas.forEach((e) => gravarUm(e.store, e.registro)),
+      remover: async (store, chave) => dados.set(store, lista(store).filter((r) => r[CHAVES[store]] !== chave)),
+      misto: async ({ remocoes = [], gravacoes = [] }) => {
+        remocoes.forEach((r) => dados.set(r.store, lista(r.store).filter((x) => x[CHAVES[r.store]] !== r.chave)));
+        gravacoes.forEach((g) => gravarUm(g.store, g.registro));
+      },
+      limpar: async (store) => dados.set(store, [])
+    };
+  }
+  function abrir() {
+    if (backend) return Promise.resolve(backend);
+    if (promessaInicio) return promessaInicio;
+    promessaInicio = (async () => {
+      try {
+        backend = await abrirIndexedDB();
+        console.info("[db] usando IndexedDB");
+      } catch (eIDB) {
+        console.warn("[db] IndexedDB indisponível:", eIDB?.message || eIDB);
+        try {
+          backend = backendLocal();
+          console.info("[db] usando localStorage");
+        } catch (eLocal) {
+          console.warn("[db] localStorage indisponível:", eLocal?.message || eLocal);
+          backend = backendMemoria();
+          console.warn("[db] usando memória — os dados NÃO serão salvos");
+        }
+      }
+      return backend;
+    })();
+    return promessaInicio;
+  }
   async function listar(store) {
-    const t = await tx(store);
-    return pedido(t.objectStore(store).getAll());
+    const b = await abrir();
+    return await b.listar(store) || [];
   }
   async function obter(store, chave) {
-    const t = await tx(store);
-    return pedido(t.objectStore(store).get(chave));
+    const b = await abrir();
+    return b.obter(store, chave);
   }
   async function gravar(store, registro, motivo = store) {
-    const t = await tx(store, "readwrite");
-    t.objectStore(store).put(registro);
-    await concluir(t);
+    const b = await abrir();
+    await b.gravarMulti([{ store, registro }]);
     notificar(motivo);
     return registro;
   }
   async function gravarVarios(store, registros, motivo = store) {
     if (!registros.length) return;
-    const t = await tx(store, "readwrite");
-    const s = t.objectStore(store);
-    registros.forEach((r) => s.put(r));
-    await concluir(t);
+    const b = await abrir();
+    await b.gravarMulti(registros.map((registro) => ({ store, registro })));
     notificar(motivo);
   }
   async function remover(store, chave, motivo = store) {
-    const t = await tx(store, "readwrite");
-    t.objectStore(store).delete(chave);
-    await concluir(t);
+    const b = await abrir();
+    await b.remover(store, chave);
     notificar(motivo);
   }
   async function limparStore(store) {
-    const t = await tx(store, "readwrite");
-    t.objectStore(store).clear();
-    await concluir(t);
+    const b = await abrir();
+    await b.limpar(store);
   }
   function listarCompromissos() {
     return listar(STORES.compromissos);
@@ -1391,37 +1511,37 @@ fieldset.lembretes legend {
     return obter(STORES.compromissos, id);
   }
   async function salvarCompromisso(compromisso, historico = null) {
-    const stores = historico ? [STORES.compromissos, STORES.historico] : [STORES.compromissos];
-    const t = await tx(stores, "readwrite");
-    t.objectStore(STORES.compromissos).put(compromisso);
-    if (historico) t.objectStore(STORES.historico).put(historico);
-    await concluir(t);
+    const b = await abrir();
+    const entradas = [{ store: STORES.compromissos, registro: compromisso }];
+    if (historico) entradas.push({ store: STORES.historico, registro: historico });
+    await b.gravarMulti(entradas);
     notificar("compromissos");
     return compromisso;
   }
   async function salvarLote(compromissos = [], historicos = []) {
-    const t = await tx([STORES.compromissos, STORES.historico], "readwrite");
-    const sc = t.objectStore(STORES.compromissos);
-    const sh = t.objectStore(STORES.historico);
-    compromissos.forEach((c) => sc.put(c));
-    historicos.forEach((h) => sh.put(h));
-    await concluir(t);
+    const b = await abrir();
+    await b.gravarMulti([
+      ...compromissos.map((registro) => ({ store: STORES.compromissos, registro })),
+      ...historicos.map((registro) => ({ store: STORES.historico, registro }))
+    ]);
     notificar("compromissos");
   }
   async function excluirCompromisso(id, titulo = "") {
-    const t = await tx([STORES.compromissos, STORES.historico], "readwrite");
-    t.objectStore(STORES.compromissos).delete(id);
-    t.objectStore(STORES.historico).put(
-      novoHistorico(id, "excluido", `Compromisso "${titulo}" excluído em ${agoraISO()}`)
-    );
-    await concluir(t);
+    const b = await abrir();
+    await b.misto({
+      remocoes: [{ store: STORES.compromissos, chave: id }],
+      gravacoes: [
+        {
+          store: STORES.historico,
+          registro: novoHistorico(id, "excluido", `Compromisso "${titulo}" excluído em ${agoraISO()}`)
+        }
+      ]
+    });
     notificar("compromissos");
   }
   async function historicoDe(compromissoId) {
-    const t = await tx(STORES.historico);
-    const idx = t.objectStore(STORES.historico).index("compromissoId");
-    const itens = await pedido(idx.getAll(compromissoId));
-    return itens.sort((a, b) => a.em < b.em ? 1 : -1);
+    const itens = await listar(STORES.historico);
+    return itens.filter((h) => h.compromissoId === compromissoId).sort((a, b) => a.em < b.em ? 1 : -1);
   }
   function registrarHistorico(h) {
     return gravar(STORES.historico, h, "historico");
@@ -1484,7 +1604,7 @@ fieldset.lembretes legend {
   async function iniciar() {
     await abrir();
     await semear();
-    return abrir();
+    return backend;
   }
 
   // agenda-inteligente/js/recorrencia.js
@@ -2859,6 +2979,15 @@ fieldset.lembretes legend {
   }
   function renderAvisos() {
     const el = $("#aviso-lembretes");
+    if (modoArmazenamento() === "memoria") {
+      el.hidden = false;
+      el.innerHTML = `
+      <h2>⚠ Os dados não estão sendo salvos</h2>
+      <p class="nota">Este navegador (ou visualizador de arquivo) bloqueou o armazenamento local.
+      Tudo que você cadastrar some ao fechar a tela. Abra o arquivo pelo Chrome — pelos Downloads
+      do próprio Chrome — para o app voltar a salvar.</p>`;
+      return;
+    }
     const ativos = avisosAtivos(estado.compromissos);
     if (!ativos.length) {
       el.hidden = true;
@@ -2994,7 +3123,11 @@ fieldset.lembretes legend {
       };
       chips.push(mapa[perm] || mapa.default);
     }
-    if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
+    const modo = modoArmazenamento();
+    if (modo === "memoria")
+      chips.push(`<span class="chip erro">⚠ dados não estão sendo salvos</span>`);
+    else if (modo === "local") chips.push(`<span class="chip alerta">💾 armazenamento simples</span>`);
+    else if (estado.persistencia?.persistente) chips.push(`<span class="chip ok">💾 armazenamento persistente</span>`);
     $("#chips-status").innerHTML = chips.join("");
   }
   function renderChipsLembrete() {
@@ -3271,7 +3404,16 @@ fieldset.lembretes legend {
     const p = estado.persistencia || await garantirPersistencia();
     estado.persistencia = p;
     const partes = [];
-    partes.push(p.persistente ? "Armazenamento persistente concedido — os dados não são apagados pelo navegador." : "Armazenamento padrão (o navegador pode limpar em situações extremas de falta de espaço). Instale o app na tela inicial para reforçar a persistência.");
+    const modo = modoArmazenamento();
+    if (modo === "memoria")
+      partes.push(
+        "ATENÇÃO: este navegador bloqueou IndexedDB e localStorage, então nada está sendo salvo — ao fechar a tela os dados somem. Isso costuma acontecer ao abrir o arquivo dentro de outro aplicativo (visualizador de anexo). Baixe o arquivo e abra pelo Chrome."
+      );
+    else if (modo === "local")
+      partes.push(
+        "Usando armazenamento simples (localStorage) porque o IndexedDB não está disponível aqui. Os dados ficam salvos no aparelho normalmente; só não há transação atômica."
+      );
+    else partes.push(p.persistente ? "Armazenamento persistente concedido — os dados não são apagados pelo navegador." : "Armazenamento padrão (o navegador pode limpar em situações extremas de falta de espaço). Instale o app na tela inicial para reforçar a persistência.");
     if (p.uso) {
       const mb = (n) => (n / 1024 / 1024).toFixed(1) + " MB";
       partes.push(`Uso: ${mb(p.uso.usado)} de ${mb(p.uso.cota)} disponíveis.`);
@@ -3438,7 +3580,7 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var VERSAO = "1.2.0";
+  var VERSAO = "1.3.0";
   var MODO_ARQUIVO3 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");
@@ -3498,10 +3640,10 @@ fieldset.lembretes legend {
     try {
       await iniciar();
     } catch (e) {
-      console.error("[app] banco indisponível", e);
+      console.error("[app] armazenamento indisponível", e);
       document.body.insertAdjacentHTML(
         "afterbegin",
-        `<p style="padding:16px;color:#E8445A">Não foi possível abrir o banco local (IndexedDB). Em janelas anônimas alguns navegadores bloqueiam o armazenamento — abra em uma janela normal.</p>`
+        `<p style="padding:16px;color:#E8445A">Não foi possível iniciar o armazenamento neste navegador: ${e.message}</p>`
       );
       return;
     }

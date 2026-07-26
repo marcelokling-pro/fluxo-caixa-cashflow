@@ -4,7 +4,7 @@ import * as db from "./db.js";
 import * as ui from "./ui.js";
 import * as notificacoes from "./notificacoes.js";
 
-export const VERSAO = "1.2.0";
+export const VERSAO = "1.3.0";
 
 /** Aberto direto do arquivo (sem servidor): o navegador desliga SW e notificações. */
 export const MODO_ARQUIVO = location.protocol === "file:";
@@ -71,13 +71,15 @@ function prepararInstalacao() {
 async function iniciar() {
   document.querySelector("#versao-app").textContent = "v" + VERSAO;
 
+  // O banco escolhe sozinho o melhor armazenamento disponível (IndexedDB →
+  // localStorage → memória). Só falha de verdade se nem isso funcionar.
   try {
     await db.iniciar();
   } catch (e) {
-    console.error("[app] banco indisponível", e);
+    console.error("[app] armazenamento indisponível", e);
     document.body.insertAdjacentHTML(
       "afterbegin",
-      `<p style="padding:16px;color:#E8445A">Não foi possível abrir o banco local (IndexedDB). Em janelas anônimas alguns navegadores bloqueiam o armazenamento — abra em uma janela normal.</p>`
+      `<p style="padding:16px;color:#E8445A">Não foi possível iniciar o armazenamento neste navegador: ${e.message}</p>`
     );
     return;
   }
