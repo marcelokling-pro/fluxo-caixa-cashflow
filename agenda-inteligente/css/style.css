@@ -120,6 +120,11 @@ textarea {
 .chip.acao {
   cursor: pointer;
 }
+.chip.versao {
+  color: var(--texto);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
 .chip.remover::after {
   content: "✕";
   opacity: 0.6;

@@ -1,6 +1,9 @@
 // model.js — constantes, formatos e criação de compromissos.
 // Módulo puro: não toca em DOM nem em IndexedDB.
 
+/** Versão do app — fonte única: título, chip do topo, rodapé, "Sobre" e nome do arquivo. */
+export const VERSAO = "1.4.2";
+
 export const RECORRENCIAS = [
   { id: "unico", label: "Único" },
   { id: "diario", label: "Diário", dias: 1 },

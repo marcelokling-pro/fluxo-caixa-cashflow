@@ -134,6 +134,11 @@ textarea {
 .chip.acao {
   cursor: pointer;
 }
+.chip.versao {
+  color: var(--texto);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
 .chip.remover::after {
   content: "✕";
   opacity: 0.6;
@@ -928,8 +933,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente</title>
-    <!-- Agenda Inteligente v1.4.1 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.4.2</title>
+    <!-- Agenda Inteligente v1.4.2 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1088,7 +1093,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.4.1</span>
+        <span id="rodape-versao">v1.4.2</span>
       </footer>
     </main>
 
@@ -1220,6 +1225,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
+  var VERSAO = "1.4.2";
   var RECORRENCIAS = [
     { id: "unico", label: "Único" },
     { id: "diario", label: "Diário", dias: 1 },
@@ -3195,7 +3201,7 @@ fieldset.lembretes legend {
   }
   var MODO_ARQUIVO3 = typeof location !== "undefined" && location.protocol === "file:";
   function renderChips() {
-    const chips = [];
+    const chips = [`<span class="chip versao">v${VERSAO}</span>`];
     if (MODO_ARQUIVO3) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
     chips.push(
       navigator.onLine ? `<span class="chip ok">● online</span>` : `<span class="chip alerta">● offline — tudo continua funcionando</span>`
@@ -3696,7 +3702,6 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var VERSAO = "1.4.1";
   var MODO_ARQUIVO4 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");

@@ -19,10 +19,10 @@ const exec = promisify(execFile);
 const RAIZ = dirname(fileURLToPath(import.meta.url));
 
 /** A versão vem do js/app.js — fonte única, para o arquivo nunca mentir sobre o que é. */
-const VERSAO = (await readFile(join(RAIZ, "js", "app.js"), "utf8")).match(
+const VERSAO = (await readFile(join(RAIZ, "js", "model.js"), "utf8")).match(
   /export const VERSAO = "([^"]+)"/
 )?.[1];
-if (!VERSAO) throw new Error("Não achei a constante VERSAO em js/app.js");
+if (!VERSAO) throw new Error("Não achei a constante VERSAO em js/model.js");
 
 const NOME = `AgendaInteligente-v${VERSAO}.html`;
 const SAIDA = join(RAIZ, NOME);
@@ -68,10 +68,12 @@ montado = trocar(montado, /\s*<link rel="icon"[^>]*>/g, `\n    <link rel="icon" 
 montado = trocar(montado, /\s*<link rel="apple-touch-icon"[^>]*>/g, `\n    <link rel="apple-touch-icon" href="${iconeDataURI}" />`);
 montado = trocar(montado, /\s*<link rel="stylesheet" href="\.\/css\/style\.css" \/>/, `\n    <style>\n${css}\n    </style>`);
 montado = trocar(montado, /\s*<script type="module" src="\.\/js\/app\.js"><\/script>/, `\n    <script>\n${js}\n    </script>`);
+// título com a versão: é o que a aba do navegador e o atalho da tela de início mostram —
+// o único lugar que sobrevive ao download renomear o arquivo
 montado = trocar(
   montado,
   "<title>Agenda Inteligente</title>",
-  `<title>Agenda Inteligente</title>\n    <!-- Agenda Inteligente v${VERSAO} — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->`
+  `<title>Agenda Inteligente v${VERSAO}</title>\n    <!-- Agenda Inteligente v${VERSAO} — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->`
 );
 
 if (montado.includes("./js/app.js") || montado.includes("./css/style.css")) {

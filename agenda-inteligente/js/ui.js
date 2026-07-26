@@ -27,6 +27,7 @@ import {
   labelLembrete,
   statusEfetivo,
   estaAberto,
+  VERSAO,
 } from "./model.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -265,7 +266,8 @@ function renderCategoriasAjustes() {
 const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
 
 function renderChips() {
-  const chips = [];
+  // a versão vem primeiro: sem ela não dá para saber se um problema é bug ou cópia velha
+  const chips = [`<span class="chip versao">v${VERSAO}</span>`];
   if (MODO_ARQUIVO) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
   chips.push(
     navigator.onLine
