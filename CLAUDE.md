@@ -66,6 +66,20 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 **R/D types** (`RD_TYPES`): `RECEITA`, `DESPESAS FIXAS`, `DESPESAS VARIÁVEIS`, `MOVIMENTAÇÃO`, `INVESTIMENTOS`, `DESPESA FINANCEIRA`, `SALDO INICIAL`.
 
+### App secundário: Agenda Inteligente (`public/agenda-inteligente/`)
+
+PWA **independente** em HTML/CSS/JS puro (sem React, sem Supabase, sem build), servido como
+estático em `/agenda-inteligente/` no DEV e no PROD. Guarda tudo em IndexedDB no aparelho do
+usuário e funciona offline. Versão própria (`v1.0.0` em `js/app.js` + `sw.js`), independente
+da versão do `App.jsx`.
+
+**Não misturar os dois apps**: a Agenda Inteligente não lê nem escreve no Supabase, e a aba
+`agenda` do `App.jsx` continua sendo outra coisa (compromissos recorrentes do fluxo de caixa).
+Mexer em um não deve tocar no outro. Detalhes em `public/agenda-inteligente/README.md`.
+
+Ao alterar arquivos dessa pasta, atualizar a lista `ARQUIVOS` e a constante `VERSAO` do
+`sw.js` — sem o bump de versão o service worker continua servindo o cache antigo.
+
 ## Conceitos centrais
 
 ### Geração de Caixa vs. Saldo de Caixa Total
@@ -157,7 +171,9 @@ Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), checklist de p
 
 ## Testes automatizados
 
-`npm run test` roda testes unitários (Vitest) sobre funções puras críticas em `App.test.jsx` — cobre bugs já documentados neste arquivo (`merchantKey` números finais, `flexMatch` keyword curta, `localClassify` categoria sem rd/classificacao). `.env.test` usa as credenciais DEV só pra `createClient` não quebrar no import — os testes não fazem chamadas reais ao Supabase.
+`npm run test` roda testes unitários (Vitest) sobre funções puras críticas em `App.test.jsx`
+e em `agenda-inteligente.test.js` (módulos puros do PWA da Agenda Inteligente: recorrência,
+consultas, lembretes e interpretador de voz — 25 casos) — cobre bugs já documentados neste arquivo (`merchantKey` números finais, `flexMatch` keyword curta, `localClassify` categoria sem rd/classificacao). `.env.test` usa as credenciais DEV só pra `createClient` não quebrar no import — os testes não fazem chamadas reais ao Supabase.
 
 **Nunca rodar o teste sem perguntar antes** — mesmo quando o Claude julgar necessário. Sempre perguntar primeiro. Apresentar o resultado em tabela (função testada, caso, esperado, status).
 

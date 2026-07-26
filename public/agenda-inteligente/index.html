@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0F1923" />
+    <meta name="description" content="Agenda Inteligente de Compromissos — lembretes, recorrência e assistente por voz, 100% offline." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Agenda" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./css/style.css" />
+    <title>Agenda Inteligente</title>
+  </head>
+  <body>
+    <header class="topo">
+      <div class="topo-linha">
+        <h1>Agenda<span>Inteligente</span></h1>
+        <div class="topo-acoes">
+          <button id="btn-instalar" class="btn-icone" title="Instalar no celular" hidden>⬇</button>
+          <button id="btn-assistente-atalho" class="btn-icone" title="Assistente por voz">🎤</button>
+        </div>
+      </div>
+      <div id="chips-status" class="chips"></div>
+    </header>
+
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="painel" role="tab">Painel</button>
+      <button class="aba" data-aba="lista" role="tab">Compromissos</button>
+      <button class="aba" data-aba="assistente" role="tab">Assistente</button>
+      <button class="aba" data-aba="ajustes" role="tab">Ajustes</button>
+    </nav>
+
+    <main>
+      <!-- PAINEL -->
+      <section id="view-painel" class="view ativa">
+        <div id="resumo-cards" class="cards"></div>
+
+        <div class="bloco">
+          <h2>Vencidos <span id="cont-vencidos" class="cont"></span></h2>
+          <div id="lista-vencidos" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Hoje <span id="cont-hoje" class="cont"></span></h2>
+          <div id="lista-hoje" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Próximos 7 dias <span id="cont-proximos" class="cont"></span></h2>
+          <div id="lista-proximos" class="lista"></div>
+        </div>
+        <div class="bloco">
+          <h2>Por categoria no mês</h2>
+          <div id="painel-categorias" class="lista"></div>
+        </div>
+      </section>
+
+      <!-- LISTA / BUSCA -->
+      <section id="view-lista" class="view">
+        <div class="filtros">
+          <input id="f-texto" type="search" placeholder="Buscar por nome, categoria, valor..." />
+          <div class="filtros-linha">
+            <select id="f-categoria"><option value="">Categoria: todas</option></select>
+            <select id="f-status"><option value="">Situação: todas</option></select>
+          </div>
+          <div class="filtros-linha">
+            <select id="f-prioridade"><option value="">Prioridade: todas</option></select>
+            <select id="f-recorrencia"><option value="">Recorrência: todas</option></select>
+          </div>
+          <details class="filtros-avancados">
+            <summary>Filtros por data e valor</summary>
+            <div class="filtros-linha">
+              <label>De <input id="f-de" type="date" /></label>
+              <label>Até <input id="f-ate" type="date" /></label>
+            </div>
+            <div class="filtros-linha">
+              <label>Valor mín. <input id="f-valor-min" type="number" step="0.01" inputmode="decimal" /></label>
+              <label>Valor máx. <input id="f-valor-max" type="number" step="0.01" inputmode="decimal" /></label>
+            </div>
+            <div class="filtros-linha">
+              <label>Ordenar por
+                <select id="f-ordem">
+                  <option value="data">Vencimento</option>
+                  <option value="valor">Valor</option>
+                  <option value="titulo">Título</option>
+                  <option value="prioridade">Prioridade</option>
+                </select>
+              </label>
+              <button id="btn-limpar-filtros" class="btn-secundario">Limpar filtros</button>
+            </div>
+          </details>
+        </div>
+        <p id="contador-lista" class="contador"></p>
+        <div id="lista-compromissos" class="lista"></div>
+      </section>
+
+      <!-- ASSISTENTE -->
+      <section id="view-assistente" class="view">
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <div id="assistente-dicas" class="dicas">
+          <button class="dica" data-frase="Cadastrar pagamento do condomínio">Cadastrar pagamento do condomínio</button>
+          <button class="dica" data-frase="Quais contas vencem esta semana?">Quais contas vencem esta semana?</button>
+          <button class="dica" data-frase="Tenho algum compromisso amanhã?">Tenho algum compromisso amanhã?</button>
+          <button class="dica" data-frase="Quanto preciso pagar este mês?">Quanto preciso pagar este mês?</button>
+          <button class="dica" data-frase="Qual o próximo compromisso?">Qual o próximo compromisso?</button>
+        </div>
+        <div class="barra-assistente">
+          <button id="btn-microfone" class="btn-mic" title="Falar">🎤</button>
+          <input id="entrada-assistente" type="text" placeholder="Fale ou digite um comando..." autocomplete="off" />
+          <button id="btn-enviar" class="btn-primario">Enviar</button>
+        </div>
+        <label class="linha-check">
+          <input id="chk-falar" type="checkbox" checked /> Responder em voz alta
+        </label>
+      </section>
+
+      <!-- AJUSTES -->
+      <section id="view-ajustes" class="view">
+        <div class="bloco">
+          <h2>Notificações</h2>
+          <p id="status-notificacoes" class="ajuda"></p>
+          <div class="filtros-linha">
+            <button id="btn-permitir-notificacoes" class="btn-primario">Permitir notificações</button>
+            <button id="btn-testar-notificacao" class="btn-secundario">Testar</button>
+          </div>
+          <button id="btn-verificar-lembretes" class="btn-secundario largo">Verificar lembretes agora</button>
+        </div>
+
+        <div class="bloco">
+          <h2>Categorias</h2>
+          <div class="filtros-linha">
+            <input id="nova-categoria" type="text" placeholder="Nova categoria" />
+            <button id="btn-add-categoria" class="btn-primario">Adicionar</button>
+          </div>
+          <div id="lista-categorias" class="chips"></div>
+        </div>
+
+        <div class="bloco">
+          <h2>Backup</h2>
+          <p class="ajuda">O backup em JSON contém compromissos, histórico, categorias e configurações.</p>
+          <div class="filtros-linha">
+            <button id="btn-exportar-json" class="btn-primario">Exportar JSON</button>
+            <button id="btn-exportar-csv" class="btn-secundario">Exportar CSV (Excel)</button>
+          </div>
+          <label class="linha-check">
+            <input id="chk-substituir" type="checkbox" /> Ao importar, substituir tudo (em vez de mesclar)
+          </label>
+          <label class="btn-secundario largo arquivo">
+            Importar backup
+            <input id="arquivo-backup" type="file" accept="application/json,.json" hidden />
+          </label>
+          <p id="status-backup" class="ajuda"></p>
+        </div>
+
+        <div class="bloco">
+          <h2>Armazenamento</h2>
+          <p id="status-armazenamento" class="ajuda"></p>
+        </div>
+
+        <div class="bloco">
+          <h2>Sobre</h2>
+          <p class="ajuda">
+            Agenda Inteligente <strong id="versao-app">v1.0.0</strong> — funciona offline, com dados
+            gravados apenas neste aparelho (IndexedDB). Nenhuma informação é enviada para a internet.
+          </p>
+          <p id="status-sw" class="ajuda"></p>
+        </div>
+      </section>
+    </main>
+
+    <button id="btn-novo" class="fab" title="Novo compromisso">+</button>
+
+    <!-- MODAL: cadastro/edição -->
+    <div id="modal-form" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2 id="titulo-modal-form">Novo compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-form">✕</button>
+        </div>
+        <form id="form-compromisso" class="formulario">
+          <input type="hidden" id="c-id" />
+          <label>Título *
+            <input id="c-titulo" type="text" required maxlength="120" placeholder="Ex.: Conta de luz" />
+          </label>
+          <label>Categoria *
+            <select id="c-categoria" required></select>
+          </label>
+          <div class="form-linha">
+            <label>Data *
+              <input id="c-data" type="date" required />
+            </label>
+            <label>Hora
+              <input id="c-hora" type="time" />
+            </label>
+          </div>
+          <div class="form-linha">
+            <label>Valor (R$)
+              <input id="c-valor" type="number" step="0.01" inputmode="decimal" placeholder="0,00" />
+            </label>
+            <label>Prioridade
+              <select id="c-prioridade"></select>
+            </label>
+          </div>
+          <label>Recorrência
+            <select id="c-recorrencia"></select>
+          </label>
+          <fieldset class="lembretes">
+            <legend>Lembretes</legend>
+            <div id="c-lembretes" class="chips"></div>
+            <div class="filtros-linha">
+              <input id="c-lembrete-custom" type="number" min="0" max="365" placeholder="Personalizado (dias antes)" />
+              <button type="button" id="btn-add-lembrete" class="btn-secundario">Incluir</button>
+            </div>
+          </fieldset>
+          <label>Descrição
+            <textarea id="c-descricao" rows="2" maxlength="500"></textarea>
+          </label>
+          <label>Observações
+            <textarea id="c-observacoes" rows="2" maxlength="500"></textarea>
+          </label>
+          <label id="linha-status" hidden>Situação
+            <select id="c-status"></select>
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-form">Cancelar</button>
+            <button type="submit" class="btn-primario">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: detalhe + histórico -->
+    <div id="modal-detalhe" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2 id="titulo-modal-detalhe">Compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-detalhe">✕</button>
+        </div>
+        <div id="detalhe-conteudo"></div>
+      </div>
+    </div>
+
+    <!-- MODAL: pagamento -->
+    <div id="modal-pagamento" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2>Registrar pagamento</h2>
+          <button class="btn-icone fechar" data-fechar="modal-pagamento">✕</button>
+        </div>
+        <form id="form-pagamento" class="formulario">
+          <input type="hidden" id="p-id" />
+          <p id="p-resumo" class="ajuda"></p>
+          <div class="form-linha">
+            <label>Data do pagamento
+              <input id="p-data" type="date" required />
+            </label>
+            <label>Valor pago
+              <input id="p-valor" type="number" step="0.01" inputmode="decimal" />
+            </label>
+          </div>
+          <label>Observação
+            <input id="p-obs" type="text" maxlength="200" />
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-pagamento">Cancelar</button>
+            <button type="submit" class="btn-primario">Confirmar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL: adiar -->
+    <div id="modal-adiar" class="modal" hidden>
+      <div class="modal-caixa">
+        <div class="modal-topo">
+          <h2>Adiar compromisso</h2>
+          <button class="btn-icone fechar" data-fechar="modal-adiar">✕</button>
+        </div>
+        <form id="form-adiar" class="formulario">
+          <input type="hidden" id="a-id" />
+          <label>Nova data
+            <input id="a-data" type="date" required />
+          </label>
+          <label>Motivo
+            <input id="a-motivo" type="text" maxlength="200" />
+          </label>
+          <div class="form-acoes">
+            <button type="button" class="btn-secundario" data-fechar="modal-adiar">Cancelar</button>
+            <button type="submit" class="btn-primario">Adiar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>
