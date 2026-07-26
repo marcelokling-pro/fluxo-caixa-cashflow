@@ -4,7 +4,7 @@ import * as db from "./db.js";
 import * as ui from "./ui.js";
 import * as notificacoes from "./notificacoes.js";
 
-export const VERSAO = "1.3.1";
+export const VERSAO = "1.3.2";
 
 /** Aberto direto do arquivo (sem servidor): o navegador desliga SW e notificações. */
 export const MODO_ARQUIVO = location.protocol === "file:";

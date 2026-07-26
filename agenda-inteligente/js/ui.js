@@ -553,7 +553,8 @@ function alternarMicrofone() {
     return;
   }
   if (!reconhecimentoDisponivel()) {
-    toast("Este navegador não reconhece voz. Use o campo de texto — o assistente entende igual.", true);
+    toast("Este navegador não reconhece voz. Toque no campo de texto e use o microfone do teclado — o assistente entende igual.", true);
+    $("#entrada-assistente").focus();
     return;
   }
   calarBoca();
@@ -568,6 +569,8 @@ function alternarMicrofone() {
       btn.classList.remove("ouvindo");
       $("#chat").querySelector(".balao.parcial")?.remove();
       toast(e.message, true);
+      // caminho alternativo pronto: o teclado do celular tem microfone próprio
+      if (/microfone|reconhecimento de voz/i.test(e.message)) $("#entrada-assistente").focus();
     },
   });
   if (estado.escuta.iniciar()) btn.classList.add("ouvindo");

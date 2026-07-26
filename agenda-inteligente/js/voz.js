@@ -15,6 +15,9 @@ import {
 const Reconhecimento =
   typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
 
+/** Página aberta como arquivo: sem origem própria, o Android não dá microfone a ela. */
+export const MODO_ARQUIVO = typeof location !== "undefined" && location.protocol === "file:";
+
 export function reconhecimentoDisponivel() {
   return !!Reconhecimento;
 }
@@ -104,13 +107,20 @@ export class Escuta {
     };
     rec.onerror = (ev) => {
       this.ativa = false;
+      // Aberta como arquivo, a página não tem origem própria: o Android nunca concede
+      // microfone a ela. Em vez de mandar o usuário caçar uma configuração que não existe,
+      // aponta o caminho que funciona — o microfone do teclado.
+      const semOrigem = MODO_ARQUIVO
+        ? "No modo arquivo o Android não libera o microfone para a página. Toque no campo de texto e use o microfone do próprio teclado — o assistente entende igual."
+        : null;
       const mensagens = {
         "not-allowed":
+          semOrigem ||
           "Microfone bloqueado. Toque no ícone à esquerda do endereço → Permissões → Microfone → Permitir. " +
-          "Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. " +
-          "Enquanto isso, o assistente funciona igual pelo campo de texto.",
+            "Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. " +
+            "Enquanto isso, o assistente funciona igual pelo campo de texto.",
         "service-not-allowed":
-          "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
+          semOrigem || "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
         "no-speech": "Não consegui ouvir nada. Tente de novo, mais perto do microfone.",
         network: "O reconhecimento de voz do Chrome precisa de internet. Sem rede, use o campo de texto.",
         "audio-capture": "Nenhum microfone disponível para o navegador.",

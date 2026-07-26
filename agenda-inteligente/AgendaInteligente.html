@@ -950,7 +950,7 @@ fieldset.lembretes legend {
         </div>
         <div class="barra-assistente">
           <button id="btn-microfone" class="btn-mic" title="Falar">🎤</button>
-          <input id="entrada-assistente" type="text" placeholder="Fale ou digite um comando..." autocomplete="off" />
+          <input id="entrada-assistente" type="text" placeholder="Fale, digite ou use o microfone do teclado..." autocomplete="off" />
           <button id="btn-enviar" class="btn-primario">Enviar</button>
         </div>
         <label class="linha-check">
@@ -2612,6 +2612,7 @@ fieldset.lembretes legend {
 
   // agenda-inteligente/js/voz.js
   var Reconhecimento = typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
+  var MODO_ARQUIVO2 = typeof location !== "undefined" && location.protocol === "file:";
   function reconhecimentoDisponivel() {
     return !!Reconhecimento;
   }
@@ -2689,9 +2690,10 @@ fieldset.lembretes legend {
       };
       rec.onerror = (ev) => {
         this.ativa = false;
+        const semOrigem = MODO_ARQUIVO2 ? "No modo arquivo o Android não libera o microfone para a página. Toque no campo de texto e use o microfone do próprio teclado — o assistente entende igual." : null;
         const mensagens = {
-          "not-allowed": "Microfone bloqueado. Toque no ícone à esquerda do endereço → Permissões → Microfone → Permitir. Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. Enquanto isso, o assistente funciona igual pelo campo de texto.",
-          "service-not-allowed": "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
+          "not-allowed": semOrigem || "Microfone bloqueado. Toque no ícone à esquerda do endereço → Permissões → Microfone → Permitir. Se não aparecer, veja Configurações do Android → Apps → Chrome → Permissões → Microfone. Enquanto isso, o assistente funciona igual pelo campo de texto.",
+          "service-not-allowed": semOrigem || "O navegador bloqueou o reconhecimento de voz aqui. Use o campo de texto — o assistente entende do mesmo jeito.",
           "no-speech": "Não consegui ouvir nada. Tente de novo, mais perto do microfone.",
           network: "O reconhecimento de voz do Chrome precisa de internet. Sem rede, use o campo de texto.",
           "audio-capture": "Nenhum microfone disponível para o navegador.",
@@ -3108,14 +3110,14 @@ fieldset.lembretes legend {
   function renderCategoriasAjustes() {
     $("#lista-categorias").innerHTML = estado.categorias.map((c) => `<span class="chip acao remover" data-categoria="${esc(c)}">${esc(c)}</span>`).join("");
   }
-  var MODO_ARQUIVO2 = typeof location !== "undefined" && location.protocol === "file:";
+  var MODO_ARQUIVO3 = typeof location !== "undefined" && location.protocol === "file:";
   function renderChips() {
     const chips = [];
-    if (MODO_ARQUIVO2) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
+    if (MODO_ARQUIVO3) chips.push(`<span class="chip alerta">📄 arquivo local</span>`);
     chips.push(
       navigator.onLine ? `<span class="chip ok">● online</span>` : `<span class="chip alerta">● offline — tudo continua funcionando</span>`
     );
-    if (!MODO_ARQUIVO2) {
+    if (!MODO_ARQUIVO3) {
       const perm = permissao();
       const mapa = {
         granted: `<span class="chip ok">🔔 notificações ativas</span>`,
@@ -3365,7 +3367,8 @@ fieldset.lembretes legend {
       return;
     }
     if (!reconhecimentoDisponivel()) {
-      toast("Este navegador não reconhece voz. Use o campo de texto — o assistente entende igual.", true);
+      toast("Este navegador não reconhece voz. Toque no campo de texto e use o microfone do teclado — o assistente entende igual.", true);
+      $("#entrada-assistente").focus();
       return;
     }
     calarBoca();
@@ -3380,13 +3383,14 @@ fieldset.lembretes legend {
         btn.classList.remove("ouvindo");
         $("#chat").querySelector(".balao.parcial")?.remove();
         toast(e.message, true);
+        if (/microfone|reconhecimento de voz/i.test(e.message)) $("#entrada-assistente").focus();
       }
     });
     if (estado.escuta.iniciar()) btn.classList.add("ouvindo");
   }
   async function atualizarStatusNotificacoes() {
     const perm = permissao();
-    if (MODO_ARQUIVO2) {
+    if (MODO_ARQUIVO3) {
       $("#status-notificacoes").textContent = "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
       $("#btn-permitir-notificacoes").disabled = true;
       $("#btn-testar-notificacao").disabled = true;
@@ -3582,11 +3586,11 @@ fieldset.lembretes legend {
   }
 
   // agenda-inteligente/js/app.js
-  var VERSAO = "1.3.1";
-  var MODO_ARQUIVO3 = location.protocol === "file:";
+  var VERSAO = "1.3.2";
+  var MODO_ARQUIVO4 = location.protocol === "file:";
   async function registrarServiceWorker() {
     const alvo = document.querySelector("#status-sw");
-    if (MODO_ARQUIVO3) {
+    if (MODO_ARQUIVO4) {
       if (alvo)
         alvo.textContent = "Aberto como arquivo local: tudo funciona e os dados ficam salvos no aparelho, mas o navegador desativa notificações do sistema e instalação como app. Os lembretes aparecem no painel ao abrir a agenda.";
       return null;
