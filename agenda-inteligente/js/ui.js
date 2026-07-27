@@ -767,7 +767,6 @@ export function iniciar({ persistencia } = {}) {
   estado.persistencia = persistencia;
 
   $$(".aba").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
-  $("#btn-assistente-atalho").addEventListener("click", () => focarAssistente());
   $("#btn-novo").addEventListener("click", () => abrirForm());
 
   // fechar modais
@@ -859,7 +858,12 @@ export function iniciar({ persistencia } = {}) {
     $("#btn-telacheia").textContent = document.fullscreenElement ? "⤢" : "⛶";
     $("#btn-telacheia").title = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
   });
-  if (MODO_ARQUIVO) $("#btn-microfone").title = "Usar o microfone do teclado";
+  // no modo arquivo o botão não grava áudio: leva ao teclado. O ícone tem que dizer isso,
+  // e o microfone do topo saiu — dois ícones iguais na tela confundiam.
+  if (MODO_ARQUIVO) {
+    $("#btn-microfone").textContent = "⌨";
+    $("#btn-microfone").title = "Usar o microfone do teclado";
+  }
   $("#btn-microfone").addEventListener("click", alternarMicrofone);
   $("#estado-assistente").addEventListener("click", (ev) => {
     if (!ev.target.closest("#btn-cancelar-cadastro")) return;

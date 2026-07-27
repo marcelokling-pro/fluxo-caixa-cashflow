@@ -968,8 +968,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.6.1</title>
-    <!-- Agenda Inteligente v1.6.1 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.6.2</title>
+    <!-- Agenda Inteligente v1.6.2 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -978,7 +978,6 @@ fieldset.lembretes legend {
         <div class="topo-acoes">
           <button id="btn-instalar" class="btn-icone" title="Instalar no celular" hidden>⬇</button>
           <button id="btn-telacheia" class="btn-icone" title="Tela cheia">⛶</button>
-          <button id="btn-assistente-atalho" class="btn-icone" title="Assistente por voz">🎤</button>
         </div>
       </div>
       <div id="chips-status" class="chips"></div>
@@ -1170,7 +1169,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.6.1</span>
+        <span id="rodape-versao">v1.6.2</span>
       </footer>
     </main>
 
@@ -1302,7 +1301,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.6.1";
+  var VERSAO = "1.6.2";
   function ehOrigemLocal(protocolo) {
     return !/^https?:$/.test(String(protocolo || ""));
   }
@@ -3828,7 +3827,6 @@ fieldset.lembretes legend {
   function iniciar2({ persistencia } = {}) {
     estado.persistencia = persistencia;
     $$(".aba").forEach((b) => b.addEventListener("click", () => abrirAba(b.dataset.aba)));
-    $("#btn-assistente-atalho").addEventListener("click", () => focarAssistente());
     $("#btn-novo").addEventListener("click", () => abrirForm());
     $$("[data-fechar]").forEach((b) => b.addEventListener("click", () => fecharModal(b.dataset.fechar)));
     $$(".modal").forEach(
@@ -3908,7 +3906,10 @@ fieldset.lembretes legend {
       $("#btn-telacheia").textContent = document.fullscreenElement ? "⤢" : "⛶";
       $("#btn-telacheia").title = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
     });
-    if (MODO_ARQUIVO) $("#btn-microfone").title = "Usar o microfone do teclado";
+    if (MODO_ARQUIVO) {
+      $("#btn-microfone").textContent = "⌨";
+      $("#btn-microfone").title = "Usar o microfone do teclado";
+    }
     $("#btn-microfone").addEventListener("click", alternarMicrofone);
     $("#estado-assistente").addEventListener("click", (ev) => {
       if (!ev.target.closest("#btn-cancelar-cadastro")) return;
