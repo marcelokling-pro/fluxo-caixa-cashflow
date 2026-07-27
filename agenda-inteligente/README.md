@@ -1,4 +1,4 @@
-# Agenda Inteligente de Compromissos — v1.6.3
+# Agenda Inteligente de Compromissos — v1.6.4
 
 App de celular independente (HTML + CSS + JavaScript puro, sem framework e sem build) para
 gerenciar compromissos e pagamentos recorrentes com lembretes, assistente por voz e

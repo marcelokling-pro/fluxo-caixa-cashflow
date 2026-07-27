@@ -608,19 +608,16 @@ function alternarMicrofone() {
     btn.classList.remove("ouvindo");
     return;
   }
-  // Modo arquivo: o Android nunca libera o microfone da página. Em vez de tentar e
-  // falhar, leva direto ao caminho que funciona — e a explicação fica no chat, não
-  // num aviso que some.
+  // Modo arquivo: o Android nunca libera o microfone da página, e o botão já virou ⌨.
+  // Então ele só leva ao campo — a explicação aparece uma única vez, para quem tocou
+  // esperando gravar. Repetir a cada toque era só ruído.
   if (MODO_ARQUIVO || !reconhecimentoDisponivel()) {
-    balao({
-      de: "assistente",
-      texto:
-        "Neste modo o microfone do app fica bloqueado pelo Android.\n\n" +
-        "Toque no campo de texto aqui embaixo e use o 🎤 do seu próprio teclado. " +
-        "Eu entendo exatamente igual — pode falar “cadastrar pagamento do condomínio” ou " +
-        "“quais contas vencem esta semana”.",
-    });
     $("#entrada-assistente").focus();
+    if (!estado.dicaTecladoVista) {
+      estado.dicaTecladoVista = true;
+      db.setConfig("dicaTecladoVista", true).catch(() => {});
+      toast("Use o 🎤 do seu teclado — eu entendo igual.", false, false);
+    }
     return;
   }
   calarBoca();
@@ -654,6 +651,7 @@ export async function carregarPreferencias() {
   estado.modoAssistente = await db.config("modoAssistente", "automatico");
   estado.abaInicial = await db.config("abaInicial", "painel");
   estado.telaCheiaAuto = await db.config("telaCheiaAuto", false);
+  estado.dicaTecladoVista = await db.config("dicaTecladoVista", false);
   $("#cfg-tela-cheia").checked = !!estado.telaCheiaAuto;
   if (estado.telaCheiaAuto) armarTelaCheiaNoPrimeiroToque();
   const sel = $("#cfg-modo-assistente");

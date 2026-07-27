@@ -974,8 +974,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.6.3</title>
-    <!-- Agenda Inteligente v1.6.3 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.6.4</title>
+    <!-- Agenda Inteligente v1.6.4 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1175,7 +1175,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.6.3</span>
+        <span id="rodape-versao">v1.6.4</span>
       </footer>
     </main>
 
@@ -1307,7 +1307,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.6.3";
+  var VERSAO = "1.6.4";
   function ehOrigemLocal(protocolo) {
     return !/^https?:$/.test(String(protocolo || ""));
   }
@@ -3713,11 +3713,13 @@ fieldset.lembretes legend {
       return;
     }
     if (MODO_ARQUIVO || !reconhecimentoDisponivel()) {
-      balao({
-        de: "assistente",
-        texto: "Neste modo o microfone do app fica bloqueado pelo Android.\n\nToque no campo de texto aqui embaixo e use o 🎤 do seu próprio teclado. Eu entendo exatamente igual — pode falar “cadastrar pagamento do condomínio” ou “quais contas vencem esta semana”."
-      });
       $("#entrada-assistente").focus();
+      if (!estado.dicaTecladoVista) {
+        estado.dicaTecladoVista = true;
+        setConfig("dicaTecladoVista", true).catch(() => {
+        });
+        toast("Use o 🎤 do seu teclado — eu entendo igual.", false, false);
+      }
       return;
     }
     calarBoca();
@@ -3746,6 +3748,7 @@ fieldset.lembretes legend {
     estado.modoAssistente = await config("modoAssistente", "automatico");
     estado.abaInicial = await config("abaInicial", "painel");
     estado.telaCheiaAuto = await config("telaCheiaAuto", false);
+    estado.dicaTecladoVista = await config("dicaTecladoVista", false);
     $("#cfg-tela-cheia").checked = !!estado.telaCheiaAuto;
     if (estado.telaCheiaAuto) armarTelaCheiaNoPrimeiroToque();
     const sel = $("#cfg-modo-assistente");

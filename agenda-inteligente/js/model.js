@@ -2,7 +2,7 @@
 // Módulo puro: não toca em DOM nem em IndexedDB.
 
 /** Versão do app — fonte única: título, chip do topo, rodapé, "Sobre" e nome do arquivo. */
-export const VERSAO = "1.6.3";
+export const VERSAO = "1.6.4";
 
 /**
  * Uma página só tem origem de verdade em http/https. O Android entrega HTML local como
