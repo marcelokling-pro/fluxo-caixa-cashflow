@@ -698,6 +698,7 @@ async function atualizarStatusNotificacoes() {
     // botão que não faz nada é pior que botão ausente: some no modo arquivo
     $("#btn-permitir-notificacoes").hidden = true;
     $("#btn-testar-notificacao").hidden = true;
+    $("#btn-verificar-lembretes").textContent = "Ver lembretes ativos";
     renderChips();
     return;
   }
@@ -889,11 +890,19 @@ export function iniciar({ persistencia } = {}) {
     await notificacoes.notificarAgora("Agenda Inteligente", "Notificação de teste — está funcionando. ✅");
   });
   $("#btn-verificar-lembretes").addEventListener("click", async () => {
+    // No modo arquivo não existe permissão a liberar: mandar "libere as notificações"
+    // seria mandar o usuário procurar um ajuste que o navegador não oferece.
+    if (MODO_ARQUIVO) {
+      const ativos = avisosAtivos(estado.compromissos).length;
+      if (!ativos) return toast("Nenhum lembrete ativo agora.");
+      abrirAba("painel");
+      return toast(`${ativos} lembrete(s) ativo(s) — mostrando no topo do painel.`);
+    }
     const r = await notificacoes.verificar(estado.compromissos);
     if (r.semPermissao) {
       toast(
         r.devidos
-          ? `${r.devidos} lembrete(s) prontos, mas as notificações estão bloqueadas. Libere para recebê-los.`
+          ? `${r.devidos} lembrete(s) prontos, mas as notificações estão bloqueadas. Libere em "Permitir notificações" para recebê-los.`
           : "Nenhum lembrete pendente agora.",
         !!r.devidos
       );

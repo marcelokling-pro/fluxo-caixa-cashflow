@@ -974,8 +974,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.6.4</title>
-    <!-- Agenda Inteligente v1.6.4 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.6.5</title>
+    <!-- Agenda Inteligente v1.6.5 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1175,7 +1175,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.6.4</span>
+        <span id="rodape-versao">v1.6.5</span>
       </footer>
     </main>
 
@@ -1307,7 +1307,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.6.4";
+  var VERSAO = "1.6.5";
   function ehOrigemLocal(protocolo) {
     return !/^https?:$/.test(String(protocolo || ""));
   }
@@ -3782,6 +3782,7 @@ fieldset.lembretes legend {
       $("#status-notificacoes").textContent = "A agenda está aberta como arquivo, e nesse modo o navegador não permite notificação do sistema. Os lembretes aparecem em destaque no painel sempre que você abrir o app. Para receber aviso com o app fechado seria preciso abri-la por um endereço https.";
       $("#btn-permitir-notificacoes").hidden = true;
       $("#btn-testar-notificacao").hidden = true;
+      $("#btn-verificar-lembretes").textContent = "Ver lembretes ativos";
       renderChips();
       return;
     }
@@ -3945,10 +3946,16 @@ fieldset.lembretes legend {
       await notificarAgora("Agenda Inteligente", "Notificação de teste — está funcionando. ✅");
     });
     $("#btn-verificar-lembretes").addEventListener("click", async () => {
+      if (MODO_ARQUIVO) {
+        const ativos = avisosAtivos(estado.compromissos).length;
+        if (!ativos) return toast("Nenhum lembrete ativo agora.");
+        abrirAba("painel");
+        return toast(`${ativos} lembrete(s) ativo(s) — mostrando no topo do painel.`);
+      }
       const r = await verificar(estado.compromissos);
       if (r.semPermissao) {
         toast(
-          r.devidos ? `${r.devidos} lembrete(s) prontos, mas as notificações estão bloqueadas. Libere para recebê-los.` : "Nenhum lembrete pendente agora.",
+          r.devidos ? `${r.devidos} lembrete(s) prontos, mas as notificações estão bloqueadas. Libere em "Permitir notificações" para recebê-los.` : "Nenhum lembrete pendente agora.",
           !!r.devidos
         );
       } else toast(r.disparados ? `${r.disparados} lembrete(s) enviado(s).` : "Nenhum lembrete pendente agora.");
