@@ -475,6 +475,12 @@ label textarea {
   text-align: center;
 }
 
+button:disabled,
+button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-perigo {
   background: transparent;
   border: 1px solid var(--perigo);

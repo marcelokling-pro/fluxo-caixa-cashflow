@@ -694,14 +694,17 @@ async function atualizarStatusNotificacoes() {
   const perm = notificacoes.permissao();
   if (MODO_ARQUIVO) {
     $("#status-notificacoes").textContent =
-      "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema " +
-      "nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber " +
-      "notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
-    $("#btn-permitir-notificacoes").disabled = true;
-    $("#btn-testar-notificacao").disabled = true;
+      "A agenda está aberta como arquivo, e nesse modo o navegador não permite notificação do " +
+      "sistema. Os lembretes aparecem em destaque no painel sempre que você abrir o app. Para " +
+      "receber aviso com o app fechado seria preciso abri-la por um endereço https.";
+    // botão que não faz nada é pior que botão ausente: some no modo arquivo
+    $("#btn-permitir-notificacoes").hidden = true;
+    $("#btn-testar-notificacao").hidden = true;
     renderChips();
     return;
   }
+  $("#btn-permitir-notificacoes").hidden = false;
+  $("#btn-testar-notificacao").hidden = false;
   const textos = {
     granted: "Notificações liberadas. Os lembretes configurados serão exibidos automaticamente.",
     denied: "Notificações bloqueadas pelo navegador. Libere nas configurações do site para receber lembretes.",

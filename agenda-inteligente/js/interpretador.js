@@ -273,7 +273,7 @@ const RE_ANTECEDENCIA = [
   /\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
   /\b(uma semana|duas semanas|quinze dias|um mes|trinta dias|vespera)\s+antes\b/,
   /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre)\s+(?:me\s+)?no dia\b/,
-  /\bno (?:proprio )?dia\b(?=[^\d]|$)/,
+  /\bno (?:proprio )?dia\b(?!\s*\d)/,
 ];
 
 const RE_FREQUENCIA = [
@@ -309,7 +309,11 @@ const RE_VALOR = [
 const VERBOS_TITULO =
   /^(?:cadastr\w*|agend\w*|anot\w*|cri[ae]r?|crie|adicion\w*|marc\w*|registr\w*|lembr\w*|pag[ao]r?|pague|coloc\w*|bota?r?|inclu\w*|novo|nova)\b\s*/;
 
-const CONECTIVOS_TITULO = /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete)\b\s*/;
+const CONECTIVOS_TITULO =
+  /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete|vencimento)\b\s*/;
+
+/** Preposição que ficou órfã depois de remover a data/valor do meio da frase. */
+const PREPOSICAO_ORFA = /\b(no|na|em|de|do|da|dos|das)\s+(?=(?:no|na|em|de|do|da|dos|das)\b)/gi;
 
 /**
  * Lê uma frase inteira e extrai tudo o que der: título, valor, data, hora,
@@ -386,7 +390,8 @@ function limparTitulo(resto) {
     if (conectivo) t = t.slice(conectivo[0].length).trim();
   } while (t !== anterior && t);
 
-  t = t.replace(/\s+(de|do|da|com|para|pra|e)$/i, "").trim();
+  t = t.replace(PREPOSICAO_ORFA, "").replace(/\s+/g, " ").trim();
+  t = t.replace(/\s+(de|do|da|com|para|pra|em|no|na|e)$/i, "").trim();
   if (!t) return "";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }

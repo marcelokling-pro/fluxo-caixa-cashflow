@@ -248,6 +248,18 @@ describe("interpretador de voz", () => {
     expect(r.lembretes).toEqual([]);
   });
 
+  it('"no dia 10" é data, não antecedência de aviso', () => {
+    const r = interp.interpretarFrase("Cadastrar vencimento da conta no dia 10 da conta de luz", HOJE);
+    expect(r.data).toBe("2026-08-10");
+    expect(r.lembretes).toEqual([]);
+  });
+
+  it('"me avisa no dia" continua sendo antecedência zero', () => {
+    const r = interp.interpretarFrase("cadastrar dentista dia 30 me avisa no dia", HOJE);
+    expect(r.data).toBe("2026-07-30");
+    expect(r.lembretes).toEqual([0]);
+  });
+
   it("pega hora junto da data", () => {
     const r = interp.interpretarFrase("dentista amanhã às 14:30", HOJE);
     expect(r.titulo).toBe("Dentista");

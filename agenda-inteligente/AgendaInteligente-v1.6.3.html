@@ -489,6 +489,12 @@ label textarea {
   text-align: center;
 }
 
+button:disabled,
+button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn-perigo {
   background: transparent;
   border: 1px solid var(--perigo);
@@ -968,8 +974,8 @@ fieldset.lembretes legend {
 }
 
     </style>
-    <title>Agenda Inteligente v1.6.2</title>
-    <!-- Agenda Inteligente v1.6.2 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
+    <title>Agenda Inteligente v1.6.3</title>
+    <!-- Agenda Inteligente v1.6.3 — MKK. Arquivo único gerado por gerar-arquivo-unico.mjs, não editar à mão. -->
   </head>
   <body>
     <header class="topo">
@@ -1169,7 +1175,7 @@ fieldset.lembretes legend {
       </section>
       <footer class="rodape">
         <span class="marca">MKK</span>
-        <span id="rodape-versao">v1.6.2</span>
+        <span id="rodape-versao">v1.6.3</span>
       </footer>
     </main>
 
@@ -1301,7 +1307,7 @@ fieldset.lembretes legend {
     <script>
 (() => {
   // agenda-inteligente/js/model.js
-  var VERSAO = "1.6.2";
+  var VERSAO = "1.6.3";
   function ehOrigemLocal(protocolo) {
     return !/^https?:$/.test(String(protocolo || ""));
   }
@@ -2650,7 +2656,7 @@ fieldset.lembretes legend {
     /\b(\d{1,3}|[a-z]+)\s+dias?\s+antes\b/,
     /\b(uma semana|duas semanas|quinze dias|um mes|trinta dias|vespera)\s+antes\b/,
     /\b(?:me\s+)?(?:avis[ae]r?|avise|lembr[ae]r?|lembre)\s+(?:me\s+)?no dia\b/,
-    /\bno (?:proprio )?dia\b(?=[^\d]|$)/
+    /\bno (?:proprio )?dia\b(?!\s*\d)/
   ];
   var RE_FREQUENCIA = [
     /\b(todo dia|todos os dias|diariamente|diario)\b/,
@@ -2680,7 +2686,8 @@ fieldset.lembretes legend {
     // sobrou um número solto depois de data/hora/antecedência: é o valor
   ];
   var VERBOS_TITULO = /^(?:cadastr\w*|agend\w*|anot\w*|cri[ae]r?|crie|adicion\w*|marc\w*|registr\w*|lembr\w*|pag[ao]r?|pague|coloc\w*|bota?r?|inclu\w*|novo|nova)\b\s*/;
-  var CONECTIVOS_TITULO = /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete)\b\s*/;
+  var CONECTIVOS_TITULO = /^(?:o|a|os|as|um|uma|de|do|da|dos|das|para|pra|em|no|na|me|meu|minha|que|compromisso|lembrete|vencimento)\b\s*/;
+  var PREPOSICAO_ORFA = /\b(no|na|em|de|do|da|dos|das)\s+(?=(?:no|na|em|de|do|da|dos|das)\b)/gi;
   function interpretarFrase(texto, hoje = hojeISO()) {
     let resto = String(texto || "");
     const fora = { antecedencia: null, recorrencia: null, data: null, hora: null, valor: null };
@@ -2730,7 +2737,8 @@ fieldset.lembretes legend {
       const conectivo = semAcento(t).match(CONECTIVOS_TITULO);
       if (conectivo) t = t.slice(conectivo[0].length).trim();
     } while (t !== anterior && t);
-    t = t.replace(/\s+(de|do|da|com|para|pra|e)$/i, "").trim();
+    t = t.replace(PREPOSICAO_ORFA, "").replace(/\s+/g, " ").trim();
+    t = t.replace(/\s+(de|do|da|com|para|pra|em|no|na|e)$/i, "").trim();
     if (!t) return "";
     return t.charAt(0).toUpperCase() + t.slice(1);
   }
@@ -3768,12 +3776,14 @@ fieldset.lembretes legend {
   async function atualizarStatusNotificacoes() {
     const perm = permissao();
     if (MODO_ARQUIVO) {
-      $("#status-notificacoes").textContent = "A agenda está aberta como arquivo (file://). O navegador não permite notificações do sistema nesse modo — os lembretes aparecem no painel sempre que você abrir o app. Para receber notificação com o app fechado, é preciso abri-la por um endereço https ou localhost.";
-      $("#btn-permitir-notificacoes").disabled = true;
-      $("#btn-testar-notificacao").disabled = true;
+      $("#status-notificacoes").textContent = "A agenda está aberta como arquivo, e nesse modo o navegador não permite notificação do sistema. Os lembretes aparecem em destaque no painel sempre que você abrir o app. Para receber aviso com o app fechado seria preciso abri-la por um endereço https.";
+      $("#btn-permitir-notificacoes").hidden = true;
+      $("#btn-testar-notificacao").hidden = true;
       renderChips();
       return;
     }
+    $("#btn-permitir-notificacoes").hidden = false;
+    $("#btn-testar-notificacao").hidden = false;
     const textos = {
       granted: "Notificações liberadas. Os lembretes configurados serão exibidos automaticamente.",
       denied: "Notificações bloqueadas pelo navegador. Libere nas configurações do site para receber lembretes.",
