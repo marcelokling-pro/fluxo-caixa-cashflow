@@ -18,6 +18,12 @@ Deno.serve(async (req) => {
   const { data: settings } = await supabase.from("settings").select("key,value");
   const get = (k: string) => settings?.find((s: any) => s.key === k)?.value || "";
 
+  // v7.11.21 — bypass central: pausa cobre tanto o envio manual quanto o agendamento automático,
+  // já que os dois caminhos chamam esta mesma função.
+  if (get("alerts_paused") === "true") {
+    return new Response("Alertas pausados — nenhum e-mail enviado", { status: 200, headers: corsHeaders });
+  }
+
   const resendKey = get("resend_api_key");
   const daysAhead = parseInt(get("alert_days_ahead")) || 3;
 
