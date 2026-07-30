@@ -720,6 +720,11 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   const saldo   = receita - despesa;
   const count   = filtrado.length;
 
+  // v7.12.0 — EBITDA = Geracao de Caixa + Impostos + Despesas Financeiras/Juros (regime de caixa, sem D&A)
+  const isImpostoOuFinanceiro = t=>t.classificacao==="IMPOSTOS"||t.rd==="DESPESA FINANCEIRA"||t.classificacao==="DESPESA FINANCEIRA"||t.classificacao==="DESPESA BANCÁRIA";
+  const impostosFinanceiros = Math.abs(opFiltrado.filter(isImpostoOuFinanceiro).reduce((acc,t)=>acc+Number(t.value),0));
+  const ebitda = saldo + impostosFinanceiros;
+
   // Previous year for % comparison
   const prevFiltrado = transactions.filter(t=>{
     const p = t.date?.split("/");
@@ -733,6 +738,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
   const prevRec = opPrevFiltrado.filter(t=>t.rd==="RECEITA").reduce((acc,t)=>acc+Number(t.value),0);
   const prevDes = Math.abs(opPrevFiltrado.filter(t=>t.rd!=="RECEITA").reduce((acc,t)=>acc+Number(t.value),0));
   const prevSaldo = prevRec - prevDes;
+  const prevImpostosFinanceiros = Math.abs(opPrevFiltrado.filter(isImpostoOuFinanceiro).reduce((acc,t)=>acc+Number(t.value),0));
+  const prevEbitda = prevSaldo + prevImpostosFinanceiros;
   // v7.5.0 — sem base valida (mesmo periodo comparado consigo mesmo, ou variacao absurda por base historica pequena) nao mostra %
   const pctChg = (cur,prev) => {
     if(biAno==="todos"||!prev) return null;
@@ -755,7 +762,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     const ts = biRd==="todos" ? tsAll.filter(t=>!naoOperacional(t)) : tsAll.filter(t=>t.rd===biRd);
     const rec=ts.filter(t=>t.rd==="RECEITA").reduce((acc,t)=>acc+Number(t.value),0);
     const des=Math.abs(ts.filter(t=>t.rd!=="RECEITA").reduce((acc,t)=>acc+Number(t.value),0));
-    return {rec,des,count:ts.length};
+    const impFin=Math.abs(ts.filter(isImpostoOuFinanceiro).reduce((acc,t)=>acc+Number(t.value),0));
+    return {rec,des,impFin,count:ts.length};
   };
 
   // Monthly evolution — meses do ano selecionado (ou últimos 12 se "todos")
@@ -766,8 +774,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
     for(let mi=0;mi<=maxM;mi++){
       const m=String(mi+1).padStart(2,"0"), a=String(year);
       const lbl=new Date(year,mi,1).toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
-      const {rec,des,count}=monthRecDes(m,a);
-      evolucao.push({lbl,rec,des,saldo:rec-des,count,m,a});
+      const {rec,des,impFin,count}=monthRecDes(m,a);
+      evolucao.push({lbl,rec,des,saldo:rec-des,ebitda:rec-des+impFin,count,m,a});
     }
     // Remove meses sem dados no início
     while(evolucao.length>1&&evolucao[0].rec===0&&evolucao[0].des===0) evolucao.shift();
@@ -776,8 +784,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
       const d=new Date(now.getFullYear(),now.getMonth()-i,1);
       const m=String(d.getMonth()+1).padStart(2,"0"),a=String(d.getFullYear());
       const lbl=d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
-      const {rec,des,count}=monthRecDes(m,a);
-      evolucao.push({lbl,rec,des,saldo:rec-des,count,m,a});
+      const {rec,des,impFin,count}=monthRecDes(m,a);
+      evolucao.push({lbl,rec,des,saldo:rec-des,ebitda:rec-des+impFin,count,m,a});
     }
   }
 
@@ -928,26 +936,27 @@ const AnaliseTab = ({transactions, s, fmt}) => {
       </div>
 
       {/* KPI Cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(178px,1fr))",gap:10,marginBottom:14}}>
         {[
           {l:"Receitas Totais",  v:fmt(receita), pct:pctChg(receita,prevRec),   c:"#2ECC71", bc:"rgba(46,204,113,0.15)",  icon:"📈", spark:evolucao.map(e=>e.rec),   sc:"#00C9A7"},
           {l:"Despesas Totais",  v:fmt(despesa), pct:pctChg(despesa,prevDes),   c:"#E8445A", bc:"rgba(232,68,90,0.12)",   icon:"📉", spark:evolucao.map(e=>e.des),   sc:"#E8445A"},
-          {l:"Saldo do Período", v:fmt(saldo),   pct:pctChg(saldo,prevSaldo),   c:saldo>=0?"#00C9A7":"#E8445A", bc:"rgba(0,201,167,0.08)", icon:"⚖️", spark:evolucao.map(e=>e.saldo), sc:"#9B59B6"},
+          {l:"Geração de Caixa", v:fmt(saldo),   pct:pctChg(saldo,prevSaldo),   c:saldo>=0?"#00C9A7":"#E8445A", bc:"rgba(0,201,167,0.08)", icon:"⚖️", spark:evolucao.map(e=>e.saldo), sc:"#9B59B6"},
+          {l:"EBITDA",           v:fmt(ebitda),  pct:pctChg(ebitda,prevEbitda), c:"#4F8EF7", bc:"rgba(79,142,247,0.1)",  icon:"💹", spark:evolucao.map(e=>e.ebitda), sc:"#4F8EF7"},
           {l:"Lançamentos",      v:count,        pct:null,                       c:"#F5A623", bc:"rgba(245,166,35,0.08)",  icon:"📋", spark:null, sc:"#F5A623"},
         ].map(k=>(
-          <div key={k.l} style={{...s.card,borderLeft:`3px solid ${k.c}`,overflow:"hidden"}}>
+          <div key={k.l} style={{...s.card,padding:"14px 12px",borderLeft:`3px solid ${k.c}`,overflow:"hidden"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase",letterSpacing:0.8,marginBottom:6}}>{k.l}</div>
-                <div style={{fontSize:19,fontWeight:700,color:"#E8EDF2",marginBottom:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.v}</div>
-                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                <div style={{fontSize:9,color:"#6B8299",textTransform:"uppercase",letterSpacing:0.5,marginBottom:5}}>{k.l}</div>
+                <div style={{fontSize:14,fontWeight:700,color:"#E8EDF2",marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.v}</div>
+                <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
                   <PctBadge v={k.pct}/>
-                  {k.pct!==null&&<span style={{fontSize:9,color:"#4A5E6D"}}>vs ano ant.</span>}
+                  {k.pct!==null&&<span style={{fontSize:8,color:"#4A5E6D"}}>vs ano ant.</span>}
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,marginLeft:8}}>
-                <span style={{fontSize:22}}>{k.icon}</span>
-                {k.spark&&<Spark data={k.spark} color={k.sc}/>}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,marginLeft:6}}>
+                <span style={{fontSize:15}}>{k.icon}</span>
+                {k.spark&&<Spark data={k.spark} color={k.sc} w={38} h={16}/>}
               </div>
             </div>
           </div>
@@ -2691,7 +2700,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.11.21 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.12.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3531,7 +3540,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.11.21</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.12.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3723,7 +3732,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.11.21 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.12.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
