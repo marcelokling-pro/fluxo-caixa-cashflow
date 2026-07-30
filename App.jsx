@@ -1622,6 +1622,8 @@ export default function App() {
   const [alertsPaused,setAlertsPaused] = useState(false); // v7.11.18 — pausa central dos alertas
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
   const [showPeriodo,setShowPeriodo] = useState(false); // v7.11.14 — popover de período em Lançamentos
+  const [colFilter,setColFilter] = useState({description:[],razao_social:[],rd:[],classificacao:[],conta:[]}); // v7.13.0 — filtro por checkbox no cabeçalho das colunas
+  const [showColFilter,setShowColFilter] = useState(null);
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
   const [searchText,setSearchText] = useState("");
@@ -1718,10 +1720,17 @@ export default function App() {
   },[]);
 
   useEffect(()=>{
-    const handleEsc = (e) => { if(e.key==="Escape"){ setShowDiaFilter(false); setShowAtrasadosModal(false); setShowSemMatchModal(false); setShowModal(false); } };
+    const handleEsc = (e) => { if(e.key==="Escape"){ setShowDiaFilter(false); setShowColFilter(null); setShowAtrasadosModal(false); setShowSemMatchModal(false); setShowModal(false); } };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   },[]);
+
+  useEffect(()=>{
+    if(!showColFilter) return;
+    const handleClickOutside = () => setShowColFilter(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  },[showColFilter]);
 
   useEffect(()=>{
     if(!user) return;
@@ -1850,6 +1859,9 @@ export default function App() {
       if(filter.sinal==="saida")         list=list.filter(t=>Number(t.value)<0);
       else if(filter.sinal==="entrada")  list=list.filter(t=>Number(t.value)>0);
     }
+    Object.entries(colFilter).forEach(([key,vals])=>{
+      if(vals.length>0) list=list.filter(t=>vals.includes(t[key]));
+    });
     list.sort((a,b)=>{
       if(sortCol==="value"){
         const va=Number(a.value), vb=Number(b.value);
@@ -1899,7 +1911,7 @@ export default function App() {
       list=list.filter(t=>matchedIds.has(t.id));
     }
     return list;
-  },[transactions,filter,sortDir,sortCol,drillDown,searchText]);
+  },[transactions,filter,colFilter,sortDir,sortCol,drillDown,searchText]);
 
   const fluxoData = useMemo(()=>{
     let list=transactions;
@@ -2700,7 +2712,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.12.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.13.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2823,16 +2835,39 @@ export default function App() {
                 {sortDir==="asc"?"↑":"↓"}
               </button>
               <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,flexShrink:0}} title="Limpar filtros"
-                onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setSearchText("");setShowPeriodo(false);}}>🔄</button>
+                onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setColFilter({description:[],razao_social:[],rd:[],classificacao:[],conta:[]});setShowColFilter(null);setSearchText("");setShowPeriodo(false);}}>🔄</button>
             </div>
             <div style={{...s.card,padding:0,overflow:"hidden"}}>
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
               <table style={s.table}>
                 <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
-                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description"},{l:"Razão Social",k:"razao_social"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta"},{l:"Valor",k:"value"},{l:"",k:""}].map(({l,k})=>(
-                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px"}}
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description",fk:"description"},{l:"Razão Social",k:"razao_social",fk:"razao_social"},{l:"R/D",k:"rd",fk:"rd"},{l:"Classificação",k:"classificacao",fk:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta",fk:"conta"},{l:"Valor",k:"value"},{l:"",k:""}].map(({l,k,fk})=>(
+                    <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px",position:"relative"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
+                      {fk&&(
+                        <span style={{marginLeft:4,fontSize:10,color:"#00C9A7",cursor:"pointer"}}
+                          onClick={e=>{e.stopPropagation();setShowColFilter(v=>v===fk?null:fk);}}>
+                          {colFilter[fk].length>0?`(${colFilter[fk].length})`:""} ▾
+                        </span>
+                      )}
+                      {fk&&showColFilter===fk&&(
+                        <div style={{position:"absolute",top:"100%",left:0,background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:10,zIndex:200,minWidth:180,maxHeight:260,overflowY:"auto",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}
+                          onClick={e=>e.stopPropagation()}>
+                          <div style={{fontSize:11,color:"#6B8299",marginBottom:8,fontWeight:600,whiteSpace:"normal"}}>FILTRAR POR {l.toUpperCase()}</div>
+                          {[...new Set(transactions.map(t=>t[fk]).filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(val=>(
+                            <label key={val} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 0",cursor:"pointer",fontSize:12,whiteSpace:"normal"}}>
+                              <input type="checkbox" checked={colFilter[fk].includes(val)}
+                                onChange={e=>setColFilter(prev=>({...prev,[fk]:e.target.checked?[...prev[fk],val]:prev[fk].filter(v=>v!==val)}))}/>
+                              {val}
+                            </label>
+                          ))}
+                          {colFilter[fk].length>0&&(
+                            <button style={{...s.btn("ghost"),fontSize:11,padding:"4px 8px",marginTop:8,width:"100%"}}
+                              onClick={()=>setColFilter(prev=>({...prev,[fk]:[]}))}>Limpar filtro</button>
+                          )}
+                        </div>
+                      )}
                     </th>
                   ))}
                 </tr></thead>
@@ -3540,7 +3575,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.12.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.13.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3732,7 +3767,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.12.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.13.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
