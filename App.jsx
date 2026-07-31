@@ -941,13 +941,16 @@ const AnaliseTab = ({transactions, s, fmt}) => {
           {l:"Receitas Totais",  v:fmt(receita), pct:pctChg(receita,prevRec),   c:"#2ECC71", bc:"rgba(46,204,113,0.15)",  icon:"📈", spark:evolucao.map(e=>e.rec),   sc:"#00C9A7"},
           {l:"Despesas Totais",  v:fmt(despesa), pct:pctChg(despesa,prevDes),   c:"#E8445A", bc:"rgba(232,68,90,0.12)",   icon:"📉", spark:evolucao.map(e=>e.des),   sc:"#E8445A"},
           {l:"Geração de Caixa", v:fmt(saldo),   pct:pctChg(saldo,prevSaldo),   c:saldo>=0?"#00C9A7":"#E8445A", bc:"rgba(0,201,167,0.08)", icon:"⚖️", spark:evolucao.map(e=>e.saldo), sc:"#9B59B6"},
-          {l:"EBITDA",           v:fmt(ebitda),  pct:pctChg(ebitda,prevEbitda), c:"#4F8EF7", bc:"rgba(79,142,247,0.1)",  icon:"💹", spark:evolucao.map(e=>e.ebitda), sc:"#4F8EF7"},
+          {l:"EBITDA",           v:fmt(ebitda),  pct:pctChg(ebitda,prevEbitda), c:"#4F8EF7", bc:"rgba(79,142,247,0.1)",  icon:"💹", spark:evolucao.map(e=>e.ebitda), sc:"#4F8EF7", tip:"EBITDA = Geração de Caixa (Receita − Despesas) + Impostos e Despesas Financeiras (IOF, tarifas bancárias, tributos, juros) — regime de caixa, sem Depreciação/Amortização"},
           {l:"Lançamentos",      v:count,        pct:null,                       c:"#F5A623", bc:"rgba(245,166,35,0.08)",  icon:"📋", spark:null, sc:"#F5A623"},
         ].map(k=>(
           <div key={k.l} style={{...s.card,padding:"14px 12px",borderLeft:`3px solid ${k.c}`,overflow:"hidden"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:9,color:"#6B8299",textTransform:"uppercase",letterSpacing:0.5,marginBottom:5}}>{k.l}</div>
+                <div style={{fontSize:9,color:"#6B8299",textTransform:"uppercase",letterSpacing:0.5,marginBottom:5,display:"flex",alignItems:"center",gap:4}}>
+                  {k.l}
+                  {k.tip&&<span title={k.tip} style={{fontSize:9,width:13,height:13,borderRadius:"50%",border:`1px solid ${k.c}`,color:k.c,display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600,flexShrink:0}}>?</span>}
+                </div>
                 <div style={{fontSize:14,fontWeight:700,color:"#E8EDF2",marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{k.v}</div>
                 <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
                   <PctBadge v={k.pct}/>
@@ -2712,7 +2715,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.13.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.14.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3575,7 +3578,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.13.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.14.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3767,7 +3770,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.13.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.14.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
