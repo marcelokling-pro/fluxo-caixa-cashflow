@@ -12,11 +12,12 @@ npm run test     # Vitest — ver "Testes automatizados"
 
 O servidor Vite recarrega sozinho ao salvar. Após reiniciar o computador, um F5 manual é necessário uma única vez para reconectar — depois volta automático.
 
-**Deploy da Edge Function**: após qualquer alteração em `supabase/functions/send-alerts/index.ts`, rodar:
+**Deploy da Edge Function**: após qualquer alteração em `supabase/functions/send-alerts/index.ts`, rodar nos **dois** projetos — não só PROD:
 ```bash
 supabase functions deploy send-alerts --project-ref xioqemsshqxagvwdttte
+supabase functions deploy send-alerts --project-ref fhrulvdwkqhkyrwqnbet
 ```
-O `git push` **não** publica a edge function automaticamente.
+O `git push` **não** publica a edge function automaticamente. **Confirmar sempre nos dois refs** (`supabase functions list --project-ref <ref>` — comparar `version`/`updated_at`): já aconteceu de DEV ficar meses numa versão antiga da função enquanto só PROD recebia os deploys (ago/2026 — checagem de `alerts_paused` existia no código desde jul/2026 mas só foi pro ar em DEV depois).
 
 ## Regras de trabalho (ler antes de editar)
 
