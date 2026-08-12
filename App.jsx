@@ -194,7 +194,10 @@ export const merchantKey = (desc) => {
     .replace(/^(BOLETO\s+PAGO|COMPRA\s+\S+|PIX\s+ENVIADO|PIX\s+RECEBIDO|PIX\s+|PAGAMENTO\s+|TED\s+|DOC\s+|TRANSFERENCIA\s+|DEBITO\s+|CREDITO\s+)\s*/,'');
   const tokens = d.split(/[^A-Z0-9À-Ú]+/).filter(Boolean);
   if (!tokens.length) return '';
-  const isNoise = (tok) => tok.length>=5 && ((/[A-Z]/.test(tok)&&/\d/.test(tok)) || /^\d{4,}$/.test(tok));
+  // v7.15.2 — token puramente numérico é ruído em qualquer tamanho (nº de cheque, parcela).
+  // Antes exigia 5+ chars, então "CH COMPENSADO 123" não casava com "CH COMPENSADO 456".
+  // O 1º token nunca é descartado, então nomes que começam com número seguem intactos.
+  const isNoise = (tok) => (tok.length>=5 && ((/[A-Z]/.test(tok)&&/\d/.test(tok)) || /^\d{4,}$/.test(tok))) || /^\d+$/.test(tok);
   return [tokens[0], ...tokens.slice(1).filter(t=>!isNoise(t))].join(' ').trim();
 };
 
@@ -205,6 +208,52 @@ const descSimilar = (a, b) => {
   if (!da || !db) return false;
   const [shorter, longer] = da.length <= db.length ? [da, db] : [db, da];
   return shorter.length >= 6 && longer.includes(shorter);
+};
+
+// v7.15.0 — mesmo estabelecimento. Tenta duas regras, na ordem:
+//   1) a de sempre (merchantKey + descSimilar), que já é usada em Lançamentos;
+//   2) se falhar, compara as descrições CRUAS concatenadas (sem nenhuma pontuação).
+// A 2ª é só um caminho a mais: nada que casava antes deixa de casar. Ela existe porque o
+// merchantKey descarta tokens alfanuméricos de 5+ chars como ruído e come pedaço do nome
+// ("MINI EXTRA5-C-T" perde o "EXTRA5"), e porque o descSimilar remove só espaço, deixando
+// hífen e asterisco atrapalharem ("MINIEXTRA-5-CT" vs "MINIEXTRA5-C-T").
+// Continua sendo containment (o menor inteiro dentro do maior, mín. 6 chars) — não é prefixo.
+export const sameMerchant = (a, b) => {
+  if (!a || !b) return false;
+  if (descSimilar(merchantKey(a), merchantKey(b))) return true;
+  const concat = s => String(s).toUpperCase().replace(/[^A-ZÀ-Ú0-9]/g,'');
+  return descSimilar(concat(a), concat(b));
+};
+
+// v7.15.0 — edição de um item no modal de Detalhamento da fatura: aplica a alteração e
+// replica R/D + Classificação + Subcategoria para os demais itens do MESMO estabelecimento
+// dentro da fatura aberta. Só isso — não alcança outras faturas nem grava em `categories`.
+// A subcategoria entra na comparação: sem ela, dois itens com mesmo R/D e Classificação
+// ficavam com subcategorias divergentes ("MERCADO" e "SUPER") por parecerem já alinhados.
+export const applyDetailItemEdit = (items, idx, field, val) =>
+  items.map((item,i) => i===idx ? {...item,[field]:val,needs_review:false} : item);
+
+// Índices dos itens do mesmo estabelecimento que divergem do item `idx` — candidatos à
+// propagação. Nada é alterado aqui: o usuário confirma antes, como em Lançamentos.
+export const findDetailMatches = (items, idx) => {
+  const src = items[idx];
+  if (!src || !src.rd || !src.classificacao || !src.description) return [];
+  const srcSub = src.subcategoria||"";
+  const out = [];
+  items.forEach((item,i) => {
+    if (i===idx || !item.description) return;
+    if (!sameMerchant(item.description, src.description)) return;
+    if (item.rd===src.rd && item.classificacao===src.classificacao && (item.subcategoria||"")===srcSub) return;
+    out.push(i);
+  });
+  return out;
+};
+
+export const applyDetailPropagation = (items, idxs, rd, classificacao, subcategoria) => {
+  const set = new Set(idxs);
+  return items.map((item,i) => set.has(i)
+    ? {...item, rd, classificacao, subcategoria:subcategoria||"", needs_review:false}
+    : item);
 };
 
 // Flexible description match: handles spaces ("J B" vs "JB") and bank truncation ("SANTOS" vs "SANT")
@@ -1632,7 +1681,7 @@ export default function App() {
   const [alertsPaused,setAlertsPaused] = useState(false); // v7.11.18 — pausa central dos alertas
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
   const [showPeriodo,setShowPeriodo] = useState(false); // v7.11.14 — popover de período em Lançamentos
-  const [colFilter,setColFilter] = useState({description:[],razao_social:[],rd:[],classificacao:[],conta:[]}); // v7.13.0 — filtro por checkbox no cabeçalho das colunas
+  const [colFilter,setColFilter] = useState({description:[],razao_social:[],rd:[],classificacao:[],subcategoria:[],conta:[]}); // v7.13.0 — filtro por checkbox no cabeçalho das colunas
   const [showColFilter,setShowColFilter] = useState(null);
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
@@ -1702,6 +1751,7 @@ export default function App() {
   const [detailLoading,setDetailLoading]   = useState(false);
   const [detailSaving,setDetailSaving]     = useState(false);
   const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
+  const [detailPendingApply,setDetailPendingApply] = useState(null); // v7.15.1 — confirmação da propagação na fatura
   const [detailSortCol,setDetailSortCol] = useState("date");
   const [detailSortDir,setDetailSortDir] = useState("asc");
   const [transDetailsMap,setTransDetailsMap] = useState({}); // {transaction_id: count}
@@ -2004,6 +2054,7 @@ export default function App() {
   };
 
   const openDetailModal = async (t) => {
+    setDetailPendingApply(null);
     setDetailModal(t);
     setDetailLoading(true);
     const {data} = await supabase.from("transaction_details").select("*").eq("transaction_id",t.id).order("date");
@@ -2066,11 +2117,18 @@ export default function App() {
     await loadDetailsMap();
     showToast(`${toInsert.length} itens salvos e lançados no Fluxo de Caixa!`);
     setDetailSaving(false);
-    setDetailModal(null);
+    (setDetailPendingApply(null),setDetailModal(null));
   };
 
   const updateDetailItem = (idx, field, val) => {
-    setDetailItems(prev => prev.map((item,i) => i===idx ? {...item,[field]:val,needs_review:false} : item));
+    const next = applyDetailItemEdit(detailItems, idx, field, val);
+    setDetailItems(next);
+    if (field==="rd" || field==="classificacao" || field==="subcategoria") {
+      const targets = findDetailMatches(next, idx);
+      setDetailPendingApply(targets.length
+        ? {idx, targets, rd:next[idx].rd, classificacao:next[idx].classificacao, subcategoria:next[idx].subcategoria||"", ruleName:next[idx].description}
+        : null);
+    }
   };
 
   const getOcorrencia = (agendaId, mes, ano) =>
@@ -2245,10 +2303,9 @@ export default function App() {
       // After editing, find other transactions with similar description that have different classification
       const _allPages=[]; {let _from=0,_ps=1000; while(true){const {data:_d}=await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin,source_file").order("id",{ascending:true}).range(_from,_from+_ps-1);if(!_d||_d.length===0)break;_allPages.push(..._d);if(_d.length<_ps)break;_from+=_ps;}}
       const all=_allPages;
-      const editedMerchant = merchantKey(form.description);
       const similar = (all||[]).filter(t =>
         t.id !== editingId &&
-        descSimilar(merchantKey(t.description), editedMerchant) &&
+        sameMerchant(t.description, form.description) && // v7.15.0 — regra de sempre + alternativa concatenada
         (t.rd !== form.rd || t.classificacao !== form.classificacao || (t.subcategoria||null) !== (form.subcategoria||null))
       ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null}));
       // Populate keyword for future auto-classification
@@ -2723,7 +2780,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.14.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -2813,7 +2870,8 @@ export default function App() {
             {/* v7.11.15 — largura fixa e compacta em cada select + nowrap com rolagem horizontal:
                 garante uma linha só mesmo com o menu lateral aberto, em vez de depender do
                 auto-tamanho do navegador (que varia e quebra a linha). */}
-            <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"nowrap",alignItems:"center",overflowX:"auto",paddingBottom:2}}>
+            <div style={{position:"relative",marginBottom:16}}>
+            <div style={{display:"flex",gap:6,flexWrap:"nowrap",alignItems:"center",overflowX:"auto",paddingBottom:2}}>
               <div style={{position:"relative",flex:"1 1 140px",minWidth:110}}>
                 <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:14,pointerEvents:"none"}}>🔍</div>
                 <input style={{...s.input,paddingLeft:34,padding:"8px 10px 8px 34px"}} placeholder="Buscar em qualquer campo..."
@@ -2831,28 +2889,30 @@ export default function App() {
               <select style={{...s.sel,width:140,flexShrink:0}} value={filter.sinal} onChange={e=>setFilter(f=>({...f,sinal:e.target.value}))}>
                 <option value="todos">Todos valores</option><option value="saida">Só saídas</option><option value="entrada">Só entradas</option>
               </select>
-              <div style={{position:"relative",flexShrink:0}}>
+              <div style={{flexShrink:0}}>
                 <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,whiteSpace:"nowrap",color:(filter.dateFrom||filter.dateTo)?"#00C9A7":"#6B8299"}}
                   onClick={()=>setShowPeriodo(v=>!v)} title="Filtrar por período">📅 Período</button>
-                {showPeriodo&&(
-                  <div style={{position:"absolute",top:"100%",right:0,marginTop:6,background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:12,zIndex:50,display:"flex",gap:8,alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>
-                    <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
-                    <span style={{color:"#6B8299",fontSize:12}}>até</span>
-                    <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
-                  </div>
-                )}
               </div>
               <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,flexShrink:0}} onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} title="Ordenar por data">
                 {sortDir==="asc"?"↑":"↓"}
               </button>
               <button style={{...s.btn("ghost"),padding:"8px 10px",fontSize:12,flexShrink:0}} title="Limpar filtros"
-                onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setColFilter({description:[],razao_social:[],rd:[],classificacao:[],conta:[]});setShowColFilter(null);setSearchText("");setShowPeriodo(false);}}>🔄</button>
+                onClick={()=>{setFilter({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});setColFilter({description:[],razao_social:[],rd:[],classificacao:[],subcategoria:[],conta:[]});setShowColFilter(null);setSearchText("");setShowPeriodo(false);}}>🔄</button>
+            </div>
+            {/* v7.15.1 — popover fora do container com overflowX:auto, que o recortava */}
+            {showPeriodo&&(
+              <div style={{position:"absolute",top:"100%",right:0,marginTop:2,background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:12,zIndex:200,display:"flex",gap:8,alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>
+                <input style={{...s.sel,width:130}} type="date" value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))} title="De"/>
+                <span style={{color:"#6B8299",fontSize:12}}>até</span>
+                <input style={{...s.sel,width:130}} type="date" value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))} title="Até"/>
+              </div>
+            )}
             </div>
             <div style={{...s.card,padding:0,overflow:"hidden"}}>
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 240px)"}}>
               <table style={s.table}>
                 <thead style={{position:"sticky",top:0,zIndex:10,background:"#162130"}}><tr>
-                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description",fk:"description"},{l:"Razão Social",k:"razao_social",fk:"razao_social"},{l:"R/D",k:"rd",fk:"rd"},{l:"Classificação",k:"classificacao",fk:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Conta",k:"conta",fk:"conta"},{l:"Valor",k:"value"},{l:"",k:""}].map(({l,k,fk})=>(
+                  {[{l:"Data",k:"date"},{l:"Descrição",k:"description",fk:"description"},{l:"Razão Social",k:"razao_social",fk:"razao_social"},{l:"R/D",k:"rd",fk:"rd"},{l:"Classificação",k:"classificacao",fk:"classificacao"},{l:"Subcategoria",k:"subcategoria",fk:"subcategoria"},{l:"Conta",k:"conta",fk:"conta"},{l:"Valor",k:"value"},{l:"",k:""}].map(({l,k,fk})=>(
                     <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",whiteSpace:"nowrap",padding:"10px 10px",position:"relative"}}
                       onClick={()=>{if(!k)return;if(sortCol===k)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(k);setSortDir("asc");}}}>
                       {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
@@ -3586,7 +3646,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.14.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3778,7 +3838,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.14.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4175,7 +4235,7 @@ export default function App() {
 
       {/* Detail Modal — v3.0 */}
       {detailModal&&(
-        <div style={{...s.modal,zIndex:250}} onClick={()=>setDetailModal(null)}>
+        <div style={{...s.modal,zIndex:250}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>
           <div style={{background:"#162130",borderRadius:16,padding:28,width:"100%",maxWidth:900,border:"1px solid #1E2D3D",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             {/* Header */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -4184,7 +4244,7 @@ export default function App() {
                 <div style={{fontSize:12,color:"#6B8299",marginTop:4}}>{detailModal.date} · {detailModal.description}</div>
                 <div style={{fontSize:13,fontWeight:700,color:Number(detailModal.value)>=0?"#2ECC71":"#E8445A",marginTop:2}}>{fmt(Number(detailModal.value))}</div>
               </div>
-              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>setDetailModal(null)}>✕</button>
+              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>✕</button>
             </div>
 
             {/* Upload area (shown when no items) */}
@@ -4256,6 +4316,46 @@ export default function App() {
                     <button style={{...s.btn("ghost"),fontSize:12,padding:"6px 12px"}} onClick={()=>document.getElementById("detailFileInput").click()}>↑ Trocar arquivo</button>
                   </div>
 
+                  {/* v7.15.1 — confirmação da propagação, mesmo padrão do pendingApply de Classificações */}
+                  {detailPendingApply&&detailPendingApply.targets.length>0&&(
+                    <div style={{...s.card,marginBottom:12,border:"1px solid #00C9A7",padding:14}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:16}}>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#00C9A7",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                            {detailPendingApply.targets.length} item(ns) do mesmo estabelecimento
+                          </div>
+                          <div style={{fontSize:11,color:"#6B8299"}}>
+                            Aplicar <strong style={{color:"#E8EDF2"}}>{detailPendingApply.rd} / {detailPendingApply.classificacao}{detailPendingApply.subcategoria?` / ${detailPendingApply.subcategoria}`:""}</strong> em todos?
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:8,flexShrink:0}}>
+                          <button style={{...s.btn(),padding:"7px 16px",fontSize:12}} onClick={()=>{
+                            const {targets,rd,classificacao,subcategoria}=detailPendingApply;
+                            setDetailItems(prev=>applyDetailPropagation(prev,targets,rd,classificacao,subcategoria));
+                            setDetailPendingApply(null);
+                            showToast(`✓ ${targets.length} item(ns) atualizados`);
+                          }}>Aplicar em todos</button>
+                          <button style={{...s.btn("ghost"),padding:"7px 16px",fontSize:12}} onClick={()=>setDetailPendingApply(null)}>Pular</button>
+                        </div>
+                      </div>
+                      <div style={{maxHeight:140,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
+                        {detailPendingApply.targets.map(i=>{
+                          const t=detailItems[i]; if(!t) return null;
+                          return (
+                            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,padding:"5px 8px",borderRadius:4,background:"rgba(0,201,167,0.04)",border:"1px solid rgba(0,201,167,0.1)"}}>
+                              <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.date} — {t.description}</span>
+                              <span style={{marginLeft:12,whiteSpace:"nowrap",flexShrink:0}}>
+                                <span style={{color:"#F5A623"}}>{t.rd||"—"} / {t.classificacao||"—"}</span>
+                                <span style={{color:"#6B8299",margin:"0 6px"}}>→</span>
+                                <span style={{color:"#00C9A7"}}>{detailPendingApply.rd} / {detailPendingApply.classificacao}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Items table */}
                   <div style={{maxHeight:340,overflowY:"auto",marginBottom:14}}>
                     <table style={s.table}>
@@ -4270,12 +4370,14 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody>
-                        {[...detailItems].sort((a,b)=>{
+                        {/* v7.15.0 — _origIdx: o idx pós-ordenação não corresponde à posição em
+                            detailItems; sem isso o select alterava a linha errada. */}
+                        {detailItems.map((item,origIdx)=>({...item,_origIdx:origIdx})).sort((a,b)=>{
                           const av = detailSortCol==="value"?Number(a.value):(a[detailSortCol]||"").toLowerCase();
                           const bv = detailSortCol==="value"?Number(b.value):(b[detailSortCol]||"").toLowerCase();
                           return detailSortDir==="asc"?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
-                        }).map((item,idx)=>(
-                          <tr key={idx} style={item.needs_review?{background:"rgba(245,166,35,0.06)"}:{}}>
+                        }).map((item)=>(
+                          <tr key={item._origIdx} style={item.needs_review?{background:"rgba(245,166,35,0.06)"}:{}}>
                             <td style={{...s.td,whiteSpace:"nowrap"}}>{item.date}</td>
                             <td style={{...s.td,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={item.description}>
                               {item.needs_review&&<span style={{color:"#F5A623",marginRight:4}}>⚠</span>}
@@ -4284,14 +4386,14 @@ export default function App() {
                             <td style={{...s.td,textAlign:"right",fontWeight:600,color:Number(item.value)>=0?"#2ECC71":"#E8445A",whiteSpace:"nowrap"}}>{fmt(Number(item.value))}</td>
                             <td style={s.td}>
                               <select style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
-                                value={item.rd||""} onChange={e=>updateDetailItem(idx,"rd",e.target.value)}>
+                                value={item.rd||""} onChange={e=>updateDetailItem(item._origIdx,"rd",e.target.value)}>
                                 <option value="">—</option>
                                 {RD_TYPES.map(r=><option key={r}>{r}</option>)}
                               </select>
                             </td>
                             <td style={s.td}>
                               <select style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
-                                value={item.classificacao||""} onChange={e=>updateDetailItem(idx,"classificacao",e.target.value)}>
+                                value={item.classificacao||""} onChange={e=>updateDetailItem(item._origIdx,"classificacao",e.target.value)}>
                                 <option value="">—</option>
                                 {allClassificacoes.map(c=><option key={c}>{c}</option>)}
                               </select>
@@ -4299,12 +4401,12 @@ export default function App() {
                             <td style={s.td}>
                               <input style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
                                 placeholder="—" value={item.subcategoria||""}
-                                onChange={e=>updateDetailItem(idx,"subcategoria",e.target.value)}/>
+                                onChange={e=>updateDetailItem(item._origIdx,"subcategoria",e.target.value)}/>
                             </td>
                             <td style={s.td}>
                               <input style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:6,padding:"3px 6px",color:"#E8EDF2",fontSize:11,width:"100%"}}
                                 placeholder="kw1, kw2" value={(item.keywords||[]).join(", ")}
-                                onChange={e=>updateDetailItem(idx,"keywords",e.target.value.split(",").map(k=>k.trim()).filter(Boolean))}/>
+                                onChange={e=>updateDetailItem(item._origIdx,"keywords",e.target.value.split(",").map(k=>k.trim()).filter(Boolean))}/>
                             </td>
                           </tr>
                         ))}
@@ -4314,7 +4416,7 @@ export default function App() {
 
                   {/* Footer buttons */}
                   <div style={{display:"flex",gap:10}}>
-                    <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setDetailModal(null)}>Cancelar</button>
+                    <button style={{...s.btn("ghost"),flex:1}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>Cancelar</button>
                     <button style={{...s.btn(),flex:2}} onClick={saveDetailItems} disabled={detailSaving}>
                       {detailSaving?"Salvando...":"💾 Salvar Detalhamento"}
                     </button>
@@ -4326,7 +4428,7 @@ export default function App() {
             {/* No items yet and not loading — show only upload */}
             {!detailLoading&&detailItems.length===0&&(
               <div style={{display:"flex",gap:10,marginTop:8}}>
-                <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setDetailModal(null)}>Fechar</button>
+                <button style={{...s.btn("ghost"),flex:1}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>Fechar</button>
               </div>
             )}
           </div>
