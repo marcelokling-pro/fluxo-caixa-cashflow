@@ -1759,6 +1759,9 @@ export default function App() {
   const [detailSaving,setDetailSaving]     = useState(false);
   const [detailPendingFile,setDetailPendingFile] = useState(null); // file aguardando confirmação de tipo
   const [detailPendingApply,setDetailPendingApply] = useState(null); // v7.15.1 — confirmação da propagação na fatura
+  // v7.16.0 — null = mostra tudo; array = índices congelados no clique do card "Itens".
+  // Congelar evita que a linha suma da lista no instante em que termina de ser classificada.
+  const [detailOnlyReview,setDetailOnlyReview] = useState(null);
   const [detailSortCol,setDetailSortCol] = useState("date");
   const [detailSortDir,setDetailSortDir] = useState("asc");
   const [transDetailsMap,setTransDetailsMap] = useState({}); // {transaction_id: count}
@@ -2062,6 +2065,7 @@ export default function App() {
 
   const openDetailModal = async (t) => {
     setDetailPendingApply(null);
+    setDetailOnlyReview(null);
     setDetailModal(t);
     setDetailLoading(true);
     const {data} = await supabase.from("transaction_details").select("*").eq("transaction_id",t.id).order("date");
@@ -2124,7 +2128,7 @@ export default function App() {
     await loadDetailsMap();
     showToast(`${toInsert.length} itens salvos e lançados no Fluxo de Caixa!`);
     setDetailSaving(false);
-    (setDetailPendingApply(null),setDetailModal(null));
+    (setDetailPendingApply(null),setDetailOnlyReview(null),setDetailModal(null));
   };
 
   const updateDetailItem = (idx, field, val) => {
@@ -2787,7 +2791,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3653,7 +3657,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3845,7 +3849,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4242,7 +4246,7 @@ export default function App() {
 
       {/* Detail Modal — v3.0 */}
       {detailModal&&(
-        <div style={{...s.modal,zIndex:250}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>
+        <div style={{...s.modal,zIndex:250}} onClick={()=>(setDetailPendingApply(null),setDetailOnlyReview(null),setDetailModal(null))}>
           <div style={{background:"#162130",borderRadius:16,padding:28,width:"100%",maxWidth:900,border:"1px solid #1E2D3D",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             {/* Header */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -4251,7 +4255,7 @@ export default function App() {
                 <div style={{fontSize:12,color:"#6B8299",marginTop:4}}>{detailModal.date} · {detailModal.description}</div>
                 <div style={{fontSize:13,fontWeight:700,color:Number(detailModal.value)>=0?"#2ECC71":"#E8445A",marginTop:2}}>{fmt(Number(detailModal.value))}</div>
               </div>
-              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>✕</button>
+              <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:20}} onClick={()=>(setDetailPendingApply(null),setDetailOnlyReview(null),setDetailModal(null))}>✕</button>
             </div>
 
             {/* Upload area (shown when no items) */}
@@ -4308,8 +4312,15 @@ export default function App() {
                       <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Diferença</div>
                       <div style={{fontSize:15,fontWeight:700,color:match?"#00C9A7":"#F5A623"}}>{match?"✓ Confere":fmt(diff)}</div>
                     </div>
-                    <div style={{flex:1,background:"#0F1923",borderRadius:8,padding:"10px 14px",border:"1px solid #1E2D3D"}}>
-                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase"}}>Itens</div>
+                    {/* v7.16.0 — card clicável: filtra a lista só nos itens que faltam revisar */}
+                    <div onClick={()=>setDetailOnlyReview(v=>v?null:detailItems.map((d,i)=>d.needs_review?i:-1).filter(i=>i>=0))}
+                      title={detailOnlyReview?"Mostrar todos os itens":"Mostrar só os itens a revisar"}
+                      style={{flex:1,background:detailOnlyReview?"rgba(245,166,35,0.12)":"#0F1923",borderRadius:8,padding:"10px 14px",
+                        border:`1px solid ${detailOnlyReview?"#F5A623":"#1E2D3D"}`,cursor:"pointer",userSelect:"none"}}>
+                      <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase",display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
+                        <span>Itens</span>
+                        <span style={{color:detailOnlyReview?"#F5A623":"#6B8299",fontSize:11}}>{detailOnlyReview?"✕":"▾"}</span>
+                      </div>
                       <div style={{fontSize:15,fontWeight:700}}>
                         {detailItems.filter(d=>d.needs_review).length>0
                           ?<span style={{color:"#F5A623"}}>⚠ {detailItems.filter(d=>d.needs_review).length} p/ revisar</span>
@@ -4318,9 +4329,18 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Upload another */}
-                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+                  {/* v7.16.0 — ações do modal na camada de cima, junto com Trocar arquivo */}
+                  <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:8,marginBottom:10}}>
+                    {detailOnlyReview&&(
+                      <span style={{marginRight:"auto",fontSize:12,color:"#F5A623"}}>
+                        Mostrando {detailOnlyReview.length} item(ns) selecionado(s) para revisão
+                      </span>
+                    )}
                     <button style={{...s.btn("ghost"),fontSize:12,padding:"6px 12px"}} onClick={()=>document.getElementById("detailFileInput").click()}>↑ Trocar arquivo</button>
+                    <button style={{...s.btn("ghost"),fontSize:12,padding:"6px 12px"}} onClick={()=>(setDetailPendingApply(null),setDetailOnlyReview(null),setDetailModal(null))}>Cancelar</button>
+                    <button style={{...s.btn(),fontSize:12,padding:"6px 16px"}} onClick={saveDetailItems} disabled={detailSaving}>
+                      {detailSaving?"Salvando...":"💾 Salvar Detalhamento"}
+                    </button>
                   </div>
 
                   {/* v7.15.1 — confirmação da propagação, mesmo padrão do pendingApply de Classificações */}
@@ -4379,7 +4399,9 @@ export default function App() {
                       <tbody>
                         {/* v7.15.0 — _origIdx: o idx pós-ordenação não corresponde à posição em
                             detailItems; sem isso o select alterava a linha errada. */}
-                        {detailItems.map((item,origIdx)=>({...item,_origIdx:origIdx})).sort((a,b)=>{
+                        {detailItems.map((item,origIdx)=>({...item,_origIdx:origIdx}))
+                          .filter(item=>!detailOnlyReview||detailOnlyReview.includes(item._origIdx)) // v7.16.0
+                          .sort((a,b)=>{
                           const av = detailSortCol==="value"?Number(a.value):(a[detailSortCol]||"").toLowerCase();
                           const bv = detailSortCol==="value"?Number(b.value):(b[detailSortCol]||"").toLowerCase();
                           return detailSortDir==="asc"?(av>bv?1:av<bv?-1:0):(av<bv?1:av>bv?-1:0);
@@ -4421,13 +4443,6 @@ export default function App() {
                     </table>
                   </div>
 
-                  {/* Footer buttons */}
-                  <div style={{display:"flex",gap:10}}>
-                    <button style={{...s.btn("ghost"),flex:1}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>Cancelar</button>
-                    <button style={{...s.btn(),flex:2}} onClick={saveDetailItems} disabled={detailSaving}>
-                      {detailSaving?"Salvando...":"💾 Salvar Detalhamento"}
-                    </button>
-                  </div>
                 </>
               );
             })()}
@@ -4435,7 +4450,7 @@ export default function App() {
             {/* No items yet and not loading — show only upload */}
             {!detailLoading&&detailItems.length===0&&(
               <div style={{display:"flex",gap:10,marginTop:8}}>
-                <button style={{...s.btn("ghost"),flex:1}} onClick={()=>(setDetailPendingApply(null),setDetailModal(null))}>Fechar</button>
+                <button style={{...s.btn("ghost"),flex:1}} onClick={()=>(setDetailPendingApply(null),setDetailOnlyReview(null),setDetailModal(null))}>Fechar</button>
               </div>
             )}
           </div>
