@@ -160,7 +160,9 @@ Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), checklist de p
 
 `npm run test` roda testes unitários (Vitest) sobre funções puras críticas em `App.test.jsx` — cobre bugs já documentados neste arquivo (`merchantKey` números finais, `flexMatch` keyword curta, `localClassify` categoria sem rd/classificacao). `.env.test` usa as credenciais DEV só pra `createClient` não quebrar no import — os testes não fazem chamadas reais ao Supabase.
 
-**Nunca rodar o teste sem perguntar antes** — mesmo quando o Claude julgar necessário. Sempre perguntar primeiro. Apresentar o resultado em tabela (função testada, caso, esperado, status).
+**A autorização da mudança já inclui os testes.** Quando o usuário autoriza uma alteração ("pode ir", "sim", "faz", "aplica"), rodar `npm run test` faz parte da entrega — não perguntar de novo. Rodar após implementar e apresentar o resultado junto com a conclusão, em tabela (função testada, caso, esperado, status).
+
+Perguntar antes **só** quando a execução não estiver coberta por uma autorização de mudança — ex: rodar a suíte por conta própria no meio de uma investigação, sem nenhuma alteração autorizada em curso.
 
 Testes E2E (Playwright, contra o banco DEV) ainda não implementados.
 
