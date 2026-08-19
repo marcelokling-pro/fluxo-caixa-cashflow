@@ -2791,7 +2791,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3657,7 +3657,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.3</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3849,7 +3849,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4196,13 +4196,43 @@ export default function App() {
       )}
 
       {confirmDelete&&(()=>{
-        const t = transactions.find(x=>x.id===confirmDelete);
+        // v7.15.3 — confirmDelete guarda o id da transação OU "agenda_<id>"; o modal mostra
+        // o que será excluído em cada caso, para o usuário conferir antes de confirmar.
+        const isAgenda = String(confirmDelete).startsWith("agenda_");
+        const ag = isAgenda ? agenda.find(a=>String(a.id)===String(confirmDelete).replace("agenda_","")) : null;
+        const t = isAgenda ? null : transactions.find(x=>x.id===confirmDelete);
         const isExtrato = t?.origin==="extrato";
         return (
         <div style={s.modal} onClick={()=>setConfirmDelete(null)}>
-          <div style={{...s.mbox,maxWidth:380}} onClick={e=>e.stopPropagation()}>
+          <div style={{...s.mbox,maxWidth:420}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>🗑 Confirmar exclusão</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:isExtrato?12:24}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:12}}>Tem certeza? Esta ação não pode ser desfeita.</div>
+            {(ag||t)&&(
+              <div style={{background:"#0F1923",border:"1px solid #1E2D3D",borderRadius:8,padding:"12px 14px",marginBottom:isExtrato?12:20}}>
+                {ag&&(<>
+                  <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase",marginBottom:4}}>Compromisso da agenda</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#E8EDF2",marginBottom:6}}>{ag.nome}</div>
+                  <div style={{fontSize:12,color:"#6B8299",display:"flex",flexWrap:"wrap",gap:"2px 12px"}}>
+                    {ag.tipo&&<span>Tipo: <span style={{color:"#E8EDF2"}}>{ag.tipo}</span></span>}
+                    {ag.dia_vencimento&&<span>Vence dia <span style={{color:"#E8EDF2"}}>{ag.dia_vencimento}</span></span>}
+                    {ag.classificacao&&<span>{ag.rd} / {ag.classificacao}</span>}
+                  </div>
+                  {(ag.keywords||[]).length>0&&(
+                    <div style={{fontSize:11,color:"#6B8299",marginTop:6}}>Keywords: <span style={{color:"#E8EDF2"}}>{(ag.keywords||[]).join(", ")}</span></div>
+                  )}
+                </>)}
+                {t&&(<>
+                  <div style={{fontSize:10,color:"#6B8299",textTransform:"uppercase",marginBottom:4}}>Lançamento</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#E8EDF2",marginBottom:6,wordBreak:"break-word"}}>{t.description}</div>
+                  <div style={{fontSize:12,color:"#6B8299",display:"flex",flexWrap:"wrap",gap:"2px 12px",alignItems:"center"}}>
+                    <span>{t.date}</span>
+                    <span style={{color:Number(t.value)>=0?"#2ECC71":"#E8445A",fontWeight:700}}>{fmt(Number(t.value))}</span>
+                    {t.classificacao&&<span>{t.rd} / {t.classificacao}</span>}
+                    {t.conta&&<span>{t.conta}</span>}
+                  </div>
+                </>)}
+              </div>
+            )}
             {isExtrato&&(
               <div style={{background:"#2A1A1A",border:"1px solid #E8445A66",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#E8445A",marginBottom:20}}>
                 ⚠ Este lançamento veio do <strong>extrato bancário</strong>. Excluí-lo altera o saldo reconciliado com o banco — só faça isso se tiver certeza de que é um ajuste correto.
