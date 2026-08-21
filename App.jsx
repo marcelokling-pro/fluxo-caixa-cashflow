@@ -1705,6 +1705,7 @@ export default function App() {
   const [pendingImport,setPendingImport] = useState(null);
   const [reviewItems,setReviewItems] = useState(null);
   const [similarPending,setSimilarPending] = useState(null);
+  const [similarSelected,setSimilarSelected] = useState([]); // v7.15.5 — ids marcados no painel de similares
   const [toast,setToast]       = useState(null);
   const [aiLoading,setAiLoading] = useState(false);
   const [saving,setSaving]     = useState(false);
@@ -2312,7 +2313,7 @@ export default function App() {
       const orig = transactions.find(x=>x.id===editingId);
       if(orig) await syncDetailClassification(orig, form.rd, form.classificacao, form.subcategoria||null);
       // After editing, find other transactions with similar description that have different classification
-      const _allPages=[]; {let _from=0,_ps=1000; while(true){const {data:_d}=await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin,source_file").order("id",{ascending:true}).range(_from,_from+_ps-1);if(!_d||_d.length===0)break;_allPages.push(..._d);if(_d.length<_ps)break;_from+=_ps;}}
+      const _allPages=[]; {let _from=0,_ps=1000; while(true){const {data:_d}=await supabase.from("transactions").select("id,date,description,value,rd,classificacao,subcategoria,conta,origin,source_file").order("id",{ascending:true}).range(_from,_from+_ps-1);if(!_d||_d.length===0)break;_allPages.push(..._d);if(_d.length<_ps)break;_from+=_ps;}}
       const all=_allPages;
       const similar = (all||[]).filter(t =>
         t.id !== editingId &&
@@ -2337,7 +2338,7 @@ export default function App() {
       setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
       setEditingId(null); setShowModal(false); setSaving(false);
       if(similar.length>0){
-        setSimilarPending({items:similar,count:1,subcategoria:form.subcategoria||null});
+        setSimilarSelected(similar.map(t=>t.id));setSimilarPending({items:similar,count:1,subcategoria:form.subcategoria||null});
       } else {
         showToast("Lançamento atualizado!");
       }
@@ -2542,7 +2543,7 @@ export default function App() {
       }
     }
     // Find other unclassified transactions similar to the ones just reviewed
-    const {data:similar} = await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin").eq("needs_review",true);
+    const {data:similar} = await supabase.from("transactions").select("id,date,description,value,rd,classificacao,conta,origin").eq("needs_review",true);
     const hits = (similar||[]).filter(t=>!isCCTransaction(t)).map(t=>{
       const td = String(t.description).toUpperCase();
       const match = reviewed.find(r=>{
@@ -2555,7 +2556,7 @@ export default function App() {
     setReviewItems(null);
     setPendingImport(null);
     if (hits.length) {
-      setSimilarPending({items:hits, count:rows.length});
+      setSimilarSelected(hits.map(t=>t.id));setSimilarPending({items:hits, count:rows.length});
     } else {
       showToast(`${rows.length} lançamentos revisados e salvos!`);
       setTab("lancamentos");
@@ -2566,12 +2567,15 @@ export default function App() {
 
   const confirmSimilarPending = async (apply) => {
     if (apply) {
+      // v7.15.5 — só os itens marcados no painel são classificados
+      const selecionados = similarPending.items.filter(t=>similarSelected.includes(t.id));
+      if (selecionados.length===0) { showToast("Nenhum lançamento selecionado.","error"); return; }
       setApplyingSimilar(true);
-      const rd = similarPending.items[0]?.suggestedRd;
-      const cls = similarPending.items[0]?.suggestedClass;
+      const rd = selecionados[0]?.suggestedRd;
+      const cls = selecionados[0]?.suggestedClass;
       // Group by (rd, classificacao, sub) to update each group in a single batch call
       const groups = {};
-      for (const t of similarPending.items) {
+      for (const t of selecionados) {
         const sub = t.suggestedSub||similarPending.subcategoria||null;
         const key = `${t.suggestedRd}|${t.suggestedClass}|${sub||""}`;
         (groups[key] ||= {rd:t.suggestedRd, classificacao:t.suggestedClass, subcategoria:sub, ids:[]}).ids.push(t.id);
@@ -2579,12 +2583,12 @@ export default function App() {
       for (const g of Object.values(groups))
         await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:false,status:"confirmado"}).in("id",g.ids);
       // v7.11.11 — itens de fatura do lote também refletem no transaction_details do pai
-      for (const t of similarPending.items)
+      for (const t of selecionados)
         await syncDetailClassification(t, t.suggestedRd, t.suggestedClass, t.suggestedSub||similarPending.subcategoria||null);
       // Populate keywords so future imports classify automatically
       try {
         if (rd && cls) {
-          const newKws = [...new Set(similarPending.items.map(t=>merchantKey(t.description).toLowerCase()).filter(Boolean))];
+          const newKws = [...new Set(selecionados.map(t=>merchantKey(t.description).toLowerCase()).filter(Boolean))];
           for (const kw of newKws) {
             const existing = customCats.find(c => c.name?.toLowerCase()===kw || (c.keywords||[]).includes(kw));
             const merged = [...new Set([...(existing?.keywords||[]),kw])];
@@ -2600,10 +2604,11 @@ export default function App() {
       } catch(e){ console.error("KW populate:",e); }
       await loadTransactions();
       setApplyingSimilar(false);
-      showToast(`${similarPending.items.length} transações classificadas e keywords atualizadas!`);
+      showToast(`${selecionados.length} transações classificadas e keywords atualizadas!`);
     } else {
       showToast("Lançamento salvo.");
     }
+    setSimilarSelected([]);
     setSimilarPending(null);
   };
 
@@ -2791,7 +2796,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.15.5 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3657,7 +3662,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.15.5</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3849,7 +3854,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.15.5 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4257,17 +4262,33 @@ export default function App() {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
           <div style={{background:"#162130",borderRadius:16,padding:24,width:"100%",maxWidth:700,border:"1px solid #F5A623",maxHeight:"88vh",overflowY:"auto"}}>
             <div style={{fontSize:16,fontWeight:700,color:"#F5A623",marginBottom:4}}>⚡ Transações similares encontradas</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>{similarPending.items.length} lançamento(s) com padrão semelhante ainda marcado(s) para revisão — deseja classificar?</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:10}}>{similarPending.items.length} lançamento(s) com padrão semelhante ainda marcado(s) para revisão — deseja classificar?</div>
+            {/* v7.15.5 — seleção individual: só o que estiver marcado é classificado */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:12}}>
+              <span style={{fontSize:12,color:"#F5A623",fontWeight:600}}>{similarSelected.length} de {similarPending.items.length} selecionado(s)</span>
+              <button style={{...s.btn("ghost"),fontSize:11,padding:"5px 12px"}}
+                onClick={()=>setSimilarSelected(similarSelected.length===similarPending.items.length?[]:similarPending.items.map(t=>t.id))}>
+                {similarSelected.length===similarPending.items.length?"Desmarcar todos":"Marcar todos"}
+              </button>
+            </div>
             <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:320,overflowY:"auto",marginBottom:16}}>
-              {similarPending.items.map(t=>(
-                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,padding:"6px 10px",borderRadius:6,background:"rgba(245,166,35,0.05)",border:"1px solid rgba(245,166,35,0.15)"}}>
-                  <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.date} — {t.description}</span>
+              {similarPending.items.map(t=>{
+                const on = similarSelected.includes(t.id);
+                return (
+                <label key={t.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:11,padding:"6px 10px",borderRadius:6,cursor:"pointer",
+                  background:on?"rgba(245,166,35,0.05)":"transparent",border:`1px solid ${on?"rgba(245,166,35,0.15)":"#1E2D3D"}`,opacity:on?1:0.5}}>
+                  <input type="checkbox" checked={on} style={{cursor:"pointer",flexShrink:0}}
+                    onChange={e=>setSimilarSelected(prev=>e.target.checked?[...prev,t.id]:prev.filter(id=>id!==t.id))}/>
+                  <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.date} — {t.description}</span>
+                  {/* v7.15.4 — valor à vista, para conferir antes de aplicar em lote */}
+                  <span style={{marginLeft:12,flexShrink:0,fontWeight:700,fontSize:11,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</span>
                   <span style={{marginLeft:12,flexShrink:0,color:"#00C9A7",fontWeight:600,fontSize:11}}>{t.suggestedRd} / {t.suggestedClass}</span>
-                </div>
-              ))}
+                </label>
+                );
+              })}
             </div>
             <div style={{display:"flex",gap:10}}>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:applyingSimilar?"default":"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923",opacity:applyingSimilar?0.6:1}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(true)}>{applyingSimilar?"Aplicando...":`✓ Aplicar em todos (${similarPending.items.length})`}</button>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:applyingSimilar?"default":"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923",opacity:(applyingSimilar||similarSelected.length===0)?0.5:1}} disabled={applyingSimilar||similarSelected.length===0} onClick={()=>confirmSimilarPending(true)}>{applyingSimilar?"Aplicando...":`✓ Aplicar nos selecionados (${similarSelected.length})`}</button>
               <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(false)}>Pular</button>
             </div>
           </div>
