@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -116,6 +116,70 @@ describe("applyDetailItemEdit", () => {
       { description:"MINI EXTRA-5-CT", rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESA OPERACIONAL LOJA", subcategoria:"MERCADO", needs_review:false },
     ];
     expect(findDetailMatches(base, 0)).toEqual([]);
+  });
+});
+
+// v7.16.0 — agrupamento das linhas revisadas para sugerir uma regra por padrão
+describe("commonPrefix", () => {
+  it("corta na última palavra inteira", () => {
+    expect(commonPrefix("ENTRADA PIX QRS PALOMA DA SILVA","ENTRADA PIX QRS WU PAO CHEN")).toBe("ENTRADA PIX QRS");
+  });
+  it("não corta quando um é prefixo exato do outro", () => {
+    expect(commonPrefix("PIX ENVIADO ORB COMERCIO","PIX ENVIADO ORB COMERCIO LTDA")).toBe("PIX ENVIADO ORB COMERCIO");
+  });
+  it("devolve vazio quando não há nada em comum", () => {
+    expect(commonPrefix("DA SABESP","TINY ERP")).toBe("");
+  });
+});
+
+describe("groupByPrefix", () => {
+  const linhas = [
+    {description:"ENTRADA PIX QRS PALOMA DA S12", rd:"RECEITA", classificacao:"RECEITA DE VENDAS"},
+    {description:"ENTRADA PIX QRS WU PAO CHEN",   rd:"RECEITA", classificacao:"RECEITA DE VENDAS"},
+    {description:"ENTRADA PIX QRS GREGORY NIC",   rd:"RECEITA", classificacao:"RECEITA DE VENDAS"},
+    {description:"PIX ENVIADO ORB COMERCIO LTDA", rd:"DESPESAS VARIÁVEIS", classificacao:"FORNECEDORES"},
+    {description:"PIX ENVIADO ORB COMERCIO ME",   rd:"DESPESAS VARIÁVEIS", classificacao:"FORNECEDORES"},
+    {description:"DA SABESP 0812",                rd:"DESPESAS FIXAS", classificacao:"DESPESA OPERACIONAL LOJA"},
+  ];
+  it("consolida 6 lançamentos em 3 regras", () => {
+    const g = groupByPrefix(linhas);
+    expect(g.length).toBe(3);
+    expect(g.map(x=>x.nome)).toEqual(["ENTRADA PIX QRS","PIX ENVIADO ORB COMERCIO","DA SABESP"]);
+  });
+  it("cada grupo guarda os lançamentos que o formaram", () => {
+    const g = groupByPrefix(linhas);
+    expect(g[0].itens.length).toBe(3);
+    expect(g[1].itens.length).toBe(2);
+    expect(g[2].itens.length).toBe(1);
+  });
+  it("não junta descrições parecidas com classificações diferentes", () => {
+    const g = groupByPrefix([
+      {description:"ENTRADA PIX QRS PALOMA", rd:"RECEITA", classificacao:"RECEITA DE VENDAS"},
+      {description:"ENTRADA PIX QRS HANNA",  rd:"MOVIMENTAÇÃO", classificacao:"MOVIMENTAÇÃO"},
+    ]);
+    expect(g.length).toBe(2);
+  });
+  it("remover um item recalcula o nome do grupo", () => {
+    const comOutlier = groupByPrefix([
+      {description:"PIX ENVIADO ORB COMERCIO LTDA", rd:"D", classificacao:"F"},
+      {description:"PIX ENVIADO ORB SERVICOS ME",   rd:"D", classificacao:"F"},
+    ]);
+    expect(comOutlier[0].nome).toBe("PIX ENVIADO ORB");
+    const semOutlier = groupByPrefix([
+      {description:"PIX ENVIADO ORB COMERCIO LTDA", rd:"D", classificacao:"F"},
+      {description:"PIX ENVIADO ORB COMERCIO ME",   rd:"D", classificacao:"F"},
+    ]);
+    expect(semOutlier[0].nome).toBe("PIX ENVIADO ORB COMERCIO");
+  });
+  it("ignora linha sem R/D ou Classificação", () => {
+    expect(groupByPrefix([{description:"X Y Z", rd:"", classificacao:""}])).toEqual([]);
+  });
+  it("prefixo curto demais não agrupa", () => {
+    const g = groupByPrefix([
+      {description:"DA CLARO 123", rd:"D", classificacao:"F"},
+      {description:"DA VIVO 456",  rd:"D", classificacao:"F"},
+    ]);
+    expect(g.length).toBe(2);
   });
 });
 
