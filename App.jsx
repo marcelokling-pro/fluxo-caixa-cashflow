@@ -2913,7 +2913,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.17.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.18.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3782,7 +3782,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.17.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.18.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3974,7 +3974,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.17.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.18.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4244,7 +4244,7 @@ export default function App() {
               {transactions.filter(t=>{
                 const p=t.date?.split("/");
                 return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
-              }).filter(t=>!assocSearch.trim()||(t.description||"").toLowerCase().includes(assocSearch.trim().toLowerCase())
+              }).filter(t=>{ if(!assocSearch.trim()) return true; const q=assocSearch.trim().toLowerCase(); return (t.description||"").toLowerCase().includes(q)||(t.razao_social||"").toLowerCase().includes(q)||(t.subcategoria||"").toLowerCase().includes(q); }
               ).sort((a,b)=>{
                 if(!assocSortCol) return 0;
                 const dir=assocSortDir==="asc"?1:-1;
@@ -4258,7 +4258,7 @@ export default function App() {
                   onClick={()=>{if(!usedNome) associateTransaction(associating.agendaId,associating.mes,associating.ano,t.id);}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:600}}>{t.description}</div>
-                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}{usedNome?` · já associado a ${usedNome}`:""}</div>
+                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date}{t.razao_social?` · ${t.razao_social}`:""} · {t.rd}{t.subcategoria?` · ${t.subcategoria}`:""}{usedNome?` · já associado a ${usedNome}`:""}</div>
                   </div>
                   <span style={{fontSize:13,fontWeight:700,color:"#E8445A"}}>{fmt(Number(t.value))}</span>
                 </div>
