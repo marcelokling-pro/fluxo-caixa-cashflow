@@ -172,22 +172,8 @@ const dateToSortable = (d) => {
   return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : d;
 };
 
-export const generateHash = (date, desc, value) =>
+const generateHash = (date, desc, value) =>
   `${date}|${String(desc).trim().toUpperCase()}|${parseFloat(value).toFixed(2)}`;
-
-// v7.20.1 — filtra contra o que já está no banco E contra repetições dentro do próprio
-// arquivo. Antes só comparava com o banco, então linha repetida no mesmo extrato entrava duas vezes.
-export const dedupeRows = (rows, existingHashes) => {
-  const seen = new Set(existingHashes);
-  const out = [];
-  for (const r of rows) {
-    const h = generateHash(r.date, r.description, r.value);
-    if (seen.has(h)) continue;
-    seen.add(h);
-    out.push(r);
-  }
-  return out;
-};
 
 const isCCTransaction = (t) => {
   if ((t.origin||"") === "fatura") return true;
@@ -1915,10 +1901,7 @@ export default function App() {
     const pageSize=1000;
     let from=0;
     while(true){
-      // v7.20.1 — created_at NÃO é único (inserts em lote de 50 compartilham o mesmo now()).
-      // Sem desempate, cada .range() reordena os empatados e linhas somem entre as páginas,
-      // ficando fora do importedHashes. O id como segundo critério torna a paginação determinística.
-      const {data,error}=await supabase.from("transactions").select("*").order("created_at",{ascending:false}).order("id",{ascending:false}).range(from,from+pageSize-1);
+      const {data,error}=await supabase.from("transactions").select("*").order("created_at",{ascending:false}).range(from,from+pageSize-1);
       if(error||!data||data.length===0) break;
       allData.push(...data);
       if(data.length<pageSize) break;
@@ -2081,8 +2064,8 @@ export default function App() {
   const classifyAndSave = async (rows, fileName="", isCreditCard=false) => {
     setAiLoading(true);
     const toSave=[], toReview=[];
-    // v7.20.1 — dedupeRows cobre banco + repetição interna do arquivo
-    for (const row of dedupeRows(rows, importedHashes)) {
+    for (const row of rows) {
+      if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
       const local = localClassify(row.description, customCats);
       if (local) {
         toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, subcategoria:local.sub||null, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
@@ -2100,9 +2083,6 @@ export default function App() {
       const {error}=await supabase.from("transactions").insert(toSave.slice(i,i+50));
       if(error) console.error("Insert error:",error);
     }
-    // v7.20.1 — sem isto o importedHashes fica velho e a importação seguinte na mesma
-    // sessão não enxerga o que acabou de entrar.
-    if(toSave.length) await loadTransactions();
     setAiLoading(false);
     if(toReview.length){
       setReviewItems(toReview);
@@ -2566,7 +2546,7 @@ export default function App() {
 
     if(mode==="extrato"){
       if(!parsed.length){showToast("Nenhum lançamento encontrado.","error");return;}
-      const newRows = dedupeRows(parsed, importedHashes); // v7.20.1
+      const newRows = parsed.filter(r=>!importedHashes.has(generateHash(r.date,r.description,r.value)));
       setPendingImport({fileName:file.name,rows:parsed,newRows,dups:parsed.length-newRows.length,isCreditCard:isCartao||false});
       setTab("importar");
     } else {
@@ -2594,7 +2574,6 @@ export default function App() {
     for(let i=0;i<rows.length;i+=50){
       await supabase.from("transactions").insert(rows.slice(i,i+50));
     }
-    if(rows.length) await loadTransactions(); // v7.20.1 — mantém importedHashes atualizado
     // v7.16.0 — descrição que já casa com regra existente vira keyword dela (não engorda a
     // lista). O que NÃO casa deixa de virar categoria automaticamente: é agrupado por padrão
     // e vai para o painel de regras sugeridas, onde o usuário aceita ou não.
@@ -2934,7 +2913,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.20.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.18.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3475,9 +3454,7 @@ export default function App() {
                   <thead><tr>{["Data","Descrição","Valor","Status"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
                   <tbody>
                     {pendingImport.rows.slice(0,20).map((t,i)=>{
-                      // v7.20.1 — compara por identidade com newRows: assim a 2ª ocorrência de uma
-                      // linha repetida dentro do próprio arquivo também aparece como duplicada.
-                      const dup=!pendingImport.newRows.includes(t);
+                      const dup=importedHashes.has(generateHash(t.date,t.description,t.value));
                       return (<tr key={i} style={dup?{opacity:0.35}:{}}>
                         <td style={s.td}>{t.date}</td>
                         <td style={{...s.td,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
@@ -3805,7 +3782,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.20.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.18.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3997,7 +3974,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.20.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.18.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
