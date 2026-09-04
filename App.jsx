@@ -1352,6 +1352,8 @@ const AnaliseTab = ({transactions, s, fmt}) => {
 const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions, hiddenBaseCls, hideBaseClassification}) => {
   const [search, setSearch] = useState("");
   const [filterRd, setFilterRd] = useState("todos");
+  // v7.24.0 — origem: "manual" = tabela categories (isCustom), "sistema" = BASE_CLASSIFICATIONS
+  const [filterOrigem, setFilterOrigem] = useState("todos");
   const [editingRow, setEditingRow] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newRow, setNewRow] = useState({detalhe:"", rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:"", keywords:""});
@@ -1380,6 +1382,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     return [...custom, ...base].sort((a,b)=>a.detalhe.localeCompare(b.detalhe));
   }, [customCats, hiddenBaseCls]);
 
+  const qtdManuais = useMemo(()=>allRows.filter(r=>r.isCustom).length, [allRows]);
+
   const toggleSort = (col) => {
     if (sortCol===col) setSortDir(d=>d==="asc"?"desc":"asc");
     else { setSortCol(col); setSortDir("asc"); }
@@ -1389,14 +1393,15 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     const base = allRows.filter(r => {
       const ms = !search || r.detalhe.toLowerCase().includes(search.toLowerCase()) || r.classificacao.toLowerCase().includes(search.toLowerCase());
       const mr = filterRd==="todos" || r.rd===filterRd;
-      return ms && mr;
+      const mo = filterOrigem==="todos" || (filterOrigem==="manual" ? r.isCustom : !r.isCustom);
+      return ms && mr && mo;
     });
     return [...base].sort((a,b)=>{
       const av = (a[sortCol]||"").toLowerCase();
       const bv = (b[sortCol]||"").toLowerCase();
       return sortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [allRows, search, filterRd, sortCol, sortDir]);
+  }, [allRows, search, filterRd, filterOrigem, sortCol, sortDir]);
 
   const findAffected = async (keywords) => {
     const kws = (Array.isArray(keywords)?keywords:[keywords]).map(k=>k.trim().toUpperCase()).filter(Boolean);
@@ -1501,7 +1506,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             <span title={"Como atua no fluxo:\n1. Ao importar um extrato, cada linha é comparada com essa lista (nome + keywords).\n2. Se bater, o lançamento já entra com R/D, Classificação e Subcategoria preenchidos.\n3. Se não bater com nada aqui, tenta a IA (Gemini); se também falhar, vai para revisão manual."}
               style={{fontSize:12,width:18,height:18,borderRadius:"50%",border:"1px solid #6B8299",color:"#6B8299",display:"inline-flex",alignItems:"center",justifyContent:"center",cursor:"help",fontWeight:600}}>?</span>
           </div>
-          <div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{filtered.length} de {allRows.length} · {customCats.length} personalizadas</div>
+          <div style={{fontSize:13,color:"#6B8299",marginTop:2}}>{filtered.length} de {allRows.length} · <strong style={{color:"#E8EDF2",fontWeight:600}}>{qtdManuais} manuais</strong> · {allRows.length-qtdManuais} do sistema</div>
         </div>
         <div style={{display:"flex",gap:8}}>
           <button style={{...s.btn("ghost"),padding:"9px 14px",fontSize:12}} title="Upload Excel/CSV com classificações" onClick={()=>document.getElementById("classUploadInput").click()}>⬆ Importar</button>
@@ -1686,10 +1691,15 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
           <option value="todos">Todos R/D</option>
           {RD_TYPES.map(r=><option key={r}>{r}</option>)}
         </select>
+        <select style={s.sel} value={filterOrigem} onChange={e=>setFilterOrigem(e.target.value)} title="Origem da classificação">
+          <option value="todos">Todas as origens</option>
+          <option value="manual">Só manuais</option>
+          <option value="sistema">Só do sistema</option>
+        </select>
         <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>toggleSort(sortCol)} title="Alternar ordem">
           {sortCol==="detalhe"?"Descrição":sortCol==="rd"?"R/D":sortCol==="classificacao"?"Classificação":"Subcategoria"} {sortDir==="asc"?"↑":"↓"}
         </button>
-        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setSearch("");setFilterRd("todos");setSortCol("detalhe");setSortDir("asc");}}>Limpar filtros</button>
+        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setSearch("");setFilterRd("todos");setFilterOrigem("todos");setSortCol("detalhe");setSortDir("asc");}}>Limpar filtros</button>
       </div>
 
       <div style={{...s.card,padding:0,overflow:"hidden"}}>
@@ -1730,6 +1740,11 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                   <>
                     <td style={{...s.td,fontWeight:row.isCustom?600:400}}>
                       {row.detalhe}
+                      <span title={row.isCustom?"Cadastrada manualmente por você":"Classificação fixa que já vem no sistema"}
+                        style={{marginLeft:8,fontSize:9,fontWeight:700,letterSpacing:"0.6px",textTransform:"uppercase",padding:"1px 6px",borderRadius:4,whiteSpace:"nowrap",verticalAlign:1,
+                          background:row.isCustom?"rgba(0,201,167,0.14)":"rgba(107,130,153,0.14)",color:row.isCustom?"#00C9A7":"#6B8299"}}>
+                        {row.isCustom?"manual":"sistema"}
+                      </span>
                     </td>
                     <td style={s.td}><span style={{...s.badge(row.rd),fontSize:10}}>{row.rd}</span></td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.classificacao}</td>
@@ -2940,7 +2955,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.23.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.24.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3809,7 +3824,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.23.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.24.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4001,7 +4016,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.23.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.24.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
