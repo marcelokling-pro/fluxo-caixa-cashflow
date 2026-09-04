@@ -1,5 +1,74 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, generateHash, dedupeRows } from "./App.jsx";
+
+// v7.20.1 — detecção de duplicados na importação do extrato
+describe("generateHash", () => {
+  it("mesma linha gera a mesma chave independente de caixa e espaços", () => {
+    expect(generateHash("15/08/2026"," mini extra-5-ct ",-45.9))
+      .toBe(generateHash("15/08/2026","MINI EXTRA-5-CT",-45.9));
+  });
+  it("normaliza o valor com 2 casas (float sujo não escapa)", () => {
+    expect(generateHash("15/08/2026","X",-45.900000000000006))
+      .toBe(generateHash("15/08/2026","X",-45.9));
+  });
+  it("data, descrição ou valor diferentes geram chaves diferentes", () => {
+    const base = generateHash("15/08/2026","X",-10);
+    expect(generateHash("16/08/2026","X",-10)).not.toBe(base);
+    expect(generateHash("15/08/2026","Y",-10)).not.toBe(base);
+    expect(generateHash("15/08/2026","X",-11)).not.toBe(base);
+    expect(generateHash("15/08/2026","X",10)).not.toBe(base);  // sinal importa
+  });
+});
+
+describe("dedupeRows", () => {
+  const linha = (d,desc,v) => ({date:d, description:desc, value:v});
+
+  it("descarta o que já está no banco", () => {
+    const banco = new Set([generateHash("15/08/2026","MINI EXTRA-5-CT",-45.9)]);
+    const r = dedupeRows([linha("15/08/2026","MINI EXTRA-5-CT",-45.9), linha("16/08/2026","UBER *TRIP",-22)], banco);
+    expect(r.length).toBe(1);
+    expect(r[0].description).toBe("UBER *TRIP");
+  });
+
+  it("descarta repetição dentro do próprio arquivo (bug v7.20.1)", () => {
+    const r = dedupeRows([
+      linha("15/08/2026","MINI EXTRA-5-CT",-45.9),
+      linha("15/08/2026","MINI EXTRA-5-CT",-45.9),
+      linha("15/08/2026","MINI EXTRA-5-CT",-45.9),
+    ], new Set());
+    expect(r.length).toBe(1);
+  });
+
+  it("mesma descrição e valor em datas diferentes são lançamentos distintos", () => {
+    const r = dedupeRows([linha("15/08/2026","UBER *TRIP",-22), linha("16/08/2026","UBER *TRIP",-22)], new Set());
+    expect(r.length).toBe(2);
+  });
+
+  it("mesma descrição e data com valores diferentes são distintos", () => {
+    const r = dedupeRows([linha("15/08/2026","UBER *TRIP",-22), linha("15/08/2026","UBER *TRIP",-31)], new Set());
+    expect(r.length).toBe(2);
+  });
+
+  it("preserva a ordem e devolve as próprias linhas (identidade, usada na prévia)", () => {
+    const a=linha("15/08/2026","A",-1), b=linha("16/08/2026","B",-2), a2=linha("15/08/2026","A",-1);
+    const r = dedupeRows([a,b,a2], new Set());
+    expect(r).toEqual([a,b]);
+    expect(r[0]).toBe(a);
+    expect(r.includes(a2)).toBe(false);   // 2ª ocorrência marcada como duplicada na prévia
+  });
+
+  it("não altera o Set recebido", () => {
+    const banco = new Set();
+    dedupeRows([linha("15/08/2026","A",-1)], banco);
+    expect(banco.size).toBe(0);
+  });
+
+  it("arquivo inteiro já importado devolve lista vazia", () => {
+    const rows = [linha("15/08/2026","A",-1), linha("16/08/2026","B",-2)];
+    const banco = new Set(rows.map(r=>generateHash(r.date,r.description,r.value)));
+    expect(dedupeRows(rows, banco)).toEqual([]);
+  });
+});
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
