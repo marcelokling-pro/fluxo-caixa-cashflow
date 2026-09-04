@@ -727,7 +727,7 @@ const LoginScreen = ({onLogin}) => {
 // Antes vinha um segundo modal ("Regras sugeridas") repetindo a classificacao que o
 // usuario acabou de escolher; com um lancamento so, a segunda tela nao acrescentava
 // nada alem da pergunta "vira regra?", que agora e uma linha dentro do card.
-const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
+const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes, allSubcategorias = []}) => {
   const [rows, setRows] = useState(items.map(t=>({...t})));
   const [regras, setRegras] = useState(items.map(t=>({
     criar: true, nome: merchantKey(String(t.description).toUpperCase().trim()) || String(t.description).toUpperCase().trim(),
@@ -789,6 +789,15 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
                   {allClassificacoes.map(c=><option key={c}>{c}</option>)}
                 </select>
               </div>
+            </div>
+            {/* v7.23.0 — subcategoria, texto livre como nas demais telas */}
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Subcategoria</div>
+              <input type="text" value={t.subcategoria||""} placeholder="Opcional — ex: SALÁRIOS"
+                onChange={e=>update(i,"subcategoria",e.target.value)}
+                list={"subcats-"+i}
+                style={{background:"#162130",border:"1px solid #1E2D3D",borderRadius:8,padding:"7px 10px",color:"#E8EDF2",fontSize:12,width:"100%",boxSizing:"border-box"}}/>
+              <datalist id={"subcats-"+i}>{allSubcategorias.map(sc=><option key={sc} value={sc}/>)}</datalist>
             </div>
             {/* v7.21.0 — a decisão de virar regra permanente, que antes era um modal separado */}
             <div style={{marginTop:12,paddingTop:11,borderTop:"1px solid #1E2D3D"}}>
@@ -1864,6 +1873,8 @@ export default function App() {
   const showToast = (msg,kind="success") => { setToast({msg,kind}); setTimeout(()=>setToast(null),3500); };
 
   const allClassificacoes = useMemo(()=>[...new Set([...CLASSIFICACOES,...customCats.map(c=>c.classificacao||"").filter(Boolean)])].sort(),[customCats]);
+  // v7.23.0 — subcategorias ja usadas, para sugerir na tela de revisao sem travar texto livre
+  const allSubcategorias = useMemo(()=>[...new Set([...customCats.map(c=>c.subcategoria||""),...transactions.map(t=>t.subcategoria||"")].filter(Boolean))].sort(),[customCats,transactions]);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -2929,7 +2940,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.22.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.23.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3798,7 +3809,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.22.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.23.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3990,7 +4001,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.22.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.23.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4390,7 +4401,7 @@ export default function App() {
 
       {/* Review modal */}
       {reviewItems&&(
-        <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes}/>
+        <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes} allSubcategorias={allSubcategorias}/>
       )}
 
       {/* v7.16.1 — confirmação da reclassificação de um lançamento */}
