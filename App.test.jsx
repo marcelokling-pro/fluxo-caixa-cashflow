@@ -198,4 +198,23 @@ describe("localClassify", () => {
     ];
     expect(localClassify("TESTE XYZ COMPRA", customCats)).toBeNull();
   });
+
+  // v7.22.0 — "Remover" numa classificacao base era so cosmetico: sumia da tela e continuava
+  // classificando na importacao. hiddenBase agora faz o Passe 3 pular a regra removida.
+  it("classifica pela base quando nada foi removido", () => {
+    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []).matchedKw).toBeTruthy();
+  });
+  it("nao usa classificacao base que o usuario removeu", () => {
+    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
+    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", [], [antes.matchedKw])).toBeNull();
+  });
+  it("remocao de base nao afeta as outras regras base", () => {
+    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
+    expect(localClassify("PIX QR CODE RECEBIDO CLIENTE", [], [antes.matchedKw])).not.toBeNull();
+  });
+  it("categoria propria do usuario vence mesmo com a base removida", () => {
+    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
+    const cats = [{ id: 9, name: "SISPAG FORNECEDOR", rd: "DESPESAS FIXAS", classificacao: "FORNECEDORES", keywords: [] }];
+    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", cats, [antes.matchedKw]).c).toBe("FORNECEDORES");
+  });
 });

@@ -318,8 +318,12 @@ export const flexMatch = (desc, kw) => {
 };
 
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
-export const localClassify = (desc, customCats = []) => {
+// v7.22.0 — `hiddenBase` sao as classificacoes fixas que o usuario removeu na tela de
+// Classificacoes. Ate a v7.21.0 essa lista so filtrava a exibicao: a regra sumia da tela
+// e continuava classificando toda importacao. Agora o Passe 3 pula o que foi removido.
+export const localClassify = (desc, customCats = [], hiddenBase = []) => {
   const d = String(desc).toUpperCase().trim();
+  const ocultas = new Set((hiddenBase||[]).map(n=>String(n).toUpperCase().trim()));
   const sorted = [...customCats].sort((a,b) => b.name.length - a.name.length);
   // Pass 1: match by category name
   for (const cat of sorted) {
@@ -336,7 +340,9 @@ export const localClassify = (desc, customCats = []) => {
   }
   // Pass 3: base classifications
   for (const cls of SORTED_CLASSIFICATIONS) {
-    if (d.includes(cls.d.toUpperCase().trim())) return { r: cls.r, c: cls.c, sub: null, catId: null, matchedKw: cls.d };
+    const base = cls.d.toUpperCase().trim();
+    if (ocultas.has(base)) continue;
+    if (d.includes(base)) return { r: cls.r, c: cls.c, sub: null, catId: null, matchedKw: cls.d };
   }
   return null;
 };
@@ -717,8 +723,17 @@ const LoginScreen = ({onLogin}) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // REVIEW MODAL — FIX #8: tipo change also updates rd/classificacao suggestion
 // ══════════════════════════════════════════════════════════════════════════════
+// v7.21.0 — tela unica: classificar e decidir a regra permanente no mesmo lugar.
+// Antes vinha um segundo modal ("Regras sugeridas") repetindo a classificacao que o
+// usuario acabou de escolher; com um lancamento so, a segunda tela nao acrescentava
+// nada alem da pergunta "vira regra?", que agora e uma linha dentro do card.
 const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
   const [rows, setRows] = useState(items.map(t=>({...t})));
+  const [regras, setRegras] = useState(items.map(t=>({
+    criar: true, nome: merchantKey(String(t.description).toUpperCase().trim()) || String(t.description).toUpperCase().trim(),
+  })));
+  const setRegra = (idx, field, val) => setRegras(prev=>prev.map((r,i)=>i===idx?{...r,[field]:val}:r));
+  const cobertura = (nome) => rows.filter(r=>flexMatch(r.description, nome)).length;
   const update = (idx, field, val) => setRows(prev => prev.map((r,i) => {
     if (i !== idx) return r;
     const updated = {...r, [field]: val};
@@ -740,12 +755,18 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:16}}>
       <div style={{background:"#162130",borderRadius:16,padding:24,width:"100%",maxWidth:760,border:"1px solid #F5A623",maxHeight:"92vh",overflowY:"auto"}}>
         <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>🤖 Revisão de Classificações</div>
-        <div style={{fontSize:13,color:"#6B8299",marginBottom:4}}>{rows.length} lançamento(s) não reconhecidos — ajuste se necessário e confirme.</div>
+        <div style={{fontSize:13,color:"#6B8299",marginBottom:4}}>{rows.length} lançamento(s) não reconhecidos — ajuste, decida o que vira regra e confirme.</div>
         <div style={{fontSize:11,color:"#F5A623",marginBottom:16}}>⚠ Ao mudar o Tipo (Entrada/Saída), R/D é ajustado automaticamente.</div>
         {rows.map((t,i)=>(
           <div key={i} style={{background:"#0F1923",borderRadius:10,padding:14,marginBottom:10,border:"1px solid #1E2D3D"}}>
-            <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{t.description}</div>
-            <div style={{fontSize:11,color:"#6B8299",marginBottom:10}}>{t.date} · {fmt(Math.abs(Number(t.value)))}</div>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:3}}>{t.description}</div>
+            <div style={{fontSize:11,color:"#6B8299",marginBottom:3}}>
+              {t.date} · <span style={{color:Number(t.value)>=0?"#00C9A7":"#E8445A",fontWeight:600}}>{fmt(Number(t.value))}</span>
+              {t.razao_social?<> · {t.razao_social}</>:null}
+            </div>
+            <div style={{fontSize:10.5,color:"#6B8299",marginBottom:10,opacity:0.8}}>
+              {t.conta?<>conta {t.conta} · </>:null}origem {t.origin||"extrato"}{t.source_file?<> · {t.source_file}</>:null}
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:11,color:"#6B8299",marginBottom:4}}>Tipo</div>
@@ -769,11 +790,28 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes}) => {
                 </select>
               </div>
             </div>
+            {/* v7.21.0 — a decisão de virar regra permanente, que antes era um modal separado */}
+            <div style={{marginTop:12,paddingTop:11,borderTop:"1px solid #1E2D3D"}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:regras[i]?.criar?8:0}}>
+                <input type="checkbox" checked={!!regras[i]?.criar} style={{cursor:"pointer",flexShrink:0}}
+                  onChange={e=>setRegra(i,"criar",e.target.checked)}/>
+                <span style={{fontSize:11.5,color:regras[i]?.criar?"#00C9A7":"#6B8299",fontWeight:600}}>Criar regra permanente nas Classificações</span>
+              </label>
+              {regras[i]?.criar&&(
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",paddingLeft:24}}>
+                  <input type="text" value={regras[i].nome}
+                    onChange={e=>setRegra(i,"nome",e.target.value)}
+                    style={{background:"#162130",border:"1px solid #00C9A7",borderRadius:7,padding:"6px 10px",color:"#E8EDF2",
+                      fontFamily:"monospace",fontSize:11.5,fontWeight:600,flex:"1 1 220px",maxWidth:320}}/>
+                  <span style={{fontSize:10.5,color:"#F5A623"}}>cobre {cobertura(regras[i].nome)} de {rows.length} desta importação</span>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         <div style={{display:"flex",gap:10,marginTop:16}}>
           <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={onCancel}>Cancelar</button>
-          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>onConfirm(rows)}>✓ Confirmar e Salvar ({rows.length})</button>
+          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>onConfirm(rows,regras)}>✓ Confirmar e Salvar ({rows.length})</button>
         </div>
       </div>
     </div>
@@ -1397,7 +1435,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       const {data:freshCats} = await supabase.from("categories").select("*");
       const matched = await findAffected(removedKws);
       reeval = matched.map(t=>{
-        const local = localClassify(t.description, freshCats||[]);
+        const local = localClassify(t.description, freshCats||[], hiddenBaseCls);
         const sugRd = local?.r||null, sugClass = local?.c||null;
         return (sugRd!==t.rd||sugClass!==t.classificacao) ? {...t, suggestedRd:sugRd, suggestedClass:sugClass, suggestedSub:local?.sub||null} : null;
       }).filter(Boolean);
@@ -1490,7 +1528,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             const {data:freshCats} = await supabase.from("categories").select("*");
             if(!trans) return;
             const diffs = trans.filter(t=>!isCCTransaction(t)).map(t=>{
-              const local = localClassify(t.description, freshCats||[]);
+              const local = localClassify(t.description, freshCats||[], hiddenBaseCls);
               if(!local) return null;
               return (local.r!==t.rd||local.c!==t.classificacao||(local.sub||null)!==(t.subcategoria||null))
                 ? {...t, suggestedRd:local.r, suggestedClass:local.c, suggestedSub:local.sub||null} : null;
@@ -1722,6 +1760,13 @@ export default function App() {
   const [customCats,setCustomCats] = useState([]);
   const [saldoInicial,setSaldoInicial] = useState(0);
   const [hiddenBaseCls,setHiddenBaseCls] = useState([]);
+  // v7.22.1 — o contador mostrava BASE_CLASSIFICATIONS.length fixo: nao descontava as base
+  // ocultas nem somava as categorias do usuario, que sao consultadas primeiro na importacao.
+  const totalRegrasLocais = useMemo(() => {
+    const ocultas = new Set((hiddenBaseCls||[]).map(n=>String(n).toUpperCase().trim()));
+    const base = BASE_CLASSIFICATIONS.filter(c=>!ocultas.has(c.d.toUpperCase().trim())).length;
+    return base + (customCats||[]).filter(c=>c.rd&&c.classificacao).length;
+  }, [hiddenBaseCls, customCats]);
   const [alertCronExpr,setAlertCronExpr] = useState("");
   const [alertsPaused,setAlertsPaused] = useState(false); // v7.11.18 — pausa central dos alertas
   const [filter,setFilter]     = useState({rd:"todos",classificacao:"todas",status:"todos",sinal:"todos",dateFrom:"",dateTo:""});
@@ -1745,11 +1790,6 @@ export default function App() {
   const [similarPending,setSimilarPending] = useState(null);
   const [similarSelected,setSimilarSelected] = useState([]); // v7.15.5 — ids marcados no painel de similares
   // v7.16.0 — painel de regras sugeridas para as Classificações
-  const [regrasSugeridas,setRegrasSugeridas] = useState(null);
-  const [regrasMarcadas,setRegrasMarcadas]   = useState([]); // índices dos grupos aceitos
-  const [regrasNomes,setRegrasNomes]         = useState([]); // nome editável por grupo
-  const [regrasExcluidos,setRegrasExcluidos] = useState([]); // por grupo, índices de itens fora
-  const [salvandoRegras,setSalvandoRegras]   = useState(false);
   const [confirmReclass,setConfirmReclass]   = useState(null); // v7.16.1 — reclassificar 1 lançamento
   const [aplicandoReclass,setAplicandoReclass] = useState(false);
   const [toast,setToast]       = useState(null);
@@ -2066,7 +2106,7 @@ export default function App() {
     const toSave=[], toReview=[];
     for (const row of rows) {
       if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
-      const local = localClassify(row.description, customCats);
+      const local = localClassify(row.description, customCats, hiddenBaseCls);
       if (local) {
         toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, subcategoria:local.sub||null, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
       } else {
@@ -2555,7 +2595,7 @@ export default function App() {
       setDetailFileName(file.name);
       setDetailLoading(true);
       const items = parsed.map(row=>{
-        const local = localClassify(row.description, customCats);
+        const local = localClassify(row.description, customCats, hiddenBaseCls);
         return {transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:local?.r||"",classificacao:local?.c||"",subcategoria:local?.sub||null,ai_classified:false,needs_review:!local};
       });
       setDetailItems(items);
@@ -2569,16 +2609,17 @@ export default function App() {
     openColumnMapper(file, "extrato");
   },[importedHashes]);
 
-  const confirmReview = async (reviewed) => {
+  const confirmReview = async (reviewed, regras=[]) => {
     const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado"}));
     for(let i=0;i<rows.length;i+=50){
       await supabase.from("transactions").insert(rows.slice(i,i+50));
     }
     // v7.16.0 — descrição que já casa com regra existente vira keyword dela (não engorda a
-    // lista). O que NÃO casa deixa de virar categoria automaticamente: é agrupado por padrão
-    // e vai para o painel de regras sugeridas, onde o usuário aceita ou não.
-    const semRegra = [];
-    for (const r of reviewed) {
+    // lista). v7.21.0 — o que NÃO casa vira regra aqui mesmo, conforme a caixa marcada no
+    // ReviewModal; não existe mais um segundo modal repetindo a classificação já escolhida.
+    let regrasCriadas = 0;
+    for (let i=0;i<reviewed.length;i++) {
+      const r = reviewed[i];
       if (!r.rd || !r.classificacao) continue;
       const desc = String(r.description).toUpperCase().trim();
       const match = customCats.find(c => c.rd===r.rd && c.classificacao===r.classificacao &&
@@ -2588,11 +2629,18 @@ export default function App() {
         const existing = (match.keywords||[]).map(k=>k.toLowerCase());
         if (!existing.includes(kwEntry) && match.name.toLowerCase()!==kwEntry)
           await supabase.from("categories").update({keywords:[...(match.keywords||[]),kwEntry]}).eq("id",match.id);
-      } else {
-        semRegra.push(r);
+        continue;
       }
+      const regra = regras[i];
+      if (!regra?.criar) continue;
+      const nome = String(regra.nome||"").trim().toUpperCase();
+      if (!nome) continue;
+      const {error} = await supabase.from("categories").upsert({
+        name: nome, rd: r.rd, classificacao: r.classificacao, subcategoria: r.subcategoria||null,
+        keywords: [...new Set([nome.toLowerCase(), kwEntry])],
+      },{onConflict:"name"});
+      if (!error) regrasCriadas++;
     }
-    const gruposRegra = groupByPrefix(semRegra);
     // Find other unclassified transactions similar to the ones just reviewed
     const {data:similar} = await supabase.from("transactions").select("id,date,description,value,rd,classificacao,conta,origin").eq("needs_review",true);
     const hits = (similar||[]).filter(t=>!isCCTransaction(t)).map(t=>{
@@ -2606,51 +2654,19 @@ export default function App() {
     await loadCustomCats();
     setReviewItems(null);
     setPendingImport(null);
-    // v7.16.0 — o painel de regras sugeridas vem antes do de similares; o `next` encadeia.
-    const proximoSimilares = hits.length ? {items:hits, count:rows.length} : null;
-    if (gruposRegra.length) {
-      setRegrasSugeridas({grupos:gruposRegra, total:rows.length, next:proximoSimilares});
-      setRegrasMarcadas(gruposRegra.map((_,i)=>i));
-      setRegrasNomes(gruposRegra.map(g=>g.nome));
-      setRegrasExcluidos(gruposRegra.map(()=>[]));
-    } else if (proximoSimilares) {
-      setSimilarSelected(hits.map(t=>t.id));setSimilarPending(proximoSimilares);
+    // v7.21.0 — sem tela intermediária: do review vai direto para o painel de similares.
+    const resumo = `${rows.length} lançamentos revisados e salvos!` +
+      (regrasCriadas ? ` ${regrasCriadas} regra(s) criada(s) nas Classificações.` : "");
+    if (hits.length) {
+      setSimilarSelected(hits.map(t=>t.id));
+      setSimilarPending({items:hits, count:rows.length});
+      if (regrasCriadas) showToast(`${regrasCriadas} regra(s) criada(s) nas Classificações.`);
     } else {
-      showToast(`${rows.length} lançamentos revisados e salvos!`);
+      showToast(resumo);
       setTab("lancamentos");
     }
   };
 
-  // v7.16.0 — aceite (ou recusa) das regras sugeridas; só depois abre o painel de similares
-  const confirmRegrasSugeridas = async (criar) => {
-    const prox = regrasSugeridas?.next || null;
-    const total = regrasSugeridas?.total || 0;
-    if (criar) {
-      setSalvandoRegras(true);
-      let n = 0;
-      for (let i=0;i<regrasSugeridas.grupos.length;i++) {
-        if (!regrasMarcadas.includes(i)) continue;
-        const nome = (regrasNomes[i]||"").trim().toUpperCase();
-        if (!nome) continue;
-        const g = regrasSugeridas.grupos[i];
-        const kws = g.itens
-          .filter((_,j)=>!(regrasExcluidos[i]||[]).includes(j))
-          .map(r=>String(r.description).toLowerCase().trim());
-        const {error} = await supabase.from("categories").upsert({
-          name: nome, rd: g.rd, classificacao: g.classificacao,
-          subcategoria: g.subcategoria||null,
-          keywords: [...new Set([nome.toLowerCase(), ...kws])],
-        },{onConflict:"name"});
-        if (!error) n++;
-      }
-      await loadCustomCats();
-      setSalvandoRegras(false);
-      showToast(n>0?`${n} regra(s) criada(s) nas Classificações.`:"Nenhuma regra criada.");
-    }
-    setRegrasSugeridas(null); setRegrasMarcadas([]); setRegrasNomes([]); setRegrasExcluidos([]);
-    if (prox) { setSimilarSelected(prox.items.map(t=>t.id)); setSimilarPending(prox); }
-    else { showToast(`${total} lançamentos revisados e salvos!`); setTab("lancamentos"); }
-  };
 
   const cancelReview = () => { setReviewItems(null); setPendingImport(null); };
 
@@ -2713,7 +2729,7 @@ export default function App() {
   // v7.16.1 — reavalia UM lançamento contra as regras atuais. Mesma rotina do Reclassificar
   // geral (localClassify), mas com alcance de uma linha — evita retroagir a base inteira.
   const reclassificarItem = (t) => {
-    const local = localClassify(t.description, customCats);
+    const local = localClassify(t.description, customCats, hiddenBaseCls);
     if (!local) { showToast(`Nenhuma regra cadastrada casa com "${t.description}".`,"error"); return; }
     const igual = local.r===t.rd && local.c===t.classificacao && (local.sub||null)===(t.subcategoria||null);
     if (igual) { showToast("Já está conforme as regras atuais."); return; }
@@ -2913,7 +2929,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.17.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.22.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3429,7 +3445,7 @@ export default function App() {
               <div style={{...s.card,textAlign:"center",padding:48,marginBottom:20}}>
                 <div style={{fontSize:32,marginBottom:10}}>🤖</div>
                 <div style={{fontSize:16,fontWeight:600,color:"#00C9A7"}}>Classificando com IA...</div>
-                <div style={{fontSize:13,color:"#6B8299",marginTop:8}}>Consultando {BASE_CLASSIFICATIONS.length} classificações locais + Gemini para desconhecidos.</div>
+                <div style={{fontSize:13,color:"#6B8299",marginTop:8}}>Consultando {totalRegrasLocais} regras locais + Gemini para desconhecidos.</div>
               </div>
             )}
             {pendingImport&&!aiLoading?(
@@ -3476,7 +3492,7 @@ export default function App() {
                   <div style={{fontSize:40,marginBottom:12}}>📂</div>
                   <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Arraste o extrato ou clique para selecionar</div>
                   <div style={{fontSize:13,color:"#6B8299"}}>CSV, TXT ou XLSX — mapeamento de colunas automático</div>
-                  <div style={{fontSize:12,color:"#00C9A7",marginTop:8}}>🤖 {BASE_CLASSIFICATIONS.length} classificações locais + Gemini</div>
+                  <div style={{fontSize:12,color:"#00C9A7",marginTop:8}}>🤖 {totalRegrasLocais} regras locais + Gemini</div>
                   <div style={{fontSize:11,color:"#6B8299",marginTop:4}}>Duplicados ignorados automaticamente</div>
                 </div>
                 <div style={{...s.card,marginTop:20}}>
@@ -3782,7 +3798,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.17.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.22.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -3974,7 +3990,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.17.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.22.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4406,60 +4422,6 @@ export default function App() {
         </div>
       )}
 
-      {/* v7.16.0 — regras sugeridas para as Classificações (antes do painel de similares) */}
-      {regrasSugeridas&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:310,padding:16}}>
-          <div style={{background:"#162130",borderRadius:16,padding:24,width:"100%",maxWidth:720,border:"1px solid #00C9A7",maxHeight:"88vh",display:"flex",flexDirection:"column"}}>
-            <div style={{fontSize:16,fontWeight:700,color:"#00C9A7",marginBottom:4}}>📋 Regras sugeridas para as Classificações</div>
-            <div style={{fontSize:12,color:"#6B8299",marginBottom:16}}>
-              Agrupei os lançamentos revisados por padrão de descrição. Confirme o que deve virar regra permanente — o nome é editável e você pode tirar um lançamento do grupo.
-            </div>
-            <div style={{flex:1,minHeight:0,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-              {regrasSugeridas.grupos.map((g,i)=>{
-                const on = regrasMarcadas.includes(i);
-                const fora = regrasExcluidos[i]||[];
-                return (
-                  <div key={i} style={{background:"#0F1923",borderRadius:10,padding:"13px 14px",border:`1px solid ${on?"rgba(0,201,167,0.45)":"#1E2D3D"}`}}>
-                    <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                      <input type="checkbox" checked={on} style={{cursor:"pointer",flexShrink:0,marginTop:8}}
-                        onChange={e=>setRegrasMarcadas(prev=>e.target.checked?[...prev,i]:prev.filter(x=>x!==i))}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <input type="text" value={regrasNomes[i]||""} disabled={!on}
-                          onChange={e=>setRegrasNomes(prev=>prev.map((v,j)=>j===i?e.target.value:v))}
-                          style={{background:"#162130",border:`1px solid ${on?"#00C9A7":"#1E2D3D"}`,borderRadius:7,padding:"7px 10px",
-                            color:"#E8EDF2",fontFamily:"monospace",fontSize:12,fontWeight:600,width:"100%",maxWidth:340,opacity:on?1:0.5}}/>
-                        <div style={{fontSize:11,color:"#6B8299",marginTop:7}}>→ <span style={{color:"#00C9A7",fontWeight:600}}>{g.rd} / {g.classificacao}{g.subcategoria?` / ${g.subcategoria}`:""}</span></div>
-                        <div style={{fontSize:11,color:"#F5A623",marginTop:6}}>cobre {g.itens.length-fora.length} de {g.itens.length} lançamento(s) desta importação</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:3,marginTop:7}}>
-                          {g.itens.map((r,j)=>{
-                            const dentro = !fora.includes(j);
-                            return (
-                              <label key={j} style={{display:"flex",alignItems:"center",gap:7,cursor:on?"pointer":"default",opacity:on?(dentro?1:0.4):0.5}}>
-                                <input type="checkbox" checked={dentro} disabled={!on} style={{cursor:on?"pointer":"default",flexShrink:0,width:12,height:12}}
-                                  onChange={e=>setRegrasExcluidos(prev=>prev.map((arr,k)=>k!==i?arr:(e.target.checked?arr.filter(x=>x!==j):[...arr,j])))}/>
-                                <span style={{fontFamily:"monospace",fontSize:10.5,color:dentro?"#E8EDF2":"#6B8299",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:dentro?"none":"line-through"}}>{r.description}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}}
-                disabled={salvandoRegras} onClick={()=>confirmRegrasSugeridas(false)}>Não criar nenhuma</button>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",fontWeight:700,background:"#00C9A7",color:"#0F1923",
-                cursor:(salvandoRegras||regrasMarcadas.length===0)?"default":"pointer",opacity:(salvandoRegras||regrasMarcadas.length===0)?0.45:1}}
-                disabled={salvandoRegras||regrasMarcadas.length===0} onClick={()=>confirmRegrasSugeridas(true)}>
-                {salvandoRegras?"Criando...":`✓ Criar regras (${regrasMarcadas.length})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Similar pending panel */}
       {similarPending&&(
