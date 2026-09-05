@@ -819,7 +819,7 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes, allSubcateg
           </div>
         ))}
         <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={onCancel}>Cancelar</button>
+          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={onCancel}>Importar sem classificar</button>
           <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>onConfirm(rows,regras)}>✓ Confirmar e Salvar ({rows.length})</button>
         </div>
       </div>
@@ -2694,7 +2694,23 @@ export default function App() {
   };
 
 
-  const cancelReview = () => { setReviewItems(null); setPendingImport(null); };
+  // v7.24.1 — cancelar a revisão não descarta mais os lançamentos: eles entram sem
+  // classificação (needs_review) para o saldo continuar batendo com o extrato.
+  const cancelReview = async () => {
+    const items = reviewItems || [];
+    if (items.length) {
+      const rows = items.map(r=>({...r, rd:"", classificacao:"", subcategoria:null,
+        type:Number(r.value)>=0?"entrada":"saída", needs_review:true, status:"pendente"}));
+      for(let i=0;i<rows.length;i+=50){
+        const {error} = await supabase.from("transactions").insert(rows.slice(i,i+50));
+        if(error) console.error("Insert error:",error);
+      }
+      await loadTransactions();
+      showToast(`${rows.length} lançamento(s) importado(s) sem classificação — revisar em Lançamentos.`);
+    }
+    setReviewItems(null);
+    setPendingImport(null);
+  };
 
   const confirmSimilarPending = async (apply) => {
     if (apply) {
@@ -2955,7 +2971,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.24.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.24.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3824,7 +3840,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.24.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.24.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4016,7 +4032,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.24.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.24.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
