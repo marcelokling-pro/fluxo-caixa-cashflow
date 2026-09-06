@@ -317,6 +317,17 @@ export const flexMatch = (desc, kw) => {
   return false;
 };
 
+// v7.25.0 — realca no texto o trecho que casou com uma keyword do compromisso (modal Associar)
+export const hlKw = (txt, kws=[]) => {
+  const str = String(txt||"");
+  const kw = (kws||[]).find(k=>k&&flexMatch(str,k));
+  if(!kw) return str;
+  const i = str.toUpperCase().indexOf(String(kw).toUpperCase());
+  if(i<0) return str;
+  const n = String(kw).length;
+  return (<>{str.slice(0,i)}<span style={{background:"rgba(0,201,167,0.16)",color:"#00C9A7",borderRadius:3,padding:"0 3px",fontWeight:600}}>{str.slice(i,i+n)}</span>{str.slice(i+n)}</>);
+};
+
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
 // v7.22.0 — `hiddenBase` sao as classificacoes fixas que o usuario removeu na tela de
 // Classificacoes. Ate a v7.21.0 essa lista so filtrava a exibicao: a regra sumia da tela
@@ -668,6 +679,9 @@ const mkS = (open) => ({
   badge:(k)=>({display:"inline-block",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,
           background:k==="RECEITA"?"rgba(46,204,113,0.15)":k==="DESPESAS FIXAS"?"rgba(232,68,90,0.2)":k==="DESPESAS VARIÁVEIS"?"rgba(232,68,90,0.12)":k==="MOVIMENTAÇÃO"?"rgba(107,130,153,0.2)":k==="INVESTIMENTOS"?"rgba(0,201,167,0.15)":"rgba(245,166,35,0.15)",
           color:k==="RECEITA"?"#2ECC71":k==="DESPESAS FIXAS"?"#E8445A":k==="DESPESAS VARIÁVEIS"?"#FF7A7A":k==="MOVIMENTAÇÃO"?"#6B8299":k==="INVESTIMENTOS"?"#00C9A7":"#F5A623"}),
+  // v7.25.0 — selo compacto do modal Associar Lancamento (keyword, vencimento, subcategoria)
+  chipAssoc:(c)=>({fontSize:10,padding:"1px 6px",borderRadius:4,border:"1px solid "+c+"59",
+          color:c,background:c+"14",fontFamily:"monospace",whiteSpace:"nowrap"}),
   table:{width:"100%",borderCollapse:"collapse"},
   th:   {textAlign:"left",padding:"8px 10px",fontSize:11,color:"#6B8299",textTransform:"uppercase",letterSpacing:"0.5px",borderBottom:"1px solid #1E2D3D",whiteSpace:"nowrap"},
   td:   {padding:"8px 10px",fontSize:12,borderBottom:"1px solid rgba(30,45,61,0.5)",verticalAlign:"middle"},
@@ -2023,6 +2037,11 @@ export default function App() {
 
   const forecast = useMemo(()=>generateForecast(transactions),[transactions]);
 
+  // v7.25.0 — compromisso da associacao: keywords e dia de vencimento alimentam o modal
+  const assocAgenda = associating ? agenda.find(a=>a.id===associating.agendaId) : null;
+  const assocKws = assocAgenda?.keywords || [];
+  const assocDiaVenc = assocAgenda?.dia_vencimento || null;
+
   const filtered = useMemo(()=>{
     let list=[...transactions]; // v7.0.6 — itens de cartao aparecem na lista, com badge identificando
     // drillDown overrides filter when set
@@ -2971,7 +2990,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.24.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.25.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3840,7 +3859,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.24.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.25.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4032,7 +4051,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.24.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.25.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4269,7 +4288,10 @@ export default function App() {
         <div style={s.modal} onClick={()=>setAssociating(null)}>
           <div style={{...s.mbox,maxWidth:640}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:4}}>Associar Lançamento</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Selecione o lançamento que quitou: <strong style={{color:"#E8EDF2"}}>{associating.nome}</strong> em {MONTHS[associating.mes-1]}/{associating.ano}</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:16}}>Selecione o lançamento que quitou: <strong style={{color:"#E8EDF2"}}>{associating.nome}</strong> em {MONTHS[associating.mes-1]}/{associating.ano}
+              {assocDiaVenc?<span style={s.chipAssoc("#00C9A7")}>vence dia {assocDiaVenc}</span>:null}
+              {assocKws.length?<span style={s.chipAssoc("#00C9A7")}>keyword {assocKws.join(", ")}</span>:null}
+            </div>
             <div style={{display:"flex",gap:10,marginBottom:14}}>
               <select style={s.sel} value={assocFiltroMes} onChange={e=>setAssocFiltroMes(Number(e.target.value))}>
                 {MONTHS.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
@@ -4285,7 +4307,7 @@ export default function App() {
             </div>
             <div style={{position:"relative",marginBottom:12}}>
               <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#6B8299",fontSize:14,pointerEvents:"none"}}>🔍</div>
-              <input style={{...s.input,padding:"7px 10px 7px 32px",fontSize:12}} placeholder="Buscar por nome..."
+              <input style={{...s.input,padding:"7px 10px 7px 32px",fontSize:12}} placeholder="Buscar por descrição, razão social ou subcategoria..."
                 value={assocSearch} onChange={e=>setAssocSearch(e.target.value)}/>
             </div>
             <div style={{display:"flex",justifyContent:"space-between",padding:"0 0 6px",borderBottom:"1px solid #1E2D3D",fontSize:11,color:"#6B8299"}}>
@@ -4302,8 +4324,11 @@ export default function App() {
               {transactions.filter(t=>{
                 const p=t.date?.split("/");
                 return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
-              }).filter(t=>!assocSearch.trim()||(t.description||"").toLowerCase().includes(assocSearch.trim().toLowerCase())
-              ).sort((a,b)=>{
+              }).filter(t=>{
+                if(!assocSearch.trim()) return true;
+                const q=assocSearch.trim().toLowerCase();
+                return (t.description||"").toLowerCase().includes(q)||(t.razao_social||"").toLowerCase().includes(q)||(t.subcategoria||"").toLowerCase().includes(q);
+              }).sort((a,b)=>{
                 if(!assocSortCol) return 0;
                 const dir=assocSortDir==="asc"?1:-1;
                 if(assocSortCol==="nome") return (a.description||"").localeCompare(b.description||"")*dir;
@@ -4311,12 +4336,28 @@ export default function App() {
               }).map(t=>{
                 const usedOc=agendaOcorrencias.find(o=>o.transaction_id===t.id);
                 const usedNome=usedOc?agenda.find(a=>a.id===usedOc.agenda_id)?.nome:null;
+                // v7.25.0 — identificacao: keyword do compromisso e distancia do vencimento
+                const kwHit=assocKws.find(k=>k&&(flexMatch(t.description||"",k)||flexMatch(t.razao_social||"",k)))||null;
+                const diaLanc=parseInt(t.date?.split("/")?.[0]);
+                const dVenc=(assocDiaVenc&&diaLanc)?diaLanc-assocDiaVenc:null;
+                const txtVenc=dVenc===null?null:dVenc===0?"no vencimento":dVenc<0?`${-dVenc} dia${-dVenc>1?"s":""} antes do vencimento`:`${dVenc} dia${dVenc>1?"s":""} depois do vencimento`;
                 return (
                 <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:usedNome?"not-allowed":"pointer",opacity:usedNome?0.4:1}}
                   onClick={()=>{if(!usedNome) associateTransaction(associating.agendaId,associating.mes,associating.ano,t.id);}}>
                   <div>
-                    <div style={{fontSize:13,fontWeight:600}}>{t.description}</div>
-                    <div style={{fontSize:11,color:"#6B8299"}}>{t.date} · {t.rd}{usedNome?` · já associado a ${usedNome}`:""}</div>
+                    <div style={{fontSize:13,fontWeight:600}}>{hlKw(t.description,assocKws)}</div>
+                    <div style={{fontSize:11,color:"#6B8299",display:"flex",flexWrap:"wrap",gap:"3px 6px",alignItems:"center",marginTop:3}}>
+                      {t.razao_social?<span style={{color:"#A9BBCC",fontWeight:500}}>{hlKw(t.razao_social,assocKws)}</span>:null}
+                      {t.conta?<>{t.razao_social?<span style={{color:"#2D3F50"}}>·</span>:null}{t.conta}</>:null}
+                      {(t.razao_social||t.conta)?<span style={{color:"#2D3F50"}}>·</span>:null}{t.rd}
+                      {t.subcategoria?<span style={s.chipAssoc("#8E7CC3")}>{t.subcategoria}</span>:null}
+                      {kwHit?<span style={s.chipAssoc("#00C9A7")}>casa com keyword {kwHit}</span>:null}
+                    </div>
+                    <div style={{fontSize:11,color:"#6B8299",display:"flex",flexWrap:"wrap",gap:"3px 6px",alignItems:"center",marginTop:3}}>
+                      {t.date}
+                      {txtVenc?<span style={s.chipAssoc("#F5A623")}>{txtVenc}</span>:null}
+                      {usedNome?<span style={s.chipAssoc("#6B8299")}>já associado a {usedNome}</span>:null}
+                    </div>
                   </div>
                   <span style={{fontSize:13,fontWeight:700,color:"#E8445A"}}>{fmt(Number(t.value))}</span>
                 </div>
