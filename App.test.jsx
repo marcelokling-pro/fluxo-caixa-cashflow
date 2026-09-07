@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -314,5 +314,18 @@ describe("fitKey", () => {
   });
   it("mesma conta e mesmo FITID gera a mesma chave", () => {
     expect(fitKey("1618995128", "20260904003")).toBe(fitKey("1618995128", "20260904003"));
+  });
+});
+
+// v8.1.0 — cabeçalhos com sufixo de unidade e valor vindo de Débito/Crédito
+describe("resolveSign com colunas separadas (layout C6)", () => {
+  it("saida preenchida vira valor negativo", () => {
+    expect(resolveSign(undefined, {debito:"2528.33", credito:"0.00"})).toBeCloseTo(-2528.33);
+  });
+  it("entrada preenchida vira valor positivo", () => {
+    expect(resolveSign(undefined, {debito:"0.00", credito:"32130.00"})).toBeCloseTo(32130);
+  });
+  it("sem coluna de valor e sem par continua NaN", () => {
+    expect(resolveSign(undefined, {})).toBeNaN();
   });
 });

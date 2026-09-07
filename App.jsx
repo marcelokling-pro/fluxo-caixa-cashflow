@@ -2603,7 +2603,9 @@ export default function App() {
       }
       headers = allRows[hi].map((c,i)=>String(c).trim()||`col ${i}`);
       preview = allRows.slice(hi+1,hi+4).map(r=>headers.map((_,i)=>String(r[i]||"")));
-      const normHeader = s=>String(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+      // v8.1.0 — descarta sufixo entre parênteses ("Entrada(R$)" → "ENTRADA"), senão o
+      // casamento exato de Débito/Crédito não pega layouts como o do C6.
+      const normHeader = s=>String(s).toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\([^)]*\)/g,"").replace(/\s+/g," ").trim();
       // Por alias: tenta nome EXATO primeiro (ex.: "Descrição" ganha de "Histórico"),
       // depois substring; ignora colunas já usadas (exclude) — evita a Descrição cair na coluna de data.
       const guessCol = (aliases, fallback=0, exclude=[]) => {
@@ -2617,9 +2619,11 @@ export default function App() {
       };
       const autoDate = guessCol(["DATA","DATE","DT","DT_MOV","DATA_MOV"]);
       const autoDesc = guessCol(["DESCRICAO","DESCRIPTION","ESTABELECIMENTO","HISTORICO","LANCAMENTO","COMPLEMENTO"], 1, [autoDate]);
-      const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"], 2, [autoDate]);
+      // v8.1.0 — sem fallback: em layout com Entrada/Saída separadas não existe coluna de
+      // valor, e o palpite antigo caía na 3ª coluna do arquivo (no C6, "Título").
+      const autoVal  = guessCol(["VALOR","VALUE","AMOUNT","VLR"], -1, [autoDate]);
       const autoConta= guessCol(["CONTA","ACCOUNT","CONTA_CORRENTE","AGENCIA"], -1, [autoDate]);
-      const autoRazaoSocial = guessCol(["RAZAO SOCIAL","RAZÃO SOCIAL","FAVORECIDO","NOME FAVORECIDO"], -1);
+      const autoRazaoSocial = guessCol(["RAZAO SOCIAL","RAZÃO SOCIAL","FAVORECIDO","NOME FAVORECIDO","TITULO"], -1); // v8.1.0 — C6 traz o favorecido em "Título"
       // Colunas de sinal — casamento EXATO (evita ativar por engano em layouts já assinados como o Itaú)
       const guessExact = aliases => headers.findIndex(h=>aliases.some(a=>normHeader(h)===normHeader(a)));
       const autoTipo    = guessExact(["TIPO","NATUREZA","D/C","C/D","DC","DEBITO/CREDITO","CREDITO/DEBITO"]);
@@ -2644,13 +2648,19 @@ export default function App() {
   const processColumnMapper = async () => {
     if(!columnMapper) return;
     const {file, allRows, headerIdx, mode, transaction, map, isCartao, autoContaValue} = columnMapper;
+    // v8.1.0 — sem coluna de valor e sem o par Débito/Crédito não há como saber o valor:
+    // avisa em vez de processar tudo e devolver "nenhum lançamento encontrado".
+    if(map.val<0 && map.debito<0 && map.credito<0){
+      showToast("Aponte a coluna de Valor — ou as colunas de Débito e Crédito.","error");
+      return;
+    }
     const yearMatches = file.name.match(/\d{4}/g);
     const inferredYear = yearMatches ? yearMatches[yearMatches.length-1] : String(new Date().getFullYear());
     const rawRows = allRows.slice(headerIdx+1);
     const parsed = rawRows.map(cols=>{
       const rawDate = String(cols[map.date]||"").trim();
       const rawDesc = String(cols[map.desc]||"").trim();
-      const rawVal  = cols[map.val];
+      const rawVal  = map.val>=0 ? cols[map.val] : undefined; // v8.1.0 — Valor pode não ser importado
       const rawConta= autoContaValue || "";
       const rawRazaoSocial = map.razaoSocial>=0 ? String(cols[map.razaoSocial]||"").trim() : "";
       if(!rawDesc) return null;
@@ -3060,7 +3070,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.0.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.1.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3939,7 +3949,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.0.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.1.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4131,7 +4141,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.0.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.1.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4883,7 +4893,8 @@ export default function App() {
               {[
                 {label:"📅 Data",key:"date",required:true,color:"#00C9A7"},
                 {label:"📝 Descrição",key:"desc",required:true,color:"#2ECC71"},
-                {label:"💰 Valor",key:"val",required:true,color:"#E8445A"},
+                // v8.1.0 — com Débito ou Crédito apontados o valor vem do par, não desta coluna.
+                {label:"💰 Valor",key:"val",required:!(columnMapper.map.debito>=0||columnMapper.map.credito>=0),color:"#E8445A"},
                 {label:"🏦 Conta",key:"conta",required:false,color:"#6B8299"},
                 {label:"🏢 Razão Social",key:"razaoSocial",required:false,color:"#8E7CC3"},
                 {label:"± Tipo (D/C)",key:"tipo",required:false,color:"#F5A623"},
@@ -4900,6 +4911,9 @@ export default function App() {
                         value={columnMapper.map[key]}
                         onChange={e=>setColumnMapper(m=>({...m,map:{...m.map,[key]:Number(e.target.value)}}))}>
                         {!required&&<option value={-1}>— não importar —</option>}
+                        {/* v8.1.0 — sem palpite, campo obrigatório abre vazio em vez de mostrar
+                            a primeira coluna como se estivesse escolhida. */}
+                        {required&&columnMapper.map[key]<0&&<option value={-1}>— selecione a coluna —</option>}
                         {columnMapper.headers.map((h,i)=><option key={i} value={i}>{h||`col ${i}`}</option>)}
                       </select>
                   }
