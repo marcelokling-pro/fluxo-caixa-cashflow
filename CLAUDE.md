@@ -41,6 +41,8 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 **Este arquivo está fora do versionamento do app.** A `CLAUDE.md` acumula orientações e ocorrências verificadas pelo usuário — ela só cresce. Rollback, revert, `git checkout <commit> --` e `git stash` de código **nunca** podem arrastar a `CLAUDE.md` junto: ao descartar versões, restaurar só `App.jsx`/`App.test.jsx` e deixar a `CLAUDE.md` intacta. Já aconteceu (04/09/2026): um rollback da v7.20.1 para a v7.17.0 levou junto 19 linhas que documentavam alertas de vencimento (v5.2.3), detecção de fatura (v5.5.0) e o procedimento de teste de UI por CDP — tudo em produção e sem relação nenhuma com o código descartado.
 
+**Acesso ao Supabase DEV está autorizado em definitivo.** Rodar SQL e migrations no projeto DEV (`fhrulvdwkqhkyrwqnbet`) faz parte da entrega — não perguntar de novo nem devolver o SQL pro usuário colar no Studio. PROD (`xioqemsshqxagvwdttte`) continua exigindo autorização explícita a cada vez, com passo a passo de onde clicar.
+
 **Ambiente**: ao confirmar que algo "funciona" ou "está resolvido", especificar DEV ou PROD. Testes automatizados via browser só rodam em DEV (localhost). Mudança de **dado** (não só código) não propaga de DEV pra PROD via push — exige ação manual do usuário em PROD.
 
 **Discussão de requisito**: se o pedido não estiver claro, perguntar antes de implementar — nunca sair codificando no meio de uma conversa em aberto. Só implementar com confirmação explícita ("pode ir", "sim") ou instrução já direta e específica.

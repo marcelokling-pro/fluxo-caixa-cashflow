@@ -175,6 +175,58 @@ const dateToSortable = (d) => {
 const generateHash = (date, desc, value) =>
   `${date}|${String(desc).trim().toUpperCase()}|${parseFloat(value).toFixed(2)}`;
 
+// v8.0.0 — identidade de um lançamento lido de OFX: o FITID vale dentro da conta.
+export const fitKey = (conta, fitid) => `${conta||""}|${fitid}`;
+
+// v8.0.0 — Leitor de OFX. O formato traz FITID, identificador do lançamento atribuído
+// pelo próprio banco: imune à mudança do texto da descrição, ao contrário do hash
+// data|descrição|valor. Verificado em dois exports de janelas diferentes, do Itaú e do
+// Inter — o mesmo lançamento manteve o mesmo FITID.
+// A leitura é linha a linha porque o Itaú não fecha as tags e o Inter fecha.
+// Blocos cujo MEMO começa com "SALDO " são o saldo do dia, não movimento: ficam de fora.
+export const parseOFX = (text) => {
+  const one = (bloco, tag) => {
+    const m = String(bloco).match(new RegExp(`<${tag}>([^<\\n\\r]*)`));
+    return m ? m[1].trim() : "";
+  };
+  const acctid = one(text,"ACCTID");
+  const DOC = /(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\s*$/;
+  const rows = [];
+  for (const [,b] of String(text).matchAll(/<STMTTRN>([\s\S]*?)<\/STMTTRN>/g)) {
+    const memo = one(b,"MEMO"), fitid = one(b,"FITID"), d = one(b,"DTPOSTED").slice(0,8);
+    const value = parseFloat(one(b,"TRNAMT"));
+    if (!fitid || d.length<8 || !isFinite(value) || /^SALDO /.test(memo)) continue;
+    let description = memo, razao = one(b,"NAME");
+    const doc = memo.match(DOC);
+    if (doc) {
+      // Itaú manda descrição + favorecido + CPF/CNPJ numa string só; Inter manda o
+      // favorecido em <NAME>. O nome começa depois do último pedaço que contém número
+      // ("...MICHELE SOA04/09", "...DB0096962542").
+      const rest = memo.slice(0, doc.index).trim();
+      description = rest;
+      if (!razao) {
+        const tk = rest.split(/\s+/);
+        let last = -1; tk.forEach((t,i)=>{ if(/\d/.test(t)) last = i; });
+        if (last>=0 && last < tk.length-1) {
+          description = tk.slice(0,last+1).join(" ");
+          razao = tk.slice(last+1).join(" ");
+        }
+      }
+    }
+    rows.push({
+      date: `${d.slice(6,8)}/${d.slice(4,6)}/${d.slice(0,4)}`,
+      description,
+      value,
+      razao_social: razao || null,
+      conta: acctid || "",
+      // O FITID é único dentro da conta, não entre contas (o sequencial do dia reinicia).
+      // Grava-se cru; quem garante a unicidade é o par conta + fitid.
+      fitid,
+    });
+  }
+  return rows;
+};
+
 const isCCTransaction = (t) => {
   if ((t.origin||"") === "fatura") return true;
   if ((t.conta||"").startsWith("CC/")) return true;
@@ -1876,6 +1928,7 @@ export default function App() {
   const [fluxoMonth,setFluxoMonth] = useState("todos");
   const [showAtrasadosModal,setShowAtrasadosModal] = useState(false);
   const [importedHashes,setImportedHashes] = useState(new Set());
+  const [importedFitids,setImportedFitids] = useState(new Set()); // v8.0.0 — duplicidade de arquivo OFX
   // v3.0 — Transaction details
   const [detailModal,setDetailModal]       = useState(null); // {transaction}
   const [detailItems,setDetailItems]       = useState([]); // items for current detail modal
@@ -1989,6 +2042,8 @@ export default function App() {
     }
     setTransactions(allData);
     setImportedHashes(new Set(allData.map(t=>generateHash(t.date,t.description,t.value))));
+    // v8.0.0 — a identidade de um lançamento de OFX é o par conta + fitid.
+    setImportedFitids(new Set(allData.filter(t=>t.fitid).map(t=>fitKey(t.conta,t.fitid))));
   };
 
   const loadSettings = async () => {
@@ -2150,7 +2205,8 @@ export default function App() {
     setAiLoading(true);
     const toSave=[], toReview=[];
     for (const row of rows) {
-      if(importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
+      // v8.0.0 — linha vinda de OFX é comparada pelo FITID; o resto segue pelo hash de sempre.
+      if(row.fitid ? importedFitids.has(fitKey(row.conta,row.fitid)) : importedHashes.has(generateHash(row.date,row.description,row.value))) continue;
       const local = localClassify(row.description, customCats, hiddenBaseCls);
       if (local) {
         toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, subcategoria:local.sub||null, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
@@ -2649,10 +2705,24 @@ export default function App() {
   };
 
   // ── File import ────────────────────────────────────────────────────────────
+  // v8.0.0 — OFX não tem colunas para mapear: lê e vai direto para a prévia.
+  const openOFXImport = async (file) => {
+    try {
+      const rows = parseOFX(await file.text());
+      if(!rows.length){showToast("Nenhum lançamento encontrado no OFX.","error");return;}
+      const newRows = rows.filter(r=>!importedFitids.has(fitKey(r.conta,r.fitid)));
+      setPendingImport({fileName:file.name,rows,newRows,dups:rows.length-newRows.length,isCreditCard:false,fonte:"ofx"});
+      setTab("importar");
+    } catch(e) {
+      showToast("Erro ao ler OFX: "+e.message,"error");
+    }
+  };
+
   const handleFile = useCallback((file)=>{
     if(!file) return;
+    if(/\.ofx$/i.test(file.name)) { openOFXImport(file); return; } // v8.0.0
     openColumnMapper(file, "extrato");
-  },[importedHashes]);
+  },[importedHashes,importedFitids]);
 
   const confirmReview = async (reviewed, regras=[]) => {
     const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado"}));
@@ -2990,7 +3060,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.7.25.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.0.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3519,6 +3589,15 @@ export default function App() {
                       <span style={{color:"#2ECC71"}}> {pendingImport.newRows.length} novos</span>
                       {pendingImport.dups>0&&<span style={{color:"#F5A623"}}> · {pendingImport.dups} duplicados ignorados</span>}
                     </div>
+                    {/* v8.0.0 — deixa explícito qual chave de duplicidade está valendo neste arquivo. */}
+                    <div style={{fontSize:12,marginTop:8,padding:"7px 11px",borderRadius:7,
+                      background:pendingImport.fonte==="ofx"?"rgba(0,201,167,0.10)":"rgba(245,166,35,0.10)",
+                      color:pendingImport.fonte==="ofx"?"#00C9A7":"#F5A623",
+                      border:"1px solid "+(pendingImport.fonte==="ofx"?"rgba(0,201,167,0.3)":"rgba(245,166,35,0.3)")}}>
+                      {pendingImport.fonte==="ofx"
+                        ? "✓ OFX — cada lançamento traz o identificador do banco (FITID). Duplicidade garantida pelo par conta + FITID."
+                        : "⚠ Arquivo sem identificador do banco. A duplicidade é conferida por data + descrição + valor: se o banco mudar o texto da descrição, o mesmo lançamento entra de novo. Confira a prévia antes de importar."}
+                    </div>
                   </div>
                   <div style={{display:"flex",gap:10}}>
                     <button style={s.btn("danger")} onClick={()=>setPendingImport(null)}>✕ Cancelar</button>
@@ -3531,7 +3610,8 @@ export default function App() {
                   <thead><tr>{["Data","Descrição","Valor","Status"].map(h=><th key={h} style={s.th}>{h}</th>)}</tr></thead>
                   <tbody>
                     {pendingImport.rows.slice(0,20).map((t,i)=>{
-                      const dup=importedHashes.has(generateHash(t.date,t.description,t.value));
+                      // v8.0.0 — linha de OFX confere pelo par conta+fitid; o resto pelo hash de sempre.
+                      const dup=t.fitid?importedFitids.has(fitKey(t.conta,t.fitid)):importedHashes.has(generateHash(t.date,t.description,t.value));
                       return (<tr key={i} style={dup?{opacity:0.35}:{}}>
                         <td style={s.td}>{t.date}</td>
                         <td style={{...s.td,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
@@ -3552,9 +3632,9 @@ export default function App() {
                   onClick={()=>document.getElementById("fileInput").click()}>
                   <div style={{fontSize:40,marginBottom:12}}>📂</div>
                   <div style={{fontSize:16,fontWeight:600,marginBottom:8}}>Arraste o extrato ou clique para selecionar</div>
-                  <div style={{fontSize:13,color:"#6B8299"}}>CSV, TXT ou XLSX — mapeamento de colunas automático</div>
+                  <div style={{fontSize:13,color:"#6B8299"}}>OFX, CSV, TXT ou XLSX — OFX vai direto para a prévia</div>
                   <div style={{fontSize:12,color:"#00C9A7",marginTop:8}}>🤖 {totalRegrasLocais} regras locais + Gemini</div>
-                  <div style={{fontSize:11,color:"#6B8299",marginTop:4}}>Duplicados ignorados automaticamente</div>
+                  <div style={{fontSize:11,color:"#6B8299",marginTop:4}}>Duplicados ignorados automaticamente · OFX confere pelo identificador do banco</div>
                 </div>
                 <div style={{...s.card,marginTop:20}}>
                   <div style={{fontSize:11,color:"#6B8299",marginBottom:10,textTransform:"uppercase"}}>Formato esperado</div>
@@ -3859,7 +3939,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.7.25.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.0.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4051,7 +4131,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.7.25.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.0.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4892,7 +4972,7 @@ export default function App() {
         </div>
       )}
 
-      <input id="fileInput" type="file" accept=".csv,.txt,.xlsx,.xls" style={{display:"none"}}
+      <input id="fileInput" type="file" accept=".ofx,.csv,.txt,.xlsx,.xls" style={{display:"none"}}
         onChange={e=>{const f=e.target.files[0];if(f){handleFile(f);e.target.value="";}}}/>
 
       {toast&&<div style={s.toast(toast.kind)}>{toast.msg}</div>}

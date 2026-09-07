@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -216,5 +216,103 @@ describe("localClassify", () => {
     const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
     const cats = [{ id: 9, name: "SISPAG FORNECEDOR", rd: "DESPESAS FIXAS", classificacao: "FORNECEDORES", keywords: [] }];
     expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", cats, [antes.matchedKw]).c).toBe("FORNECEDORES");
+  });
+});
+
+// v8.0.0 — leitura de OFX
+const OFX_ITAU = `OFXHEADER:100
+<OFX>
+<BANKACCTFROM>
+<BANKID>0341
+<ACCTID>1618995128
+</BANKACCTFROM>
+<STMTTRN>
+<TRNTYPE>CREDIT
+<DTPOSTED>20260904100000[-03:EST]
+<TRNAMT>12303.10
+<FITID>20260904001
+<MEMO>SALDO TOTAL DISPONÍVEL DIA
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>CREDIT
+<DTPOSTED>20260904100000[-03:EST]
+<TRNAMT>9.90
+<FITID>20260904003
+<MEMO>PIX QR CODE RECEBIDO MICHELE SOA04/09 MICHELE SOARES DO NASCIMENTO 166.400.628-10
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>20260831100000[-03:EST]
+<TRNAMT>-300.00
+<FITID>20260831006
+<MEMO>SISPAG SALARIOS
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>20260831100000[-03:EST]
+<TRNAMT>-300.00
+<FITID>20260831007
+<MEMO>SISPAG SALARIOS
+</STMTTRN>
+</OFX>`;
+
+const OFX_INTER = `OFXHEADER:100
+<OFX>
+<BANKACCTFROM>
+<BANKID>077</BANKID>
+<ACCTID>523342292</ACCTID>
+</BANKACCTFROM>
+<STMTTRN>
+<TRNTYPE>PAYMENT</TRNTYPE>
+<DTPOSTED>20260820</DTPOSTED>
+<TRNAMT>-2600.00</TRNAMT>
+<FITID>202608200772</FITID>
+<MEMO>Pix enviado: "Cp :60701190-HANNA KLING"</MEMO>
+<NAME>Hanna Kling</NAME>
+</STMTTRN>
+</OFX>`;
+
+describe("parseOFX", () => {
+  it("descarta bloco de saldo do dia (nao e movimento)", () => {
+    const rows = parseOFX(OFX_ITAU);
+    expect(rows.length).toBe(3);
+    expect(rows.some(r => r.description.startsWith("SALDO "))).toBe(false);
+  });
+  it("converte data, valor com sinal e conta", () => {
+    const [pix] = parseOFX(OFX_ITAU);
+    expect(pix.date).toBe("04/09/2026");
+    expect(pix.value).toBeCloseTo(9.90);
+    expect(pix.conta).toBe("1618995128");
+    expect(parseOFX(OFX_ITAU)[1].value).toBeCloseTo(-300);
+  });
+  it("separa razao social e descricao do MEMO do Itau", () => {
+    const [pix] = parseOFX(OFX_ITAU);
+    expect(pix.description).toBe("PIX QR CODE RECEBIDO MICHELE SOA04/09");
+    expect(pix.razao_social).toBe("MICHELE SOARES DO NASCIMENTO");
+  });
+  it("dois SISPAG identicos no mesmo dia tem FITID diferente", () => {
+    const sispag = parseOFX(OFX_ITAU).filter(r => r.description === "SISPAG SALARIOS");
+    expect(sispag.length).toBe(2);
+    expect(sispag[0].fitid).not.toBe(sispag[1].fitid);
+  });
+  it("le o Inter, com tags fechadas, data curta e NAME proprio", () => {
+    const [t] = parseOFX(OFX_INTER);
+    expect(t.date).toBe("20/08/2026");
+    expect(t.value).toBeCloseTo(-2600);
+    expect(t.razao_social).toBe("Hanna Kling");
+    expect(t.fitid).toBe("202608200772");
+    expect(t.conta).toBe("523342292");
+  });
+  it("ignora arquivo que nao e OFX", () => {
+    expect(parseOFX("data;descricao;valor")).toEqual([]);
+  });
+});
+
+describe("fitKey", () => {
+  it("mesmo FITID em contas diferentes gera chaves diferentes", () => {
+    expect(fitKey("1618995128", "20260904003")).not.toBe(fitKey("999", "20260904003"));
+  });
+  it("mesma conta e mesmo FITID gera a mesma chave", () => {
+    expect(fitKey("1618995128", "20260904003")).toBe(fitKey("1618995128", "20260904003"));
   });
 });
