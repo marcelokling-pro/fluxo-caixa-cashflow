@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -327,5 +327,79 @@ describe("resolveSign com colunas separadas (layout C6)", () => {
   });
   it("sem coluna de valor e sem par continua NaN", () => {
     expect(resolveSign(undefined, {})).toBeNaN();
+  });
+});
+
+// v8.2.0 — conciliação por grupo
+const L = (date, description, value, conta="1618995128") => ({date, description, value, conta});
+const SISPAG = [
+  L("31/08/2026","SISPAG SALARIOS",-433.52),
+  L("31/08/2026","SISPAG SALARIOS",-300),
+  L("31/08/2026","SISPAG SALARIOS",-300),
+];
+
+describe("conciliar", () => {
+  it("reimportar o mesmo arquivo nao traz nada", () => {
+    expect(conciliar(SISPAG, SISPAG)).toEqual([]);
+  });
+  it("banco reemite o dia com um lancamento a mais: entra so o excedente", () => {
+    const novo = [...SISPAG, L("31/08/2026","SISPAG SALARIOS",-300)];
+    const r = conciliar(SISPAG, novo);
+    expect(r.length).toBe(1);
+    expect(r[0].value).toBe(-300);
+  });
+  it("dois lancamentos legitimos identicos entram os dois quando o banco nao tem nenhum", () => {
+    expect(conciliar([], SISPAG).length).toBe(3);
+  });
+  it("texto reescrito pelo banco nao duplica", () => {
+    const gravado = [L("31/08/2026","BOLETO PAGO J B DOS SANT",-128.66)];
+    const arquivo = [L("31/08/2026","SAÍDA BOLETO  PAGO J B DOS SANT",-128.66)];
+    expect(conciliar(gravado, arquivo)).toEqual([]);
+  });
+  it("ordem invertida no arquivo nao duplica", () => {
+    expect(conciliar(SISPAG, [...SISPAG].reverse())).toEqual([]);
+  });
+  it("estorno de mesmo valor e sinal oposto entra", () => {
+    const gravado = [L("31/08/2026","INTERMEDICA",-128.66)];
+    const arquivo = [L("31/08/2026","ESTORNO INTERMEDICA",128.66)];
+    expect(conciliar(gravado, arquivo).length).toBe(1);
+  });
+  it("mesmo valor e dia em contas diferentes nao se anulam", () => {
+    const gravado = [L("31/08/2026","SISPAG SALARIOS",-300,"1618995128")];
+    const arquivo = [L("31/08/2026","PAGAMENTO",-300,"196909244")];
+    expect(conciliar(gravado, arquivo).length).toBe(1);
+  });
+  it("mesmo valor em dias diferentes entra", () => {
+    const gravado = [L("31/07/2026","INTERMEDICA",-128.66)];
+    const arquivo = [L("31/08/2026","INTERMEDICA",-128.66)];
+    expect(conciliar(gravado, arquivo).length).toBe(1);
+  });
+  it("extrato parcial do dia: entram so os que faltavam", () => {
+    const gravado = [L("04/09/2026","PIX RECEBIDO",9.9)];
+    const arquivo = [L("04/09/2026","PIX RECEBIDO",9.9), L("04/09/2026","PIX RECEBIDO",9.9), L("04/09/2026","PIX RECEBIDO",9.9)];
+    expect(conciliar(gravado, arquivo).length).toBe(2);
+  });
+});
+
+describe("contaKey", () => {
+  it("mesma conta escrita como no OFX e como na planilha do Itau", () => {
+    expect(contaKey("1618995128")).toBe(contaKey("00995128"));
+  });
+  it("contas diferentes continuam diferentes", () => {
+    expect(contaKey("1618995128")).not.toBe(contaKey("196909244"));
+  });
+  it("ignora pontuacao da conta", () => {
+    expect(contaKey("0099512-8")).toBe(contaKey("00995128"));
+  });
+});
+
+describe("ehLinhaDeSaldo", () => {
+  it("reconhece as linhas de saldo dos tres bancos", () => {
+    ["SALDO ANTERIOR","SALDO TOTAL DISPONÍVEL DIA","SALDO EM CONTA CORRENTE","Saldo do Dia"]
+      .forEach(d => expect(ehLinhaDeSaldo(d)).toBe(true));
+  });
+  it("nao confunde com lancamento que so comeca parecido", () => {
+    expect(ehLinhaDeSaldo("SALDOS E PAGAMENTOS LTDA")).toBe(false);
+    expect(ehLinhaDeSaldo("PIX RECEBIDO")).toBe(false);
   });
 });
