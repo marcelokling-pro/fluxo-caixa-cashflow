@@ -41,7 +41,9 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 **Este arquivo está fora do versionamento do app.** A `CLAUDE.md` acumula orientações e ocorrências verificadas pelo usuário — ela só cresce. Rollback, revert, `git checkout <commit> --` e `git stash` de código **nunca** podem arrastar a `CLAUDE.md` junto: ao descartar versões, restaurar só `App.jsx`/`App.test.jsx` e deixar a `CLAUDE.md` intacta. Já aconteceu (04/09/2026): um rollback da v7.20.1 para a v7.17.0 levou junto 19 linhas que documentavam alertas de vencimento (v5.2.3), detecção de fatura (v5.5.0) e o procedimento de teste de UI por CDP — tudo em produção e sem relação nenhuma com o código descartado.
 
-**Acesso ao Supabase DEV está autorizado em definitivo.** Rodar SQL e migrations no projeto DEV (`fhrulvdwkqhkyrwqnbet`) faz parte da entrega — não perguntar de novo nem devolver o SQL pro usuário colar no Studio. PROD (`xioqemsshqxagvwdttte`) continua exigindo autorização explícita a cada vez, com passo a passo de onde clicar.
+**Acesso ao Supabase DEV está autorizado em definitivo.** Rodar SQL e migrations no projeto DEV (`fhrulvdwkqhkyrwqnbet`) faz parte da entrega — não perguntar de novo nem devolver o SQL pro usuário colar no Studio.
+
+**PROD (`xioqemsshqxagvwdttte`) só com autorização explícita, a cada acesso** — inclusive `supabase link` e consulta, não só escrita. A CLI desta máquina está logada com a conta do usuário e o token alcança os dois projetos com poder administrativo; o que separa DEV de PROD é esta regra, não uma barreira técnica. Autorização para publicar/commitar **não** vale como aval para tocar no banco de produção: apresentar o SQL, esperar o sim e, depois de mexer, religar a CLI no DEV. Ocorrido em 07/09/2026 — rodei a migration da v8.0.0 em PROD tratando "siga para o commit em produção" como aval do caminho inteiro.
 
 **Ambiente**: ao confirmar que algo "funciona" ou "está resolvido", especificar DEV ou PROD. Testes automatizados via browser só rodam em DEV (localhost). Mudança de **dado** (não só código) não propaga de DEV pra PROD via push — exige ação manual do usuário em PROD.
 
