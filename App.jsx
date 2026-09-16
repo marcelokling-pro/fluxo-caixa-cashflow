@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -1460,6 +1460,9 @@ const AnaliseTab = ({transactions, s, fmt}) => {
 // ══════════════════════════════════════════════════════════════════════════════
 const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions, hiddenBaseCls, hideBaseClassification}) => {
   const [search, setSearch] = useState("");
+  // v8.2.1 — padrão: todo campo de busca livre entra no memo por useDeferredValue,
+  // assim a tecla aparece na hora e o recalculo da lista não bloqueia a digitação.
+  const searchDefer = useDeferredValue(search);
   const [filterRd, setFilterRd] = useState("todos");
   // v7.24.0 — origem: "manual" = tabela categories (isCustom), "sistema" = BASE_CLASSIFICATIONS
   const [filterOrigem, setFilterOrigem] = useState("todos");
@@ -1500,7 +1503,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
 
   const filtered = useMemo(() => {
     const base = allRows.filter(r => {
-      const ms = !search || r.detalhe.toLowerCase().includes(search.toLowerCase()) || r.classificacao.toLowerCase().includes(search.toLowerCase());
+      const ms = !searchDefer || r.detalhe.toLowerCase().includes(searchDefer.toLowerCase()) || r.classificacao.toLowerCase().includes(searchDefer.toLowerCase());
       const mr = filterRd==="todos" || r.rd===filterRd;
       const mo = filterOrigem==="todos" || (filterOrigem==="manual" ? r.isCustom : !r.isCustom);
       return ms && mr && mo;
@@ -1510,7 +1513,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       const bv = (b[sortCol]||"").toLowerCase();
       return sortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [allRows, search, filterRd, filterOrigem, sortCol, sortDir]);
+  }, [allRows, searchDefer, filterRd, filterOrigem, sortCol, sortDir]);
 
   const findAffected = async (keywords) => {
     const kws = (Array.isArray(keywords)?keywords:[keywords]).map(k=>k.trim().toUpperCase()).filter(Boolean);
@@ -1881,6 +1884,57 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
 };
 
 
+// v8.2.2 — uma linha da tabela de Lançamentos, memoizada. Digitar na busca re-renderiza o App
+// inteiro; sem este memo o React recriava ~15 mil elementos (as ~900 linhas) a cada tecla —
+// era 68% do tempo de CPU medido no profiler e a causa do travamento da digitação.
+const LinhaLancamento = React.memo(function LinhaLancamento({t,s,nDetalhes,onDetalhe,onEditar,onExcluir,onReclass}){
+  return (
+    <tr style={t.needs_review?{background:"rgba(245,166,35,0.04)"}:{}}>
+      <td style={s.td}>{t.date}</td>
+      <td style={{...s.td,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+        {nDetalhes>0&&(
+          <span title={`${nDetalhes} itens de detalhe`}
+            style={{cursor:"pointer",marginRight:4,fontSize:10,background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 5px",fontWeight:700}}
+            onClick={()=>onDetalhe(t)}>
+            📎{nDetalhes}
+          </span>
+        )}
+        {t.origin==="fatura"&&(
+          <span title="Item de detalhamento de cartão"
+            style={{marginRight:4,fontSize:10,background:"rgba(142,124,195,0.15)",color:"#8E7CC3",borderRadius:10,padding:"1px 6px",fontWeight:700}}>
+            💳 CARTÃO
+          </span>
+        )}
+        {t.description}
+      </td>
+      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.razao_social||"—"}</td>
+      <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
+      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
+      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.subcategoria||"—"}</td>
+      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{isCCTransaction(t)?<span style={{color:"#F5A623",fontWeight:600}}>CC/{(t.conta||"").replace(/^CC\//,"")}</span>:(t.conta||"—")}</td>
+      <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
+        {nDetalhes>0
+          ? <button style={{background:"none",border:"none",cursor:"pointer",fontWeight:600,fontSize:12,color:Number(t.value)>=0?"#2ECC71":"#E8445A",padding:0,textDecoration:"underline dotted",textUnderlineOffset:3}} title="Ver detalhamento" onClick={()=>onDetalhe(t)}>{fmt(Number(t.value))} ↗</button>
+          : fmt(Number(t.value))
+        }
+      </td>
+      <td style={s.td}>
+        {/* v7.11.14 — ação reorganizada: cor própria por ação, ✏️ com variação (corrige render sem cor),
+            🗑️ substitui ✕, separador antes do botão destrutivo pra evitar clique errado */}
+        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(0,201,167,0.1)",border:"1px solid rgba(0,201,167,0.25)",color:"#00C9A7"}} title="Ver detalhamento" onClick={()=>onDetalhe(t)}>📎</button>
+          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(107,130,153,0.12)",color:"#8FA3B8"}} title="Editar" onClick={()=>onEditar(t)}>✏️</button>
+          <div style={{width:1,height:18,background:"#1E2D3D",margin:"0 2px"}}/>
+          <button style={{...s.btn("danger"),padding:"4px 8px",fontSize:12,background:"rgba(232,68,90,0.1)",border:"1px solid rgba(232,68,90,0.3)",color:"#E8445A"}} title="Excluir" onClick={()=>onExcluir(t.id)}>🗑️</button>
+          {/* v7.16.1 — por último e discreto: uso pontual, não faz parte da rotina da linha */}
+          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,marginLeft:6,background:"transparent",border:"1px solid #1E2D3D",color:"#6B8299"}}
+            title="Reclassificar pelas regras atuais" onClick={()=>onReclass(t)}>🔄</button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1909,6 +1963,7 @@ export default function App() {
   const [sortDir,setSortDir]   = useState("desc");
   const [confirmDelete,setConfirmDelete] = useState(null);
   const [searchText,setSearchText] = useState("");
+  const searchTextDefer = useDeferredValue(searchText); // v8.2.1 — ver padrão em searchDefer
   const [sortCol,setSortCol] = useState("date");
   const [drillDown,setDrillDown] = useState(null); // {rd, dateFrom, dateTo, label}
   const [showModal,setShowModal] = useState(false);
@@ -1964,6 +2019,7 @@ export default function App() {
   const [assocSortCol,setAssocSortCol]   = useState(null);
   const [assocSortDir,setAssocSortDir]   = useState("asc");
   const [assocSearch,setAssocSearch]     = useState(""); // v7.11.17 — busca no modal Associar Lançamento
+  const assocSearchDefer = useDeferredValue(assocSearch); // v8.2.1 — ver padrão em searchDefer
   const [agendaSortCol,setAgendaSortCol] = useState("dia_vencimento");
   const [agendaSortDir,setAgendaSortDir] = useState("asc");
   const [agendaDiaFilter,setAgendaDiaFilter] = useState([]);
@@ -1992,7 +2048,8 @@ export default function App() {
   const [extrasMonthly, setExtrasMonthly] = useState({investimentos:{}, contasReceber:{}});
   const extrasMonthlyRef = React.useRef({investimentos:{}, contasReceber:{}});
 
-  const s = mkS(sidebarOpen);
+  // v8.2.2 — identidade estável: se `s` mudasse a cada render, o React.memo das linhas nunca seguraria.
+  const s = useMemo(()=>mkS(sidebarOpen),[sidebarOpen]);
   const showToast = (msg,kind="success") => { setToast({msg,kind}); setTimeout(()=>setToast(null),3500); };
 
   const allClassificacoes = useMemo(()=>[...new Set([...CLASSIFICACOES,...customCats.map(c=>c.classificacao||"").filter(Boolean)])].sort(),[customCats]);
@@ -2181,8 +2238,8 @@ export default function App() {
       else{va=dateToSortable(a.date)||"";vb=dateToSortable(b.date)||"";}
       return sortDir==="asc"?va.localeCompare(vb):vb.localeCompare(va);
     });
-    if(searchText.trim()){
-      const q=searchText.toLowerCase();
+    if(searchTextDefer.trim()){
+      const q=searchTextDefer.toLowerCase();
       // v7.11.8 — "cartão"/"cartao" também traz os itens com o selo 💳 (origin==="fatura"),
       // que não têm a palavra escrita em nenhum campo (ex: "99APP *99App...")
       const qNorm=q.normalize("NFD").replace(/[̀-ͯ]/g,"");
@@ -2209,7 +2266,40 @@ export default function App() {
       list=list.filter(t=>matchedIds.has(t.id));
     }
     return list;
-  },[transactions,filter,colFilter,sortDir,sortCol,drillDown,searchText]);
+  },[transactions,filter,colFilter,sortDir,sortCol,drillDown,searchTextDefer]);
+  // v8.2.2 — exporta a lista de Lançamentos exatamente como está na tela: reusa `filtered`,
+  // então filtros, busca livre, filtro por coluna, drill-down e ordenação valem no arquivo.
+  // Sem nenhum filtro ativo, `filtered` é a base inteira. A lib xlsx vem do CDN em runtime,
+  // igual à importação (window.XLSX) — não é dependência bundlada, exige internet.
+  const exportLancamentosXLSX = useCallback(async ()=>{
+    if(!filtered.length){ alert("Nenhum lançamento para exportar."); return; }
+    if(!window.XLSX){
+      try{
+        await new Promise((res,rej)=>{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";s.onload=res;s.onerror=rej;document.head.appendChild(s);});
+      }catch{ alert("Não foi possível carregar a biblioteca de Excel. Verifique a conexão."); return; }
+    }
+    const toDate = d=>{ const p=(d||"").split("/"); return p.length===3?new Date(Number(p[2]),Number(p[1])-1,Number(p[0])):null; };
+    const rows = filtered.map(t=>({
+      "Data": toDate(t.date)||t.date||"",
+      "Descrição": t.description||"",
+      "Razão Social": t.razao_social||"",
+      "R/D": t.rd||"",
+      "Classificação": t.classificacao||"",
+      "Subcategoria": t.subcategoria||"",
+      "Conta": t.conta||"",
+      "Valor": Number(t.value)||0,
+    }));
+    const ws = window.XLSX.utils.json_to_sheet(rows,{cellDates:true});
+    // data real do Excel (não número serial) para permitir filtro/ordenação por data na planilha
+    const range = window.XLSX.utils.decode_range(ws["!ref"]);
+    for(let r=1;r<=range.e.r;r++){
+      const cell = ws[window.XLSX.utils.encode_cell({r,c:0})];
+      if(cell&&cell.t==="d") cell.z="dd/mm/yyyy";
+    }
+    const wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb,ws,"Lançamentos");
+    window.XLSX.writeFile(wb,`lancamentos-${new Date().toISOString().slice(0,10)}.xlsx`);
+  },[filtered]);
 
   const fluxoData = useMemo(()=>{
     let list=transactions;
@@ -2921,6 +3011,16 @@ export default function App() {
     setConfirmReclass({t, rd:local.r, classificacao:local.c, subcategoria:local.sub||null, regra:local.matchedKw});
   };
 
+  // v8.2.2 — wrappers estáveis (padrão "latest ref"): os handlers acima são recriados a cada
+  // render, e passá-los direto anularia o React.memo de LinhaLancamento. O ref guarda sempre a
+  // versão atual, então não há closure velha.
+  const rowFns = useRef(null);
+  rowFns.current = {openDetailModal, startEdit, deleteT, reclassificarItem};
+  const onDetalhe = useCallback(t=>rowFns.current.openDetailModal(t),[]);
+  const onEditar  = useCallback(t=>rowFns.current.startEdit(t),[]);
+  const onExcluir = useCallback(id=>rowFns.current.deleteT(id),[]);
+  const onReclass = useCallback(t=>rowFns.current.reclassificarItem(t),[]);
+
   const aplicarReclass = async () => {
     if (!confirmReclass) return;
     const {t, rd, classificacao, subcategoria} = confirmReclass;
@@ -3114,7 +3214,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.2.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.2.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3199,7 +3299,11 @@ export default function App() {
                   {drillDown?.dateFrom&&<span> · {drillDown.dateFrom.split("-").reverse().join("/")} até {drillDown.dateTo.split("-").reverse().join("/")}</span>}
                 </div>
               </div>
+              <div style={{display:"flex",gap:8}}>
+                {/* v8.2.2 — exporta o que esta na tela (filtros/busca/ordenacao ativos) */}
+                <button style={s.btn("ghost")} onClick={exportLancamentosXLSX} title="Exportar para Excel">⬇ Excel</button>
               <button style={s.btn()} onClick={()=>{setModalMode("lancamento");setEditingId(null);setEditingRazaoSocial("");setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});setShowModal(true)}}>+ Novo</button>
+              </div>
             </div>
             {/* v7.11.15 — largura fixa e compacta em cada select + nowrap com rolagem horizontal:
                 garante uma linha só mesmo com o menu lateral aberto, em vez de depender do
@@ -3278,49 +3382,8 @@ export default function App() {
                 </tr></thead>
                 <tbody>
                   {filtered.map(t=>(
-                    <tr key={t.id} style={t.needs_review?{background:"rgba(245,166,35,0.04)"}:{}}>
-                      <td style={s.td}>{t.date}</td>
-                      <td style={{...s.td,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {transDetailsMap[t.id]>0&&(
-                          <span title={`${transDetailsMap[t.id]} itens de detalhe`}
-                            style={{cursor:"pointer",marginRight:4,fontSize:10,background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 5px",fontWeight:700}}
-                            onClick={()=>openDetailModal(t)}>
-                            📎{transDetailsMap[t.id]}
-                          </span>
-                        )}
-                        {t.origin==="fatura"&&(
-                          <span title="Item de detalhamento de cartão"
-                            style={{marginRight:4,fontSize:10,background:"rgba(142,124,195,0.15)",color:"#8E7CC3",borderRadius:10,padding:"1px 6px",fontWeight:700}}>
-                            💳 CARTÃO
-                          </span>
-                        )}
-                        {t.description}
-                      </td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.razao_social||"—"}</td>
-                      <td style={s.td}><span style={{...s.badge(t.rd),fontSize:10}}>{t.rd||"—"}</span></td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.classificacao||"—"}</td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{t.subcategoria||"—"}</td>
-                      <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{isCCTransaction(t)?<span style={{color:"#F5A623",fontWeight:600}}>CC/{(t.conta||"").replace(/^CC\//,"")}</span>:(t.conta||"—")}</td>
-                      <td style={{...s.td,fontWeight:600,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>
-                        {transDetailsMap[t.id]>0
-                          ? <button style={{background:"none",border:"none",cursor:"pointer",fontWeight:600,fontSize:12,color:Number(t.value)>=0?"#2ECC71":"#E8445A",padding:0,textDecoration:"underline dotted",textUnderlineOffset:3}} title="Ver detalhamento" onClick={()=>openDetailModal(t)}>{fmt(Number(t.value))} ↗</button>
-                          : fmt(Number(t.value))
-                        }
-                      </td>
-                      <td style={s.td}>
-                        {/* v7.11.14 — ação reorganizada: cor própria por ação, ✏️ com variação (corrige render sem cor),
-                            🗑️ substitui ✕, separador antes do botão destrutivo pra evitar clique errado */}
-                        <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(0,201,167,0.1)",border:"1px solid rgba(0,201,167,0.25)",color:"#00C9A7"}} title="Ver detalhamento" onClick={()=>openDetailModal(t)}>📎</button>
-                          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,background:"rgba(107,130,153,0.12)",color:"#8FA3B8"}} title="Editar" onClick={()=>startEdit(t)}>✏️</button>
-                          <div style={{width:1,height:18,background:"#1E2D3D",margin:"0 2px"}}/>
-                          <button style={{...s.btn("danger"),padding:"4px 8px",fontSize:12,background:"rgba(232,68,90,0.1)",border:"1px solid rgba(232,68,90,0.3)",color:"#E8445A"}} title="Excluir" onClick={()=>deleteT(t.id)}>🗑️</button>
-                          {/* v7.16.1 — por último e discreto: uso pontual, não faz parte da rotina da linha */}
-                          <button style={{...s.btn("ghost"),padding:"4px 8px",fontSize:12,marginLeft:6,background:"transparent",border:"1px solid #1E2D3D",color:"#6B8299"}}
-                            title="Reclassificar pelas regras atuais" onClick={()=>reclassificarItem(t)}>🔄</button>
-                        </div>
-                      </td>
-                    </tr>
+                    <LinhaLancamento key={t.id} t={t} s={s} nDetalhes={transDetailsMap[t.id]||0}
+                      onDetalhe={onDetalhe} onEditar={onEditar} onExcluir={onExcluir} onReclass={onReclass}/>
                   ))}
                 </tbody>
               </table>
@@ -3991,7 +4054,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.2.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.2.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4183,7 +4246,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.2.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.2.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4457,8 +4520,8 @@ export default function App() {
                 const p=t.date?.split("/");
                 return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
               }).filter(t=>{
-                if(!assocSearch.trim()) return true;
-                const q=assocSearch.trim().toLowerCase();
+                if(!assocSearchDefer.trim()) return true;
+                const q=assocSearchDefer.trim().toLowerCase();
                 return (t.description||"").toLowerCase().includes(q)||(t.razao_social||"").toLowerCase().includes(q)||(t.subcategoria||"").toLowerCase().includes(q);
               }).sort((a,b)=>{
                 if(!assocSortCol) return 0;
