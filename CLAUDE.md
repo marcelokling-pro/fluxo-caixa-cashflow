@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Regras de conduta do usuário (respostas, autorização, entrega): @.claude/REGRAS.md
+
 ## Commands
 
 ```bash
