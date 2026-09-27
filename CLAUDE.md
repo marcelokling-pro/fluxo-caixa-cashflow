@@ -53,6 +53,8 @@ Ao concluir, bumpar a versão nos 3 locais do `App.jsx` (buscar `Fluxo de Caixa-
 
 **Respostas objetivas.** Direto ao ponto, sem rodeios. Só detalhar mais se o usuário pedir.
 
+**Entrega sem ressalva.** Nunca afirmar e negar na mesma devolutiva ("testei e funciona, mas a suíte não cobre isso", "pronto, mas falta Y"). Se há dúvida sobre o que vai ser entregue, não entregar: fechar a lacuna (teste real, verificação no banco, cobertura) e só então reportar, de forma afirmativa, o que foi feito e verificado. Se algo depende do usuário, apresentar só a pergunta, sem declarar entrega. Pedido explícito do usuário em 27/09/2026 — a ressalva recorrente gerava dúvida sobre cada entrega.
+
 **Configuração externa** (Supabase, Vercel etc.): detalhar passo a passo com onde clicar em cada tela — nunca resumir em "gere uma API Key" ou "faça o deploy".
 
 ## Architecture
