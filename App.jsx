@@ -1105,8 +1105,7 @@ const LoginScreen = ({onLogin}) => {
 // Lançamentos já gravados que uma regra nova pegaria, agrupados pela classificação atual, com
 // seleção total, por grupo e individual. Marcar é alteração manual: o lançamento passa para a
 // classificação nova ao continuar. Nada vem marcado — por padrão o passado fica como está.
-const ListaAfetados = ({lista=[], marcados=[], onChange, resumoTexto, nova}) => {
-  const [aberta, setAberta] = useState(true);
+const ListaAfetados = ({lista=[], marcados=[], onChange, nova}) => {
   const grupos = useMemo(() => {
     const g = new Map();
     lista.forEach(t => { const k = `${t.rd} / ${t.classificacao}`; if (!g.has(k)) g.set(k, []); g.get(k).push(t); });
@@ -1119,37 +1118,43 @@ const ListaAfetados = ({lista=[], marcados=[], onChange, resumoTexto, nova}) => 
     return <input type="checkbox" checked={qtd>0 && qtd===ids.length} ref={el=>{ if (el) el.indeterminate = qtd>0 && qtd<ids.length; }}
       onChange={e=>marcar(ids, e.target.checked)} style={{cursor:"pointer",flexShrink:0}}/>;
   };
-  const linha = {display:"grid",gridTemplateColumns:"16px 78px 1fr 1fr 90px",gap:8,alignItems:"center",padding:"3px 0",borderBottom:"1px solid #1E2D3D55",color:"#C9D3DD",cursor:"pointer"};
+  const varios = lista.length>1, variosGrupos = grupos.length>1;
+  const linha = {display:"grid",gridTemplateColumns:"16px 78px 1fr 1fr 90px",gap:8,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #1E2D3D55",color:"#C9D3DD",cursor:"pointer"};
   return (<>
-    <div style={{color:"#6B8299",marginTop:2}}>Hoje: <strong style={{color:"#F5A623"}}>{resumoTexto}</strong>
-      <span onClick={()=>setAberta(a=>!a)} style={{color:"#00C9A7",cursor:"pointer",fontWeight:600,marginLeft:6,whiteSpace:"nowrap",userSelect:"none"}}>{aberta?"▾ ocultar":"▸ ver lançamentos"}</span>
+    <div style={{color:"#B8C7D6",fontSize:13,lineHeight:1.5,marginBottom:10}}>
+      {variosGrupos
+        ? <>{lista.length} lançamentos já gravados estão com outra classificação.</>
+        : <>{varios?`${lista.length} lançamentos já gravados estão`:"1 lançamento já gravado está"} como <strong style={{color:"#F5A623"}}>{grupos[0]?.[0]}</strong>.</>}
+      {" "}Marque {varios?"os que devem":"se ele deve"} mudar para <strong style={{color:"#00C9A7"}}>{nova}</strong>.
     </div>
-    {aberta&&(<>
-      <div style={{margin:"8px 0 6px",maxHeight:220,overflowY:"auto",borderTop:"1px solid #1E2D3D",paddingTop:6}}>
-        <label style={{display:"flex",gap:8,alignItems:"center",color:"#E8EDF2",fontWeight:600,margin:"2px 0 6px",cursor:"pointer"}}>
-          {caixa(lista.map(t=>t.id))} Marcar todos ({lista.length})
+    <div style={{maxHeight:220,overflowY:"auto",fontSize:12}}>
+      {varios&&(
+        <label style={{display:"flex",gap:8,alignItems:"center",color:"#E8EDF2",fontWeight:600,margin:"0 0 6px",cursor:"pointer"}}>
+          {caixa(lista.map(t=>t.id))} Todos
         </label>
-        {grupos.map(([k,itens])=>(
-          <div key={k}>
+      )}
+      {grupos.map(([k,itens])=>(
+        <div key={k}>
+          {variosGrupos&&(
             <label style={{display:"flex",gap:8,alignItems:"center",color:"#F5A623",fontWeight:700,fontSize:11,margin:"8px 0 4px",cursor:"pointer"}}>
               {caixa(itens.map(t=>t.id))} {k} · {itens.length}
             </label>
-            {itens.map(t=>(
-              <label key={t.id} style={linha}>
-                {caixa([t.id])}
-                <span style={{color:"#6B8299"}}>{t.date}</span>
-                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</span>
-                <span style={{color:"#6B8299",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.razao_social||"—"}</span>
-                <span style={{textAlign:"right",color:Number(t.value)>=0?"#2ECC71":"#E8445A",fontVariantNumeric:"tabular-nums"}}>{fmt(Number(t.value))}</span>
-              </label>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div style={{color:"#00C9A7",fontWeight:600,margin:"2px 0 4px"}}>
-        {marcados.length ? `${marcados.length} marcado(s) — passam para ${nova} ao continuar` : "Nenhum marcado — os lançamentos já gravados ficam como estão"}
-      </div>
-    </>)}
+          )}
+          {itens.map(t=>(
+            <label key={t.id} style={linha}>
+              {caixa([t.id])}
+              <span style={{color:"#6B8299"}}>{t.date}</span>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</span>
+              <span style={{color:"#6B8299",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.razao_social||"—"}</span>
+              <span style={{textAlign:"right",color:Number(t.value)>=0?"#2ECC71":"#E8445A",fontVariantNumeric:"tabular-nums"}}>{fmt(Number(t.value))}</span>
+            </label>
+          ))}
+        </div>
+      ))}
+    </div>
+    {marcados.length>0&&(
+      <div style={{color:"#00C9A7",fontWeight:600,fontSize:12,marginTop:8}}>{marcados.length} {marcados.length===1?"passa":"passam"} para {nova}.</div>
+    )}
   </>);
 };
 
@@ -2048,20 +2053,15 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       {confirmOverlap&&(
         <div style={s.modal} onClick={()=>setConfirmOverlap(null)}>
           <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ Conflita com lançamentos já gravados</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:14}}>
-              <strong style={{color:"#E8EDF2"}}>"{confirmOverlap.novo.name}"</strong> pegaria lançamentos que hoje estão com outra classificação:
-            </div>
-            <div style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20}}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:12}}>⚠ Regra "{confirmOverlap.novo.name}"</div>
+            <div style={{marginBottom:20}}>
               <ListaAfetados lista={confirmOverlap.divergentes} marcados={confirmOverlap.marcados}
                 onChange={ids=>setConfirmOverlap(p=>({...p,marcados:ids}))}
-                nova={`${confirmOverlap.novo.rd}/${confirmOverlap.novo.classificacao}`}
-                resumoTexto={`${confirmOverlap.resumo.total} lançamento(s) — ${confirmOverlap.resumo.qtd} como ${confirmOverlap.resumo.principal}${confirmOverlap.resumo.outras>0?` (+${confirmOverlap.resumo.outras} outra(s))`:""}`}/>
-              <div style={{color:"#6B8299",marginTop:4}}>Nova: <strong style={{color:"#00C9A7"}}>{confirmOverlap.novo.rd} / {confirmOverlap.novo.classificacao}</strong></div>
+                nova={`${confirmOverlap.novo.rd} / ${confirmOverlap.novo.classificacao}`}/>
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmOverlap(null)}>Cancelar</button>
-              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{const ids=new Set(confirmOverlap.marcados); doSaveNew(true, confirmOverlap.divergentes.filter(t=>ids.has(t.id)));}}>Salvar mesmo assim</button>
+              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{const ids=new Set(confirmOverlap.marcados); doSaveNew(true, confirmOverlap.divergentes.filter(t=>ids.has(t.id)));}}>{confirmOverlap.marcados.length?`Criar regra e mudar ${confirmOverlap.marcados.length}`:"Criar regra"}</button>
             </div>
           </div>
         </div>
@@ -3754,7 +3754,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.1 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4594,7 +4594,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.1</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4786,7 +4786,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.1 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -5233,16 +5233,11 @@ export default function App() {
       {regrasAutoEmConflito.length>0&&(()=>{const c=regrasAutoEmConflito[0];const proxima=()=>setRegrasAutoEmConflito(q=>q.slice(1));return(
         <div style={{...s.modal,zIndex:320}}>
           <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ Conflita com lançamentos já gravados</div>
-            <div style={{fontSize:13,color:"#6B8299",marginBottom:14}}>
-              A regra <strong style={{color:"#E8EDF2"}}>"{c.nome}"</strong> pegaria lançamentos que hoje estão com outra classificação:
-            </div>
-            <div style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20}}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:12}}>⚠ Regra "{c.nome}"</div>
+            <div style={{marginBottom:20}}>
               <ListaAfetados lista={c.divergentes} marcados={c.marcados}
                 onChange={ids=>setRegrasAutoEmConflito(q=>[{...q[0],marcados:ids},...q.slice(1)])}
-                nova={`${c.rd}/${c.classificacao}`}
-                resumoTexto={(r=>`${r.total} lançamento(s) — ${r.qtd} como ${r.principal}${r.outras>0?` (+${r.outras} outra(s))`:""}`)(resumoDivergencia(c.divergentes))}/>
-              <div style={{color:"#6B8299",marginTop:4}}>Nova: <strong style={{color:"#00C9A7"}}>{c.rd} / {c.classificacao}</strong></div>
+                nova={`${c.rd} / ${c.classificacao}`}/>
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...s.btn("ghost"),flex:1}} onClick={proxima}>Não criar regra</button>
@@ -5254,7 +5249,7 @@ export default function App() {
                 await reclassificarMarcados(c.divergentes.filter(t=>ids.has(t.id)).map(t=>({t, rd:c.rd, classificacao:c.classificacao, subcategoria:c.subcategoria})));
                 await loadCustomCats();
                 showToast(`Regra "${c.nome}" criada.`);
-              }}>Criar mesmo assim</button>
+              }}>{c.marcados.length?`Criar regra e mudar ${c.marcados.length}`:"Criar regra"}</button>
             </div>
           </div>
         </div>
@@ -5271,14 +5266,12 @@ export default function App() {
                   <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
                     <input type="checkbox" style={{marginTop:3}} checked={!!confirmRegraConflitos.decisoes[cf.i]}
                       onChange={e=>setConfirmRegraConflitos(prev=>({...prev,decisoes:{...prev.decisoes,[cf.i]:e.target.checked}}))}/>
-                    <div style={{color:"#E8EDF2",fontWeight:600}}>"{cf.nome}"</div>
+                    <div style={{color:"#E8EDF2",fontWeight:600,fontSize:13}}>Criar a regra "{cf.nome}"</div>
                   </label>
-                  <div style={{marginLeft:23}}>
+                  <div style={{marginLeft:23,marginTop:6}}>
                     <ListaAfetados lista={cf.divergentes} marcados={confirmRegraConflitos.marcados[cf.i]||[]}
                       onChange={ids=>setConfirmRegraConflitos(prev=>({...prev,marcados:{...prev.marcados,[cf.i]:ids}}))}
-                      nova={`${cf.r.rd}/${cf.r.classificacao}`}
-                      resumoTexto={`${cf.resumo.total} lançamento(s) — ${cf.resumo.qtd} como ${cf.resumo.principal}${cf.resumo.outras>0?` (+${cf.resumo.outras} outra(s))`:""}`}/>
-                    <div style={{color:"#6B8299"}}>Nova, se marcar: <strong style={{color:"#00C9A7"}}>{cf.r.rd}/{cf.r.classificacao}</strong></div>
+                      nova={`${cf.r.rd} / ${cf.r.classificacao}`}/>
                   </div>
                 </div>
               ))}
