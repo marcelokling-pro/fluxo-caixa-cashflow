@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo, partyKey, keywordGenerica, classificarPorContraparte, construirHistoricoContraparte, coberturaDaRegra, resumoDivergencia, soFormaDePagamento, nomeRegraSugerido, regraSoOperacao } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -201,21 +201,29 @@ describe("localClassify", () => {
 
   // v7.22.0 — "Remover" numa classificacao base era so cosmetico: sumia da tela e continuava
   // classificando na importacao. hiddenBase agora faz o Passe 3 pular a regra removida.
+  // v8.4.2 — trocado o exemplo de "SISPAG" pra "CONTADOR": SISPAG (bare) saiu da base.
   it("classifica pela base quando nada foi removido", () => {
-    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []).matchedKw).toBeTruthy();
+    expect(localClassify("PAGAMENTO CONTADOR EMPRESA", [], []).matchedKw).toBeTruthy();
   });
   it("nao usa classificacao base que o usuario removeu", () => {
-    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
-    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", [], [antes.matchedKw])).toBeNull();
+    const antes = localClassify("PAGAMENTO CONTADOR EMPRESA", [], []);
+    expect(localClassify("PAGAMENTO CONTADOR EMPRESA", [], [antes.matchedKw])).toBeNull();
   });
   it("remocao de base nao afeta as outras regras base", () => {
-    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
+    const antes = localClassify("PAGAMENTO CONTADOR EMPRESA", [], []);
     expect(localClassify("PIX QR CODE RECEBIDO CLIENTE", [], [antes.matchedKw])).not.toBeNull();
   });
   it("categoria propria do usuario vence mesmo com a base removida", () => {
-    const antes = localClassify("PAGAMENTO SISPAG FORNECEDOR", [], []);
-    const cats = [{ id: 9, name: "SISPAG FORNECEDOR", rd: "DESPESAS FIXAS", classificacao: "FORNECEDORES", keywords: [] }];
-    expect(localClassify("PAGAMENTO SISPAG FORNECEDOR", cats, [antes.matchedKw]).c).toBe("FORNECEDORES");
+    const antes = localClassify("PAGAMENTO CONTADOR EMPRESA", [], []);
+    const cats = [{ id: 9, name: "CONTADOR EMPRESA", rd: "DESPESAS FIXAS", classificacao: "FORNECEDORES", keywords: [] }];
+    expect(localClassify("PAGAMENTO CONTADOR EMPRESA", cats, [antes.matchedKw]).c).toBe("FORNECEDORES");
+  });
+  // v8.4.2 — verbo bancário puro (sem contraparte identificável) não chuta mais MOVIMENTAÇÃO;
+  // fica sem match aqui e segue pra Gemini/revisão em vez de mascarar despesa real.
+  it("PIX ENVIADO/TED ENVIADA/SISPAG soltos nao tem mais fallback pra MOVIMENTAÇÃO", () => {
+    expect(localClassify("PIX ENVIADO", [], [])).toBeNull();
+    expect(localClassify("TED ENVIADA", [], [])).toBeNull();
+    expect(localClassify("SISPAG", [], [])).toBeNull();
   });
 });
 
@@ -401,5 +409,230 @@ describe("ehLinhaDeSaldo", () => {
   it("nao confunde com lancamento que so comeca parecido", () => {
     expect(ehLinhaDeSaldo("SALDOS E PAGAMENTOS LTDA")).toBe(false);
     expect(ehLinhaDeSaldo("PIX RECEBIDO")).toBe(false);
+  });
+});
+
+// v8.4.0 — Fase 1: classificação por contraparte (quem pagou/recebeu), auditada contra a
+// base real de PROD (1367 lançamentos, ver CLASSIFICACAO-diagnostico-e-proposta.md)
+describe("partyKey", () => {
+  it("usa a razão social quando ela é específica", () => {
+    expect(partyKey("PIX ENVIADO", "HANNA GONCALVES KLING")).toBe("HANNA GONCALVES KLING");
+  });
+  it("sem razão social, extrai o nome que sobra da descrição após o verbo bancário", () => {
+    expect(partyKey("PIX ENVIADO JANSO ADV PARTNERS LTDA", "")).toBe("JANSO ADV PARTNERS");
+  });
+  it("colunas trocadas: razão social é ela mesma um verbo bancário, usa a descrição", () => {
+    expect(partyKey("Hanna Kling", "Pix enviado")).toBe("HANNA KLING");
+  });
+  it("sem nome nenhum (só o verbo), não força correspondência", () => {
+    expect(partyKey("PIX ENVIADO", "")).toBeNull();
+    expect(partyKey("PIX ENVIADO", null)).toBeNull();
+  });
+  it("remove CPF/CNPJ e sufixo societário", () => {
+    expect(partyKey("", "M2K GERENCIAMENTO EMPRESARIAL LTDA")).toBe("M2K GERENCIAMENTO EMPRESARIAL");
+    expect(partyKey("PIX ENVIADO FULANO DE TAL 123.456.789-00", "")).toBe("FULANO DE TAL");
+  });
+  it("sobra de operação não vira contraparte (achado real: 'PIX QR CODE' tratado como pessoa)", () => {
+    expect(partyKey("PAGAMENTOS PIX QR-CODE", "")).toBeNull();
+    expect(partyKey("PAGAMENTOS SISPAG PIX QR-CODE", null)).toBeNull();
+  });
+  it("verbo só com fronteira de palavra: 'TED' não come o começo de 'TEDESCO'", () => {
+    expect(partyKey("PIX ENVIADO TEDESCO LTDA", "")).toBe("TEDESCO");
+  });
+});
+
+describe("keywordGenerica", () => {
+  it("recusa keyword que é só o verbo bancário", () => {
+    expect(keywordGenerica("pix enviado")).toBe(true);
+    expect(keywordGenerica("pagamentos")).toBe(true);
+    expect(keywordGenerica("qr code recebido")).toBe(true);
+  });
+  it("aceita nome específico de contraparte", () => {
+    expect(keywordGenerica("janso adv partners")).toBe(false);
+    expect(keywordGenerica("isabela penha gomes 42370038845")).toBe(false);
+  });
+  it("aceita nome de categoria que não é verbo bancário", () => {
+    expect(keywordGenerica("advogados")).toBe(false);
+  });
+  it("verbo seguido de outro verbo continua genérico", () => {
+    expect(keywordGenerica("pagamentos pix qr-code")).toBe(true);
+  });
+});
+
+describe("soFormaDePagamento", () => {
+  it("descrição que é só forma de pagamento sobe pra decisão", () => {
+    expect(soFormaDePagamento("PIX ENVIADO")).toBe(true);
+    expect(soFormaDePagamento("PAGAMENTOS PIX QR-CODE")).toBe(true);
+    expect(soFormaDePagamento("TED ENVIADA")).toBe(true);
+    expect(soFormaDePagamento("PIX ENVIADO JANSO14/08")).toBe(true);
+  });
+  it("descrição que identifica segue pela classificação cadastrada", () => {
+    expect(soFormaDePagamento("PIX ENVIADO JANSO ADV PARTNERS")).toBe(false);
+    expect(soFormaDePagamento("RECEBIMENTO REDE MAST CD")).toBe(false);
+    expect(soFormaDePagamento("SISPAG SALARIOS")).toBe(false);
+    expect(soFormaDePagamento("TED RECEBIDA")).toBe(false);
+    expect(soFormaDePagamento("DOCERIA DA ANA")).toBe(false);
+  });
+  it("não pega venda por QR code nem cheque com regra própria (achados reais: 74 vendas, 31 cheques)", () => {
+    expect(soFormaDePagamento("PIX QR CODE RECEBIDO RAQUEL MONT16/09")).toBe(false);
+    expect(soFormaDePagamento("CH COMPENSADO 341 000130")).toBe(false);
+  });
+});
+
+describe("classificarPorContraparte", () => {
+  const cats = [
+    {id:1, name:"HANNA KLING", rd:"MOVIMENTAÇÃO", classificacao:"MOVIMENTAÇÃO", subcategoria:null},
+    {id:2, name:"PDV OMIE", rd:"DESPESAS FIXAS", classificacao:"DESPESA OPERACIONAL LOJA", subcategoria:"PDV"},
+    {id:3, name:"SAÍDA PIX ENVIADO JANSO ADV PA", rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESAS ADMINISTRATIVAS", subcategoria:"ADVOGADOS"},
+  ];
+  it("classificação cadastrada da contraparte vence o histórico (achado real: OMIEXPERIENCE)", () => {
+    const comOmie = [...cats, {id:4, name:"OMIEXPERIENC", rd:"DESPESAS FIXAS", classificacao:"DESPESA OPERACIONAL LOJA", subcategoria:"PDV"}];
+    const hist = construirHistoricoContraparte([
+      {id:"a", description:"PAGAMENTOS", razao_social:"OMIEXPERIENCE S.A.", value:-70, rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESAS ADMINISTRATIVAS"},
+      {id:"b", description:"PAGAMENTOS", razao_social:"OMIEXPERIENCE S.A.", value:-70, rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESAS ADMINISTRATIVAS"},
+    ]);
+    const r = classificarPorContraparte({description:"PAGAMENTOS", razao_social:"OMIEXPERIENCE S.A.", value:-72}, comOmie, hist);
+    expect(r).toMatchObject({r:"DESPESAS FIXAS", c:"DESPESA OPERACIONAL LOJA", sub:"PDV"});
+  });
+  it("sem regra cadastrada, usa o histórico da contraparte", () => {
+    const hist = construirHistoricoContraparte([
+      {id:"a", description:"PIX ENVIADO", razao_social:"CIBELLY SOARES MANTOAN", value:-1420, rd:"DESPESAS FIXAS", classificacao:"DESPESAS COM PESSOAL", subcategoria:"SALÁRIOS"},
+    ]);
+    const r = classificarPorContraparte({description:"PIX ENVIADO", razao_social:"CIBELLY SOARES MANTOAN", value:-1500}, cats, hist);
+    expect(r).toMatchObject({r:"DESPESAS FIXAS", c:"DESPESAS COM PESSOAL", sub:"SALÁRIOS"});
+  });
+  it("regra não pula palavras: 'HANNA KLING' não pega 'HANNA GONCALVES KLING'", () => {
+    expect(classificarPorContraparte({description:"PIX ENVIADO", razao_social:"HANNA GONCALVES KLING", value:-500}, cats, new Map())).toBeNull();
+    expect(classificarPorContraparte({description:"PIX ENVIADO", razao_social:"Hanna Kling", value:-500}, cats, new Map())).toMatchObject({r:"MOVIMENTAÇÃO"});
+  });
+  it("aceita nome truncado pelo banco só no fim ('BEM MAIS GES')", () => {
+    const c2 = [{id:9, name:"BEM MAIS GES", rd:"DESPESAS VARIÁVEIS", classificacao:"DESPESAS COM PESSOAL", subcategoria:null}];
+    expect(classificarPorContraparte({description:"PAGAMENTOS", razao_social:"BEM MAIS GESTORA DE PLANOS DE BENEFICIOS LTDA", value:-90}, c2, new Map())).toMatchObject({c:"DESPESAS COM PESSOAL"});
+  });
+  it("'PDV OMIE' não bate em contraparte 'OMIEXPERIENCE' (bug real: capturava FGTS/INSS de outras empresas)", () => {
+    const r = classificarPorContraparte({description:"PAGAMENTOS", razao_social:"OMIEXPERIENCE S.A.", value:-71.19}, cats, new Map());
+    expect(r).toBeNull();
+  });
+  it("sem razão social, o nome da descrição segue a mesma cascata (regra do nome)", () => {
+    expect(classificarPorContraparte({description:"PIX ENVIADO JANSO ADV PARTNERS", razao_social:"", value:-1800}, cats, new Map())).toMatchObject({sub:"ADVOGADOS"});
+  });
+  it("sem razão social e sem regra, vale o que está gravado para o nome da descrição (J H I IMOVEI)", () => {
+    const hist = construirHistoricoContraparte([1,2,3].map(i=>({id:i, description:"BOLETO PAGO J H I IMOVEI", value:-981, rd:"DESPESAS FIXAS", classificacao:"DESPESA OPERACIONAL LOJA"})));
+    expect(classificarPorContraparte({description:"BOLETO PAGO J H I IMOVEI", value:-1140}, [], hist)).toMatchObject({c:"DESPESA OPERACIONAL LOJA"});
+  });
+  it("empate no gravado: vence o mais recente, não a ordem de carga", () => {
+    const base=[{id:1,date:"20/07/2026",rd:"DESPESAS FIXAS",classificacao:"DESPESAS COM PESSOAL"},{id:2,date:"17/09/2026",rd:"DESPESAS VARIÁVEIS",classificacao:"DESPESAS ADMINISTRATIVAS"}]
+      .map(x=>({...x, description:"PAGAMENTOS", razao_social:"CEF MATRIZ", value:-500}));
+    for (const lista of [base, [...base].reverse()])
+      expect(classificarPorContraparte({description:"PAGAMENTOS", razao_social:"CEF MATRIZ", value:-10}, [], construirHistoricoContraparte(lista))).toMatchObject({c:"DESPESAS ADMINISTRATIVAS"});
+  });
+  it("sem razão social e só operação, nada aqui (PIX ENVIADO, SISPAG SALARIOS)", () => {
+    expect(classificarPorContraparte({description:"PIX ENVIADO", value:-10}, cats, new Map())).toBeNull();
+    expect(classificarPorContraparte({description:"SISPAG SALARIOS", value:-10}, cats, new Map())).toBeNull();
+  });
+  it("'JANSO ADV PARTNERS' casa com a regra cadastrada 'SAÍDA PIX ENVIADO JANSO ADV PA' (prefixo assimétrico)", () => {
+    const r = classificarPorContraparte({description:"", razao_social:"JANSO ADV PARTNERS LTDA", value:-1800}, cats, new Map());
+    expect(r).toMatchObject({r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS", sub:"ADVOGADOS"});
+  });
+  it("direção errada não casa (regra de saída não classifica entrada)", () => {
+    const r = classificarPorContraparte({description:"PIX RECEBIDO", razao_social:"Janso Adv Partners", value:1800}, cats, new Map());
+    expect(r).toBeNull();
+  });
+  it("sem contraparte identificável, devolve null (nunca herda de outra)", () => {
+    expect(classificarPorContraparte({description:"PIX ENVIADO", razao_social:"", value:-100}, cats, new Map())).toBeNull();
+  });
+});
+
+describe("construirHistoricoContraparte", () => {
+  it("agrupa por contraparte + direção e exclui o próprio id (leave-one-out)", () => {
+    const base = [
+      {id:"x", description:"PIX ENVIADO", razao_social:"Cibelly Soares Mantoan", value:-100, rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:null},
+      {id:"y", description:"PIX ENVIADO", razao_social:"Cibelly Soares Mantoan", value:-200, rd:"RECEITA", classificacao:"RECEITA DE VENDAS", subcategoria:null},
+    ];
+    const hist = construirHistoricoContraparte(base, "y");
+    expect(hist.get("CIBELLY SOARES MANTOAN|S")).toHaveLength(1);
+    expect(hist.get("CIBELLY SOARES MANTOAN|S")[0]).toMatchObject({r:"RECEITA", c:"RECEITA DE VENDAS"});
+  });
+});
+
+// Cobertura real: o conflito de uma regra nova é medido pelos lançamentos que ela pegaria,
+// não pelo nome parecido (que dava alarme falso em CONTA x CONTADOR e não via SISPAG x salários).
+describe("coberturaDaRegra", () => {
+  const DV="DESPESAS VARIÁVEIS", DA="DESPESAS ADMINISTRATIVAS";
+  it("nome parecido sem lançamento em comum não é conflito (CONTA x CONTADOR)", () => {
+    const tx=[{id:1, description:"PAGAMENTO CONTADOR SILVA", value:-500, rd:"DESPESAS FIXAS", classificacao:DA}];
+    expect(coberturaDaRegra("CONTA AGUA LOJA CENTRO", DV, DA, tx).pegos).toBe(0);
+  });
+  it("conflito real: SISPAG pegaria salários com outra classificação", () => {
+    const tx=[1,2,3].map(i=>({id:i, description:"SISPAG SALARIOS", value:-1000, rd:"DESPESAS FIXAS", classificacao:"DESPESAS COM PESSOAL"}));
+    expect(coberturaDaRegra("SISPAG", DV, DA, tx).divergentes).toHaveLength(3);
+  });
+  it("regra mais longa já cadastrada ganha: SISPAG não disputa com SISPAG SALARIOS", () => {
+    const tx=[1,2,3].map(i=>({id:i, description:"SISPAG SALARIOS", value:-1000, rd:"DESPESAS FIXAS", classificacao:"DESPESAS COM PESSOAL"}))
+      .concat([{id:4, description:"SISPAG FORNECEDORES", value:-50, rd:"DESPESAS FIXAS", classificacao:"DESPESAS COM PESSOAL"}]);
+    const cats=[{id:"s", name:"SISPAG SALARIOS", rd:"DESPESAS FIXAS", classificacao:"DESPESAS COM PESSOAL", keywords:[]}];
+    const c=coberturaDaRegra("SISPAG", DV, DA, tx, null, cats);
+    expect(c.divergentes.map(t=>t.id)).toEqual([4]);
+  });
+  it("razão social com histórico decide antes do texto: regra por texto não disputa", () => {
+    const tx=[1,2].map(i=>({id:i, description:"SISPAG FORNEC X", razao_social:"ACME DISTRIBUIDORA LTDA", value:-10, rd:"DESPESAS FIXAS", classificacao:"FORNECEDORES"}));
+    expect(coberturaDaRegra("SISPAG FORNEC", DV, DA, tx, null, []).divergentes).toHaveLength(0);
+  });
+  it("mesmo lançamento sozinho (sem outro histórico) cai no texto e é conflito", () => {
+    const tx=[{id:1, description:"SISPAG FORNEC X", razao_social:"ACME DISTRIBUIDORA LTDA", value:-10, rd:"DESPESAS FIXAS", classificacao:"FORNECEDORES"}];
+    expect(coberturaDaRegra("SISPAG FORNEC", DV, DA, tx, null, []).divergentes).toHaveLength(1);
+  });
+  it("só forma de pagamento sem razão social vai pra decisão: regra por texto não pega", () => {
+    const tx=[{id:1, description:"PIX ENVIADO", value:-10, rd:DV, classificacao:"FORNECEDORES"}];
+    expect(coberturaDaRegra("PIX ENVIADO", DV, DA, tx, null, []).pegos).toBe(0);
+  });
+  it("nome de outra regra ganha da keyword da nova", () => {
+    const tx=[{id:1, description:"ALUGUEL LOJA CENTRO", value:-10, rd:"DESPESAS FIXAS", classificacao:"ALUGUEL"}];
+    const cats=[{id:"a", name:"ALUGUEL", rd:"DESPESAS FIXAS", classificacao:"ALUGUEL", keywords:[]}];
+    expect(coberturaDaRegra("IMOBILIARIA", DV, DA, tx, null, cats, ["imobiliaria","loja centro"]).pegos).toBe(0);
+  });
+  it("nome genérico mas consistente não é conflito (RECEBIMENTOS)", () => {
+    const tx=[1,2].map(i=>({id:i, description:"RECEBIMENTOS", value:500, rd:"RECEITA", classificacao:"RECEITA DE VENDAS"}));
+    const c=coberturaDaRegra("RECEBIMENTOS","RECEITA","RECEITA DE VENDAS",tx);
+    expect(c.pegos).toBe(2); expect(c.divergentes).toHaveLength(0);
+  });
+  it("pega também pela contraparte da razão social, não só pelo texto", () => {
+    const tx=[{id:1, description:"PIX ENVIADO", razao_social:"JANSO ADV PARTNERS LTDA", value:-100, rd:DV, classificacao:"MIDIAS E INTERNET"}];
+    expect(coberturaDaRegra("JANSO ADV PARTNERS", DV, DA, tx).divergentes).toHaveLength(1);
+  });
+  it("ajustes contam o que está sendo salvo agora", () => {
+    const tx=[{id:1, description:"PIX ENVIADO", razao_social:"JANSO ADV PARTNERS LTDA", value:-100, rd:DV, classificacao:"MIDIAS E INTERNET"}];
+    const aj=new Map([[1,{rd:DV, classificacao:DA}]]);
+    expect(coberturaDaRegra("JANSO ADV PARTNERS", DV, DA, tx, aj).divergentes).toHaveLength(0);
+  });
+  it("resumo mostra a classificação atual mais comum", () => {
+    const r=resumoDivergencia([{rd:"A",classificacao:"X"},{rd:"A",classificacao:"X"},{rd:"B",classificacao:"Y"}]);
+    expect(r).toMatchObject({total:3, principal:"A/X", qtd:2, outras:1});
+  });
+});
+
+// Revisão: o nome sugerido para a regra é quem paga/recebe — nunca a operação (bug de origem:
+// regra "PIX ENVIADO" criada pela revisão, que pegaria qualquer PIX de qualquer pessoa).
+describe("nomeRegraSugerido / regraSoOperacao", () => {
+  it("com razão social, sugere a razão social (sem sufixo societário)", () => {
+    expect(nomeRegraSugerido({description:"PIX ENVIADO", razao_social:"FERNANDA ALVES COSTA", value:-275})).toBe("FERNANDA ALVES COSTA");
+    expect(nomeRegraSugerido({description:"BOLETO PAGO", razao_social:"NOVA DISTRIBUIDORA DE EMBALAGENS LTDA", value:-640})).toBe("NOVA DISTRIBUIDORA DE EMBALAGENS");
+  });
+  it("sem razão social, sugere o nome que sobra depois da operação", () => {
+    expect(nomeRegraSugerido({description:"BOLETO PAGO LOJA NOVA XPTO", value:-200})).toBe("LOJA NOVA XPTO");
+  });
+  it("só operação: nenhuma sugestão", () => {
+    for (const d of ["PIX ENVIADO","TED ENVIADA","PAGAMENTOS PIX QR CODE","PAGAMENTOS PIX QR-CODE","BOLETO PAGO"])
+      expect(nomeRegraSugerido({description:d, value:-10})).toBe("");
+  });
+  it("descrição que identifica sem operação continua sugerindo ela", () => {
+    expect(nomeRegraSugerido({description:"PAGAMENTO CONTA AGUA LOJA CENTRO", value:-184})).not.toBe("");
+  });
+  it("regraSoOperacao barra nome de operação e deixa nome de pessoa/empresa", () => {
+    expect(regraSoOperacao("PIX ENVIADO")).toBe(true);
+    expect(regraSoOperacao("pagamentos pix qr code")).toBe(true);
+    expect(regraSoOperacao("TED ENVIADA")).toBe(true);
+    expect(regraSoOperacao("FERNANDA ALVES COSTA")).toBe(false);
+    expect(regraSoOperacao("SISPAG SALARIOS")).toBe(false);
   });
 });

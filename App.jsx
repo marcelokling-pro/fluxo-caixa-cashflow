@@ -93,7 +93,8 @@ const BASE_CLASSIFICATIONS = [
   {d:"SIMPLES",           r:"DESPESAS VARIÁVEIS", c:"IMPOSTOS"},
   {d:"SINDICATO",         r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
   {d:"SISPAG SALARIOS",   r:"DESPESAS FIXAS",     c:"DESPESAS COM PESSOAL"},
-  {d:"SISPAG",            r:"MOVIMENTAÇÃO",       c:"MOVIMENTAÇÃO"},
+  // v8.4.2 — "SISPAG" sozinho (sem SALARIOS) virou revisão: era um chute cego pra MOVIMENTAÇÃO
+  // sem saber quem é a contraparte, escondendo despesa real da Geração de Caixa.
   {d:"TAG",               r:"DESPESAS VARIÁVEIS", c:"DESPESA COM PRODUTOS"},
   {d:"TAR PIXQR LIQ",     r:"DESPESAS VARIÁVEIS", c:"DESPESA BANCÁRIA"},
   {d:"TAR PIXQR",         r:"DESPESAS FIXAS",     c:"DESPESA BANCÁRIA"},
@@ -121,9 +122,9 @@ const BASE_CLASSIFICATIONS = [
   {d:"PAGAMENTOS TRIB",      r:"DESPESAS VARIÁVEIS", c:"IMPOSTOS"},
   {d:"PAG BOLETO",           r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS"},
   {d:"TED RECEBIDA",         r:"RECEITA",         c:"RECEITA DE VENDAS"},
-  {d:"TED ENVIADA",          r:"MOVIMENTAÇÃO",    c:"MOVIMENTAÇÃO"},
-  {d:"PIX ENVIADO",          r:"MOVIMENTAÇÃO",    c:"MOVIMENTAÇÃO"},
-  {d:"PIX TRANSF",           r:"MOVIMENTAÇÃO",    c:"MOVIMENTAÇÃO"},
+  // v8.4.2 — TED ENVIADA / PIX ENVIADO / PIX TRANSF saíram daqui: eram chute cego pra
+  // MOVIMENTAÇÃO sem saber quem é a contraparte (mascarava despesa real). Sem histórico
+  // nem regra pra contraparte, vai pra revisão em vez de adivinhar.
   {d:"CH COMPENSADO",        r:"DESPESAS VARIÁVEIS", c:"DESPESAS ADMINISTRATIVAS"},
   {d:"DA  ELETROPAULO",      r:"DESPESAS FIXAS",  c:"DESPESA OPERACIONAL LOJA"},
   {d:"DA  CLARO",            r:"DESPESAS FIXAS",  c:"MIDIAS E INTERNET"},
@@ -423,6 +424,270 @@ export const hlKw = (txt, kws=[]) => {
   return (<>{str.slice(0,i)}<span style={{background:"rgba(0,201,167,0.16)",color:"#00C9A7",borderRadius:3,padding:"0 3px",fontWeight:600}}>{str.slice(i,i+n)}</span>{str.slice(i+n)}</>);
 };
 
+// ── v8.4.0 — Fase 1: classificação por contraparte (quem pagou/recebeu), antes da regra
+// por operação (localClassify). Motivo: "PIX ENVIADO" sozinho não diz nada — o que decide é
+// para quem foi. Ver CLASSIFICACAO-diagnostico-e-proposta.md para a auditoria completa.
+const normParty = (s) => String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+  .replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim();
+
+// Verbos de operação bancária: o que sobra depois de tirar um destes é a contraparte.
+const VERBOS_BANCARIOS = ["SAIDA PIX ENVIADO","ENTRADA PIX QRS","ENTRADA PIX TRANSF","ENTRADA PIX",
+  "PIX QR CODE RECEBIDO DE","PIX QR CODE RECEBIDO","PIX QR CODE","QR CODE RECEBIDO",
+  "PIX RECEBIDO DE","PIX ENVIADO PARA","PIX RECEBIDO","PIX ENVIADO","PIX TRANSF",
+  "TRANSF ENVIADA PIX","TRANSF RECEBIDA PIX","TED RECEBIDA","TED ENVIADA","TED","DOC",
+  "TRANSFERENCIA RECEBIDA","TRANSFERENCIA ENVIADA","TRANSFERENCIA","BOLETO PAGO",
+  "PAGAMENTOS SISPAG","RECEBIMENTOS SISPAG","PAGAMENTOS","RECEBIMENTOS","SISPAG TRANSF"];
+const verboBancarioDe = (texto) => { const s = normParty(texto); return VERBOS_BANCARIOS.find(v=>s.startsWith(v))||null; };
+
+const SUFIXO_SOCIETARIO = /\b(LTDA|ME|EPP|EIRELI|S A|SA|MEI)\b/g;
+// DOC_RE/COMPRA_FATURA rodam ANTES do normParty: precisam do ponto/hífen/barra originais —
+// depois de normalizado tudo vira espaço e "123.456.789-00" não seria mais reconhecível.
+const DOC_RE = /\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}|\d{11,14}/g;
+const APELIDO_DATA = /\s*[A-Z ]{0,20}?\d{2}[ ]\d{2}\s*$/; // rabicho "NOME00 00" de import truncado
+const COMPRA_FATURA = /\s*\(?\s*COMPRA\s*:?\s*\d{2}[\/\s]\d{2}[\/\s]\d{4}\s*\)?\s*/gi;
+// Tira data-de-compra e CPF/CNPJ ANTES do normParty (que apaga a pontuação de que essas
+// regexes precisam) — depois normaliza e tira o sufixo societário.
+const pretratar = (s) => String(s||"").replace(COMPRA_FATURA," ").replace(DOC_RE," ");
+const limpaContraparte = (s) => normParty(pretratar(s)).replace(SUFIXO_SOCIETARIO," ").replace(/\s+/g," ").trim();
+
+// Nome da contraparte: razão social — a menos que ELA seja o verbo bancário (colunas trocadas
+// na importação: "Hanna Kling" na descrição, "Pix enviado" na razão social), caso em que a
+// contraparte está na descrição MESMO sem verbo nela. Sem razão social (caso comum — ela é
+// opcional), tenta extrair da descrição só quando HÁ um verbo reconhecido para tirar: uma
+// operação pura sem contraparte nenhuma ("SISPAG SALARIOS") não pode virar "contraparte" só
+// por não ter verbo bateável — bug real pego pelo próprio teste antes de ir para o app.
+export const partyKey = (description, razaoSocial) => {
+  const razaoBruta = String(razaoSocial||"").trim();
+  const colunasTrocadas = razaoBruta && verboBancarioDe(razaoBruta);
+  let base = limpaContraparte(razaoBruta);
+  if (colunasTrocadas) {
+    const d = normParty(pretratar(description)), verbo = verboBancarioDe(d);
+    base = limpaContraparte((verbo ? d.slice(verbo.length) : d).replace(APELIDO_DATA," "));
+  } else if (base.length < 6) {
+    base = limpaContraparte(semVerbos(normParty(pretratar(description))) ?? "");
+  }
+  return base.length >= 6 ? base : null;
+};
+
+// Tira verbos bancários do começo, em sequência ("PAGAMENTOS PIX QR CODE" → nada): a sobra de
+// uma operação não pode virar "contraparte" (achado real: "PIX QR CODE" tratado como pessoa).
+// Sem verbo nenhum no começo → null (descrição não é de operação bancária).
+// Verbo com fronteira de palavra: "TED" não pode comer o começo de "TEDESCO".
+const verboNoInicio = (s) => VERBOS_BANCARIOS.find(v => s===v || s.startsWith(v+" ")) || null;
+const semVerbos = (t) => {
+  let s = normParty(t), v = verboNoInicio(s);
+  if (!v) return null;
+  while (v) { s = s.slice(v.length).trim(); v = verboNoInicio(s); }
+  return s.replace(APELIDO_DATA," ").trim();
+};
+
+// Keyword/nome de regra "genérica": só o verbo bancário, sem nada específico depois — bateria
+// em QUALQUER lançamento daquela operação (o bug da regra "ISABELA..." com a keyword "pix
+// enviado"). Nunca vira regra nova automática.
+export const keywordGenerica = (texto) => {
+  const t = normParty(texto);
+  if (!t) return true;
+  const resto = semVerbos(t);
+  return resto !== null && limpaContraparte(resto).length < 6;
+};
+
+// Descrição de SAÍDA que é só forma de pagamento, sem dizer quem recebeu (PIX, QR-code, TED).
+// Sem uma contraparte conhecida pela razão social, não há como classificar com segurança: vai
+// para decisão (revisão) — sem regra por texto e sem Gemini. Quem chama só aplica em saída:
+// "PIX QR CODE RECEBIDO" é venda e segue a regra de sempre. Cheque ficou de fora de propósito:
+// a regra CH COMPENSADO já classifica 31 de 31 do jeito que está gravado.
+const SO_FORMA_DE_PAGAMENTO = /^(SAIDA )?(PIX ENVIADO( PARA)?|PIX TRANSF|TED ENVIADA|TED|DOC|PAGAMENTOS (SISPAG )?PIX QR ?CODE)\b/;
+export const soFormaDePagamento = (description) => {
+  const d = normParty(pretratar(description));
+  const m = d.match(SO_FORMA_DE_PAGAMENTO);
+  if (!m) return false;
+  // apelido+data do banco ("JANSO14/08") só na sobra — aplicado na frase toda, comia o verbo
+  return d.slice(m[0].length).replace(APELIDO_DATA," ").replace(/\b\d+\b/g," ").trim().length < 3;
+};
+
+const direcaoDoRD = (rd) => rd==="RECEITA" ? "E" : (rd==="MOVIMENTAÇÃO"||rd==="INVESTIMENTOS") ? "*" : "S";
+
+// Regra cadastrada casa por contraparte, nunca por keyword solta: o nome da regra tem que ser o
+// COMEÇO da contraparte, palavra por palavra, sem pular nenhuma — só a última pode vir cortada
+// (o banco trunca o fim: "BEM MAIS GES" = "BEM MAIS GESTORA..."). Pular palavra deixava a regra
+// "HANNA KLING" pegar "HANNA GONCALVES KLING", outra pessoa.
+const casaContraparte = (parte, regra) => {
+  const P = parte.split(" ").filter(Boolean), R = regra.split(" ").filter(Boolean);
+  if (!P.length || !R.length || R.length > P.length) return 0;
+  if (R.length===1 && R[0].length<6) return 0;
+  for (let i=0;i<R.length;i++) {
+    const ok = i===R.length-1 ? P[i].startsWith(R[i]) : P[i]===R[i];
+    if (!ok) return 0;
+  }
+  return R.length*100 + R.join("").length;
+};
+const contrapartePorRegra = (nomeRegra) => {
+  const verbo = verboBancarioDe(nomeRegra);
+  return limpaContraparte(verbo ? nomeRegra.slice(verbo.length) : nomeRegra);
+};
+
+// v8.4.0 — histórico de contraparte: agrupa lançamentos já classificados por contraparte +
+// direção, para o voto da maioria em classificarPorContraparte. `excluirId` tira o próprio
+// lançamento do cálculo (evita ele "confirmar a si mesmo" ao ser reclassificado).
+export const construirHistoricoContraparte = (transactions, excluirId=null) => {
+  const mapa = new Map();
+  for (const t of (transactions||[])) {
+    if (t.id===excluirId || !t.rd || !t.classificacao) continue;
+    const parte = partyKey(t.description, t.razao_social);
+    if (!parte) continue;
+    const chave = `${parte}|${Number(t.value)>=0?"E":"S"}`;
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave).push({ r:t.rd, c:t.classificacao, sub:t.subcategoria||null, data:dateToSortable(t.date||"") });
+  }
+  return mapa;
+};
+
+// Regra cadastrada que casa com a contraparte (mais específica vence), respeitando a direção.
+const regraDaContraparte = (parte, direcao, customCats=[]) => {
+  let melhor=null, melhorForca=0;
+  for (const cat of customCats) {
+    if (!cat.rd || !cat.classificacao || keywordGenerica(cat.name)) continue;
+    const dr = direcaoDoRD(cat.rd);
+    if (dr!=="*" && dr!==direcao) continue;
+    const forca = casaContraparte(parte, contrapartePorRegra(cat.name));
+    if (forca>melhorForca) { melhorForca=forca; melhor=cat; }
+  }
+  return melhor;
+};
+
+// Cascata por contraparte (razão social, ou o nome que sobra na descrição depois da operação):
+// a classificação CADASTRADA pra
+// essa contraparte manda → senão o histórico dela (voto da maioria, mesma direção) → null.
+// Nunca herda classificação de OUTRA contraparte.
+// Sem razão social, o nome vem da descrição, depois da operação ("BOLETO PAGO J H I IMOVEI" →
+// J H I IMOVEI): mesma cascata — o que está gravado para esse nome vale (partyKey já devolve
+// null quando só sobra operação, ex.: "PIX ENVIADO", "SISPAG SALARIOS").
+export const classificarPorContraparte = (row, customCats=[], historico=null) => {
+  const parte = partyKey(row.description, row.razao_social);
+  if (!parte) return null;
+  const direcao = Number(row.value)>=0 ? "E" : "S";
+  const regra = regraDaContraparte(parte, direcao, customCats);
+  if (regra) return { r:regra.rd, c:regra.classificacao, sub:regra.subcategoria||null, catId:regra.id, matchedKw:regra.name };
+  const passado = historico?.get(`${parte}|${direcao}`);
+  if (passado?.length) {
+    // voto da maioria; empate → vence o gravado mais recente (antes dependia da ordem em que os
+    // lançamentos foram carregados — achado real: CEF MATRIZ com 2 Pessoal x 2 Administrativas)
+    const contagem = new Map();
+    passado.forEach(x => { const k = `${x.r}|${x.c}|${x.sub||""}`; const v = contagem.get(k)||{n:0,data:""};
+      contagem.set(k,{n:v.n+1, data: String(x.data||"")>v.data ? String(x.data||"") : v.data}); });
+    const [chave] = [...contagem.entries()].sort((a,b)=>b[1].n-a[1].n || b[1].data.localeCompare(a[1].data))[0];
+    const [r,c,sub] = chave.split("|");
+    return { r, c, sub: sub||null, catId:null, matchedKw:`histórico: ${parte}` };
+  }
+  return null;
+};
+
+// Cobertura real de uma regra candidata: quais lançamentos JÁ GRAVADOS ela pegaria, pelo mesmo
+// casamento da importação (texto na descrição, ou contraparte da razão social), e quais deles
+// hoje estão com outra classificação. Substitui a antiga checagem por "nome parecido", que
+// dava alarme falso (CONTA x CONTADOR) e não enxergava conflito real (SISPAG x 110 salários).
+// `ajustes` (id → {rd, classificacao}) aplica o que está sendo salvo agora e o estado ainda não viu.
+export const coberturaDaRegra = (nome, rd, classificacao, transactions=[], ajustes=null, customCats=[], keywords=null, hiddenBase=[]) => {
+  const N = String(nome||"").trim().toUpperCase();
+  if (!N) return { pegos:0, divergentes:[] };
+  // A regra como ela seria gravada (nome + keywords; mesmo nome = a mesma regra, soma keywords)
+  // entra no lugar certo da lista, e quem decide é a MESMA função da importação
+  // (classificacaoLocal): ordem contraparte → forma de pagamento → texto, precedência de nome
+  // sobre keyword e da regra mais longa. Nada de cópia da lógica — a cópia divergia (SISPAG).
+  const existente = (customCats||[]).find(c=>String(c.name||"").toUpperCase()===N);
+  const kws = [...new Set([...(existente?.keywords||[]), ...(keywords||[N.toLowerCase()])].filter(Boolean))];
+  const nova = {id:"__nova__", name:N, rd, classificacao, subcategoria:null, keywords:kws};
+  // Na posição em que ela vai estar depois de gravada (loadCustomCats ordena por nome): em
+  // empate de força, a importação decide pela ordem da lista.
+  const cats = (customCats||[]).filter(c=>c!==existente);
+  const pos = cats.findIndex(c=>String(c.name||"").localeCompare(N,"pt-BR")>0);
+  cats.splice(pos<0 ? cats.length : pos, 0, nova);
+  const lista = ajustes ? transactions.map(t=>ajustes.has(t.id) ? {...t, ...ajustes.get(t.id)} : t) : transactions;
+  const historico = construirHistoricoContraparte(lista);
+  // Filtro barato (condição necessária): a regra nova só pode decidir o que ela casa por texto
+  // ou pela contraparte. Quem decide de fato é a classificacaoLocal logo abaixo.
+  const parteRegra = keywordGenerica(N) ? "" : contrapartePorRegra(N);
+  const podeCasar = (t) => {
+    const d = String(t.description||"").toUpperCase().trim();
+    if (d.includes(N) || kws.some(k=>flexMatch(d,k))) return true;
+    if (!parteRegra) return false;
+    const parte = partyKey(t.description, t.razao_social);
+    return !!parte && casaContraparte(parte, parteRegra)>0;
+  };
+  const pegos = lista.filter(t => podeCasar(t) &&
+    classificacaoLocal(t, cats, hiddenBase, historicoSem(historico, t))?.catId === nova.id);
+  // Sem classificação (pendente de revisão) não é conflito: é o que a regra nova resolve —
+  // vai em `pendentes`, para o "aplicar" logo depois de salvar.
+  const semClass = t => !t.rd || !t.classificacao || t.needs_review;
+  const divergentes = pegos.filter(t => !semClass(t) && (t.rd!==rd || t.classificacao!==classificacao));
+  const pendentes = pegos.filter(semClass);
+  return { pegos: pegos.length, divergentes, pendentes };
+};
+
+// Histórico sem o voto do próprio lançamento — como se ele estivesse chegando agora na
+// importação (senão ele "confirma a si mesmo" e esconde o que a regra faria com ele).
+const historicoSem = (historico, t) => {
+  const parte = partyKey(t.description, t.razao_social);
+  if (!parte || !t.rd || !t.classificacao) return historico;
+  const chaveT = `${parte}|${Number(t.value)>=0?"E":"S"}`;
+  return { get: (k) => {
+    const l = historico.get(k);
+    if (k!==chaveT || !l) return l;
+    const i = l.findIndex(x=>x.r===t.rd && x.c===t.classificacao && (x.sub||null)===(t.subcategoria||null));
+    return i<0 ? l : [...l.slice(0,i), ...l.slice(i+1)];
+  }};
+};
+
+// Decisão local da importação, sem Gemini — a ÚNICA fonte: classifyAndSave e a checagem de
+// conflito (coberturaDaRegra) chamam esta mesma função. Devolve a classificação (com catId da
+// regra que decidiu), {decidir:true} (só forma de pagamento, vai pra revisão) ou null (Gemini).
+// Reavalia lançamentos JÁ GRAVADOS pela mesma decisão da importação (classificacaoLocal, com o
+// histórico sem o próprio lançamento). Classificação manual fica de fora: o passado só muda por
+// alteração sua. Devolve só os que mudariam, com suggestedRd/Class/Sub; `semSugestao` inclui os
+// que ficariam sem decisão local (suggested null = revisar), senão eles são ignorados.
+export const reavaliarGravados = (lista=[], todas=[], customCats=[], hiddenBase=[], semSugestao=false) => {
+  const h = construirHistoricoContraparte(todas);
+  return lista.filter(t=>!t.classificacao_manual).map(t=>{
+    const r = classificacaoLocal(t, customCats, hiddenBase, historicoSem(h, t));
+    const sug = r && !r.decidir ? r : null;
+    if (!sug && !semSugestao) return null;
+    if (sug && sug.r===t.rd && sug.c===t.classificacao && (sug.sub||null)===(t.subcategoria||null)) return null;
+    return {...t, suggestedRd:sug?.r||null, suggestedClass:sug?.c||null, suggestedSub:sug?.sub||null};
+  }).filter(Boolean);
+};
+
+// Na SAÍDA, nome de operação ("BOLETO PAGO", "PIX ENVIADO"...) não diz quem recebeu: se há um
+// nome (razão social, ou o que sobra na descrição depois da operação), decide a regra DESSE nome;
+// sem ela, vai para decisão — nem a regra genérica nem o Gemini adivinham (achado real:
+// "BOLETO PAGO J H I IMOVEI", aluguel gravado à mão, virava Desp. Administrativas). Com razão
+// social e nenhuma regra/histórico dela: regra por descrição que não seja genérica, senão decisão.
+// Entrada fica como sempre: recebimento é receita.
+const GENERICAS_BASE = BASE_CLASSIFICATIONS.filter(b=>keywordGenerica(b.d)).map(b=>b.d);
+const semGenericas = (cats=[]) => cats.filter(c=>!keywordGenerica(c.name))
+  .map(c=>({...c, keywords:(c.keywords||[]).filter(k=>!keywordGenerica(k))}));
+export const classificacaoLocal = (row, customCats=[], hiddenBase=[], historico=null) => {
+  const porContraparte = classificarPorContraparte(row, customCats, historico);
+  if (porContraparte) return porContraparte;
+  const saida = Number(row.value)<0;
+  if (saida && soFormaDePagamento(row.description)) return { decidir:true };
+  const porTexto = localClassify(row.description, customCats, hiddenBase);
+  if (!saida) return porTexto;
+  const comRazao = !!String(row.razao_social||"").trim() && !!partyKey(row.description, row.razao_social);
+  if (!comRazao && !partyKey(row.description, null)) return porTexto;
+  if (porTexto && !keywordGenerica(porTexto.matchedKw)) return porTexto;
+  const doNome = porTexto ? localClassify(row.description, semGenericas(customCats), [...(hiddenBase||[]), ...GENERICAS_BASE]) : null;
+  if (doNome) return doNome;
+  return (comRazao || porTexto) ? { decidir:true } : null;
+};
+
+// Resumo curto pro card de conflito: quantos divergem e a classificação atual mais comum.
+export const resumoDivergencia = (divergentes=[]) => {
+  const cont = new Map();
+  divergentes.forEach(t => { const k = `${t.rd}/${t.classificacao}`; cont.set(k,(cont.get(k)||0)+1); });
+  const [principal, qtd] = [...cont.entries()].sort((a,b)=>b[1]-a[1])[0] || ["",0];
+  return { total: divergentes.length, principal, qtd, outras: cont.size-1 };
+};
+
 // ── FIX #2: localClassify — longest match wins, custom cats checked first ────
 // v7.22.0 — `hiddenBase` sao as classificacoes fixas que o usuario removeu na tela de
 // Classificacoes. Ate a v7.21.0 essa lista so filtrava a exibicao: a regra sumia da tela
@@ -470,7 +735,8 @@ Classificações disponíveis: ${CLASSIFICACOES.join(", ")}
 Regras CRÍTICAS (siga rigorosamente):
 - RECEBIMENTO, PIX RECEBIDO, PIX QR CODE RECEBIDO, REDE AMEX/VISA/MAST, PAGSEGURO, VINDI = RECEITA / RECEITA DE VENDAS
 - RENDIMENTO, JUROS DE APLICAÇÃO, CDB, TESOURO = RECEITA / RECEITA DE INVESTIMENTOS
-- PIX ENVIADO, TED ENVIADA, TRANSFERÊNCIA, SISPAG (sem SALARIO) = MOVIMENTAÇÃO / MOVIMENTAÇÃO
+- TRANSFERÊNCIA ENTRE CONTAS (da própria empresa) = MOVIMENTAÇÃO / MOVIMENTAÇÃO
+- PIX ENVIADO, TED ENVIADA, SISPAG (sem SALARIO) SEM nome de quem recebeu identificável na descrição: não adivinhe — responda {} (vazio), vai para revisão manual
 - APLICAÇÃO, RESGATE = INVESTIMENTOS / INVESTIMENTOS
 - DARF, SIMPLES, ISS, ICMS, IOF, IRPF, IRPJ, TRIBUTO = DESPESAS VARIÁVEIS / IMPOSTOS
 - SALÁRIO, INSS, FGTS, VR, VT, PRÓ LABORE, FÉRIAS, RESCISÃO = DESPESAS FIXAS / DESPESAS COM PESSOAL
@@ -836,13 +1102,79 @@ const LoginScreen = ({onLogin}) => {
 // Antes vinha um segundo modal ("Regras sugeridas") repetindo a classificacao que o
 // usuario acabou de escolher; com um lancamento so, a segunda tela nao acrescentava
 // nada alem da pergunta "vira regra?", que agora e uma linha dentro do card.
-const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes, allSubcategorias = []}) => {
+// Lançamentos já gravados que uma regra nova pegaria, agrupados pela classificação atual, com
+// seleção total, por grupo e individual. Marcar é alteração manual: o lançamento passa para a
+// classificação nova ao continuar. Nada vem marcado — por padrão o passado fica como está.
+const ListaAfetados = ({lista=[], marcados=[], onChange, resumoTexto, nova}) => {
+  const [aberta, setAberta] = useState(true);
+  const grupos = useMemo(() => {
+    const g = new Map();
+    lista.forEach(t => { const k = `${t.rd} / ${t.classificacao}`; if (!g.has(k)) g.set(k, []); g.get(k).push(t); });
+    return [...g.entries()].sort((a,b)=>b[1].length-a[1].length);
+  }, [lista]);
+  const sel = new Set(marcados);
+  const marcar = (ids, on) => { const n = new Set(marcados); ids.forEach(id => on ? n.add(id) : n.delete(id)); onChange([...n]); };
+  const caixa = (ids) => {
+    const qtd = ids.filter(id=>sel.has(id)).length;
+    return <input type="checkbox" checked={qtd>0 && qtd===ids.length} ref={el=>{ if (el) el.indeterminate = qtd>0 && qtd<ids.length; }}
+      onChange={e=>marcar(ids, e.target.checked)} style={{cursor:"pointer",flexShrink:0}}/>;
+  };
+  const linha = {display:"grid",gridTemplateColumns:"16px 78px 1fr 1fr 90px",gap:8,alignItems:"center",padding:"3px 0",borderBottom:"1px solid #1E2D3D55",color:"#C9D3DD",cursor:"pointer"};
+  return (<>
+    <div style={{color:"#6B8299",marginTop:2}}>Hoje: <strong style={{color:"#F5A623"}}>{resumoTexto}</strong>
+      <span onClick={()=>setAberta(a=>!a)} style={{color:"#00C9A7",cursor:"pointer",fontWeight:600,marginLeft:6,whiteSpace:"nowrap",userSelect:"none"}}>{aberta?"▾ ocultar":"▸ ver lançamentos"}</span>
+    </div>
+    {aberta&&(<>
+      <div style={{margin:"8px 0 6px",maxHeight:220,overflowY:"auto",borderTop:"1px solid #1E2D3D",paddingTop:6}}>
+        <label style={{display:"flex",gap:8,alignItems:"center",color:"#E8EDF2",fontWeight:600,margin:"2px 0 6px",cursor:"pointer"}}>
+          {caixa(lista.map(t=>t.id))} Marcar todos ({lista.length})
+        </label>
+        {grupos.map(([k,itens])=>(
+          <div key={k}>
+            <label style={{display:"flex",gap:8,alignItems:"center",color:"#F5A623",fontWeight:700,fontSize:11,margin:"8px 0 4px",cursor:"pointer"}}>
+              {caixa(itens.map(t=>t.id))} {k} · {itens.length}
+            </label>
+            {itens.map(t=>(
+              <label key={t.id} style={linha}>
+                {caixa([t.id])}
+                <span style={{color:"#6B8299"}}>{t.date}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</span>
+                <span style={{color:"#6B8299",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.razao_social||"—"}</span>
+                <span style={{textAlign:"right",color:Number(t.value)>=0?"#2ECC71":"#E8445A",fontVariantNumeric:"tabular-nums"}}>{fmt(Number(t.value))}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{color:"#00C9A7",fontWeight:600,margin:"2px 0 4px"}}>
+        {marcados.length ? `${marcados.length} marcado(s) — passam para ${nova} ao continuar` : "Nenhum marcado — os lançamentos já gravados ficam como estão"}
+      </div>
+    </>)}
+  </>);
+};
+
+// Nome sugerido para a regra da revisão: quem paga/recebe (razão social, ou o nome que sobra na
+// descrição depois da operação). Descrição que é só operação ("PIX ENVIADO", "TED ENVIADA",
+// "PAGAMENTOS PIX QR CODE") não tem nome para virar regra: volta vazio e a caixa vem desmarcada.
+// Regra genérica é o bug de origem ("pix enviado" pegou 64 lançamentos de gente diferente).
+export const nomeRegraSugerido = (t) => {
+  const parte = partyKey(t.description, t.razao_social);
+  if (parte) return parte;
+  const d = String(t.description||"").toUpperCase().trim();
+  const mk = merchantKey(d) || d;
+  return (regraSoOperacao(mk) || soFormaDePagamento(d)) ? "" : mk;
+};
+// Nome que é só operação bancária nunca vira regra (revisão, + Nova Classificação, edição).
+export const regraSoOperacao = (nome) => keywordGenerica(nome) || soFormaDePagamento(nome);
+
+const ReviewModal = ({items, onConfirm, onCancel, onDiscard, allClassificacoes, allSubcategorias = [], saving=false}) => {
   const [rows, setRows] = useState(items.map(t=>({...t})));
-  const [regras, setRegras] = useState(items.map(t=>({
-    criar: true, nome: merchantKey(String(t.description).toUpperCase().trim()) || String(t.description).toUpperCase().trim(),
-  })));
+  const [regras, setRegras] = useState(items.map(t=>{ const nome = nomeRegraSugerido(t); return {criar:!!nome, nome}; }));
   const setRegra = (idx, field, val) => setRegras(prev=>prev.map((r,i)=>i===idx?{...r,[field]:val}:r));
-  const cobertura = (nome) => rows.filter(r=>flexMatch(r.description, nome)).length;
+  // quantos desta importação a regra pegaria: pelo texto ou pela contraparte (razão social/nome)
+  const cobertura = (nome) => { const pr = contrapartePorRegra(String(nome||"").toUpperCase());
+    return rows.filter(r=>{ if (flexMatch(r.description, nome)) return true;
+      const pt = partyKey(r.description, r.razao_social); return !!pt && pr.length>=6 && casaContraparte(pt, pr)>0; }).length; };
   const update = (idx, field, val) => setRows(prev => prev.map((r,i) => {
     if (i !== idx) return r;
     const updated = {...r, [field]: val};
@@ -921,15 +1253,20 @@ const ReviewModal = ({items, onConfirm, onCancel, allClassificacoes, allSubcateg
                     onChange={e=>setRegra(i,"nome",e.target.value)}
                     style={{background:"#162130",border:"1px solid #00C9A7",borderRadius:7,padding:"6px 10px",color:"#E8EDF2",
                       fontFamily:"monospace",fontSize:11.5,fontWeight:600,flex:"1 1 220px",maxWidth:320}}/>
-                  <span style={{fontSize:10.5,color:"#F5A623"}}>cobre {cobertura(regras[i].nome)} de {rows.length} desta importação</span>
+                  {regraSoOperacao(regras[i].nome)
+                    ? <span style={{fontSize:10.5,color:"#E8445A"}}>nome de operação — não vira regra; use o nome de quem paga/recebe</span>
+                    : <span style={{fontSize:10.5,color:"#F5A623"}}>cobre {cobertura(regras[i].nome)} de {rows.length} desta importação</span>}
                 </div>
               )}
             </div>
           </div>
         ))}
         <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} onClick={onCancel}>Importar sem classificar</button>
-          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923"}} onClick={()=>onConfirm(rows,regras)}>✓ Confirmar e Salvar ({rows.length})</button>
+          {/* v8.7.0 — cancela de verdade: fecha sem gravar nada. Diferente de "Importar sem
+              classificar" (grava tudo sem classificação, pro saldo bater com o extrato). */}
+          <button style={{padding:"10px 16px",borderRadius:8,border:"1px solid #E8445A44",cursor:saving?"default":"pointer",fontWeight:600,background:"transparent",color:"#E8445A",opacity:saving?0.5:1}} disabled={saving} onClick={onDiscard}>Cancelar importação</button>
+          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:saving?"default":"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299",opacity:saving?0.5:1}} disabled={saving} onClick={onCancel}>Importar sem classificar</button>
+          <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:saving?"default":"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923",opacity:saving?0.7:1}} disabled={saving} onClick={()=>onConfirm(rows,regras)}>{saving?"Salvando...":`✓ Confirmar e Salvar (${rows.length})`}</button>
         </div>
       </div>
     </div>
@@ -1458,7 +1795,7 @@ const AnaliseTab = ({transactions, s, fmt}) => {
 
 // CLASSIFICAÇÕES TAB — unified, editable, searchable
 // ══════════════════════════════════════════════════════════════════════════════
-const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions, hiddenBaseCls, hideBaseClassification}) => {
+const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransactions, hiddenBaseCls, hideBaseClassification, transactions=[], onReclassificar}) => {
   const [search, setSearch] = useState("");
   // v8.2.1 — padrão: todo campo de busca livre entra no memo por useDeferredValue,
   // assim a tecla aparece na hora e o recalculo da lista não bloqueia a digitação.
@@ -1475,6 +1812,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [sortCol, setSortCol] = useState("detalhe");
   const [sortDir, setSortDir] = useState("asc");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmOverlap, setConfirmOverlap] = useState(null); // v8.5.0 — nome novo parece com regra já cadastrada
+  const [filterPeriodo, setFilterPeriodo] = useState("todos"); // v8.6.0 — gestão de classificações novas criadas pelo sistema
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -1484,7 +1823,8 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       classificacao: c.classificacao||"",
       subcategoria: c.subcategoria||"",
       keywords: (c.keywords||[]).filter(k=>k&&k!==c.name?.toLowerCase()),
-      isCustom: true
+      isCustom: true,
+      createdAt: c.created_at||null, // v8.6.0 — gestão de classificações novas: sistema não tem data (hardcoded)
     }));
     const customNames = new Set(custom.map(c=>c.detalhe.toUpperCase()));
     const hidden = new Set((hiddenBaseCls||[]).map(n=>n.toUpperCase()));
@@ -1501,37 +1841,33 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     else { setSortCol(col); setSortDir("asc"); }
   };
 
+  // v8.6.0 — gestão de classificações novas: revisar o que o sistema criou sozinho nos
+  // últimos dias (regra criada na revisão/edição/similares), sem depender de lembrar o nome.
+  const diasDesdeCriacao = (iso) => iso ? (Date.now()-new Date(iso).getTime())/86400000 : Infinity;
   const filtered = useMemo(() => {
+    const limitePeriodo = filterPeriodo==="7d" ? 7 : filterPeriodo==="30d" ? 30 : null;
     const base = allRows.filter(r => {
       const ms = !searchDefer || r.detalhe.toLowerCase().includes(searchDefer.toLowerCase()) || r.classificacao.toLowerCase().includes(searchDefer.toLowerCase());
       const mr = filterRd==="todos" || r.rd===filterRd;
       const mo = filterOrigem==="todos" || (filterOrigem==="manual" ? r.isCustom : !r.isCustom);
-      return ms && mr && mo;
+      const mp = limitePeriodo===null || (r.isCustom && diasDesdeCriacao(r.createdAt)<=limitePeriodo);
+      return ms && mr && mo && mp;
     });
     return [...base].sort((a,b)=>{
+      if (sortCol==="createdAt") {
+        const av = a.createdAt ? new Date(a.createdAt).getTime() : -Infinity;
+        const bv = b.createdAt ? new Date(b.createdAt).getTime() : -Infinity;
+        return sortDir==="asc" ? av-bv : bv-av;
+      }
       const av = (a[sortCol]||"").toLowerCase();
       const bv = (b[sortCol]||"").toLowerCase();
       return sortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [allRows, searchDefer, filterRd, filterOrigem, sortCol, sortDir]);
-
-  const findAffected = async (keywords) => {
-    const kws = (Array.isArray(keywords)?keywords:[keywords]).map(k=>k.trim().toUpperCase()).filter(Boolean);
-    const allData=[]; const pageSize=1000; let from=0;
-    while(true){
-      const {data,error}=await supabase.from("transactions").select("id,date,description,rd,classificacao,conta,origin").order("id",{ascending:true}).range(from,from+pageSize-1);
-      if(error||!data||data.length===0) break;
-      allData.push(...data);
-      if(data.length<pageSize) break;
-      from+=pageSize;
-    }
-    return allData.filter(t =>
-      kws.some(kw=>flexMatch(t.description, kw))
-    );
-  };
+  }, [allRows, searchDefer, filterRd, filterOrigem, filterPeriodo, sortCol, sortDir]);
 
   const saveEdit = async () => {
     if (!editingRow?.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
+    if (editingRow.isCustom && regraSoOperacao(editingRow.detalhe)) { showToast(`"${editingRow.detalhe.trim()}" é só nome de operação — use o nome de quem paga/recebe.`,"error"); return; }
     if (!editingRow.rd || !editingRow.classificacao) { showToast("R/D e Classificação são obrigatórios.","error"); return; }
     setSaving(true);
     const nameKw = editingRow.detalhe.trim().toLowerCase();
@@ -1553,18 +1889,18 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
       }, {onConflict:"name"});
       if (error) { showToast("Erro: "+error.message,"error"); setSaving(false); return; }
     }
-    const affected = await findAffected([editingRow.detalhe, ...editKws]);
+    // Afetados = o que a regra editada decide de fato na importação (mesma lógica), fora os de
+    // classificação manual; sem classificação entram. Nada muda sem você aplicar.
+    const outras = customCats.filter(c=>c.id!==editingRow.id);
+    const cob = coberturaDaRegra(editingRow.detalhe, editingRow.rd, editingRow.classificacao, transactions, null, outras, mergedKws, hiddenBaseCls);
+    const affected = [...cob.pendentes, ...cob.divergentes.filter(t=>!t.classificacao_manual)];
     // Keywords removidas: re-avaliar lançamentos que eram classificados por elas
     const removedKws = (editingRow.keywords||[]).map(k=>k.toLowerCase()).filter(k=>!mergedKws.includes(k));
     let reeval = [];
     if (removedKws.length > 0) {
-      const {data:freshCats} = await supabase.from("categories").select("*");
-      const matched = await findAffected(removedKws);
-      reeval = matched.map(t=>{
-        const local = localClassify(t.description, freshCats||[], hiddenBaseCls);
-        const sugRd = local?.r||null, sugClass = local?.c||null;
-        return (sugRd!==t.rd||sugClass!==t.classificacao) ? {...t, suggestedRd:sugRd, suggestedClass:sugClass, suggestedSub:local?.sub||null} : null;
-      }).filter(Boolean);
+      const {data:freshCats} = await supabase.from("categories").select("*").order("name");
+      const matched = transactions.filter(t=>removedKws.some(k=>flexMatch(t.description, k)));
+      reeval = reavaliarGravados(matched, transactions, freshCats||[], hiddenBaseCls, true);
     }
     await loadCustomCats(); setEditingRow(null); setSaving(false);
     const reevalPayload = reeval.length > 0 ? {ruleName:editingRow.detalhe.trim().toUpperCase(), reeval:true, trans:reeval} : null;
@@ -1577,26 +1913,48 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
     }
   };
 
-  const saveNew = async () => {
-    if (!newRow.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
-    setSaving(true);
+  // Antes de gravar, cobertura real: se a regra pegaria lançamentos já gravados com outra
+  // classificação, para e mostra (confirmOverlap). Sem divergência, grava direto. Não funde
+  // com regra de nome parecido — nome igual já é a mesma regra (upsert por nome).
+  const doSaveNew = async (forcar=false, marcados=[]) => {
     const name = newRow.detalhe.trim().toUpperCase();
     const kws = newRow.keywords.split(",").map(k=>k.trim().toLowerCase()).filter(Boolean);
+    const {divergentes, pendentes} = coberturaDaRegra(name, newRow.rd, newRow.classificacao, transactions, null, customCats,
+      [newRow.detalhe.trim().toLowerCase(), ...kws], hiddenBaseCls);
+    if (!forcar) {
+      if (divergentes.length) {
+        setConfirmOverlap({novo:{name,rd:newRow.rd,classificacao:newRow.classificacao}, resumo:resumoDivergencia(divergentes), divergentes, marcados:[]});
+        return;
+      }
+    }
+    setSaving(true);
     const {error} = await supabase.from("categories").upsert({
       name, rd: newRow.rd, classificacao: newRow.classificacao,
       subcategoria: newRow.subcategoria||null,
       keywords: [...new Set([newRow.detalhe.trim().toLowerCase(), ...kws])],
     }, {onConflict:"name"});
     if (error) { showToast("Erro ao salvar: "+error.message,"error"); setSaving(false); return; }
-    const affected = await findAffected([newRow.detalhe, ...kws]);
+    // marcados em "ver lançamentos": alteração manual para a classificação da regra nova
+    if (marcados.length && onReclassificar)
+      await onReclassificar(marcados.map(t=>({t, rd:newRow.rd, classificacao:newRow.classificacao, subcategoria:newRow.subcategoria||null})));
+    // Já gravados com outra classificação foram decididos no card (marcados); aqui só os sem
+    // classificação que a regra resolve.
+    const affected = pendentes;
     await loadCustomCats();
     setNewRow({detalhe:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",subcategoria:"",keywords:""});
-    setShowAdd(false); setSaving(false);
+    setShowAdd(false); setSaving(false); setConfirmOverlap(null);
     if (affected.length > 0) {
       setPendingApply({ruleName:name, rd:newRow.rd, classificacao:newRow.classificacao, subcategoria:newRow.subcategoria||null, trans:affected});
     } else {
       showToast("Classificação salva!");
     }
+  };
+  const saveNew = () => {
+    if (!newRow.detalhe.trim()) { showToast("Descrição obrigatória.","error"); return; }
+    const kwOp = newRow.keywords.split(",").map(k=>k.trim()).filter(Boolean).find(regraSoOperacao);
+    if (kwOp) { showToast(`Keyword "${kwOp}" é só nome de operação — pegaria lançamentos de qualquer pessoa.`,"error"); return; }
+    if (regraSoOperacao(newRow.detalhe)) { showToast(`"${newRow.detalhe.trim()}" é só nome de operação — use o nome de quem paga/recebe.`,"error"); return; }
+    doSaveNew(false);
   };
 
   const deleteCustom = async (id, msg) => {
@@ -1650,15 +2008,9 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             } catch(err){ showToast("Erro: "+err.message,"error"); }
           }}/>
           <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
-            const {data:trans} = await supabase.from("transactions").select("id,date,description,rd,classificacao,subcategoria,conta,origin");
-            const {data:freshCats} = await supabase.from("categories").select("*");
-            if(!trans) return;
-            const diffs = trans.filter(t=>!isCCTransaction(t)).map(t=>{
-              const local = localClassify(t.description, freshCats||[], hiddenBaseCls);
-              if(!local) return null;
-              return (local.r!==t.rd||local.c!==t.classificacao||(local.sub||null)!==(t.subcategoria||null))
-                ? {...t, suggestedRd:local.r, suggestedClass:local.c, suggestedSub:local.sub||null} : null;
-            }).filter(Boolean);
+            // Mesma decisão da importação; classificação manual fica de fora (reavaliarGravados).
+            const {data:freshCats} = await supabase.from("categories").select("*").order("name");
+            const diffs = reavaliarGravados(transactions.filter(t=>!isCCTransaction(t)), transactions, freshCats||[], hiddenBaseCls);
             if(diffs.length===0){ showToast("Tudo já está conforme as regras."); return; }
             setPendingApply({ruleName:"Reclassificação geral", reeval:true, trans:diffs});
           }}>🔄 Reclassificar</button>
@@ -1687,6 +2039,29 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                 row.isCustom ? deleteCustom(row.id, msg) : hideBaseClassification(row.detalhe, msg);
                 setConfirmDelete(null);
               }}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Regra nova pegaria lançamentos já gravados com outra classificação (cobertura real) */}
+      {confirmOverlap&&(
+        <div style={s.modal} onClick={()=>setConfirmOverlap(null)}>
+          <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ Conflita com lançamentos já gravados</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:14}}>
+              <strong style={{color:"#E8EDF2"}}>"{confirmOverlap.novo.name}"</strong> pegaria lançamentos que hoje estão com outra classificação:
+            </div>
+            <div style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20}}>
+              <ListaAfetados lista={confirmOverlap.divergentes} marcados={confirmOverlap.marcados}
+                onChange={ids=>setConfirmOverlap(p=>({...p,marcados:ids}))}
+                nova={`${confirmOverlap.novo.rd}/${confirmOverlap.novo.classificacao}`}
+                resumoTexto={`${confirmOverlap.resumo.total} lançamento(s) — ${confirmOverlap.resumo.qtd} como ${confirmOverlap.resumo.principal}${confirmOverlap.resumo.outras>0?` (+${confirmOverlap.resumo.outras} outra(s))`:""}`}/>
+              <div style={{color:"#6B8299",marginTop:4}}>Nova: <strong style={{color:"#00C9A7"}}>{confirmOverlap.novo.rd} / {confirmOverlap.novo.classificacao}</strong></div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmOverlap(null)}>Cancelar</button>
+              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{const ids=new Set(confirmOverlap.marcados); doSaveNew(true, confirmOverlap.divergentes.filter(t=>ids.has(t.id)));}}>Salvar mesmo assim</button>
             </div>
           </div>
         </div>
@@ -1808,10 +2183,15 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
           <option value="manual">Só manuais</option>
           <option value="sistema">Só do sistema</option>
         </select>
+        <select style={s.sel} value={filterPeriodo} onChange={e=>setFilterPeriodo(e.target.value)} title="Criadas em (só manuais têm data)">
+          <option value="todos">Qualquer período</option>
+          <option value="7d">Criadas nos últimos 7 dias</option>
+          <option value="30d">Criadas nos últimos 30 dias</option>
+        </select>
         <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>toggleSort(sortCol)} title="Alternar ordem">
-          {sortCol==="detalhe"?"Descrição":sortCol==="rd"?"R/D":sortCol==="classificacao"?"Classificação":"Subcategoria"} {sortDir==="asc"?"↑":"↓"}
+          {sortCol==="detalhe"?"Descrição":sortCol==="rd"?"R/D":sortCol==="classificacao"?"Classificação":sortCol==="createdAt"?"Criado em":"Subcategoria"} {sortDir==="asc"?"↑":"↓"}
         </button>
-        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setSearch("");setFilterRd("todos");setFilterOrigem("todos");setSortCol("detalhe");setSortDir("asc");}}>Limpar filtros</button>
+        <button style={{...s.btn("ghost"),padding:"8px 14px"}} onClick={()=>{setSearch("");setFilterRd("todos");setFilterOrigem("todos");setFilterPeriodo("todos");setSortCol("detalhe");setSortDir("asc");}}>Limpar filtros</button>
       </div>
 
       <div style={{...s.card,padding:0,overflow:"hidden"}}>
@@ -1819,7 +2199,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
         <table style={s.table}>
           <thead style={{position:"sticky",top:0,zIndex:2,background:"#162130"}}>
             <tr>
-              {[{l:"Descrição",k:"detalhe"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Keywords",k:null}].map(({l,k})=>(
+              {[{l:"Descrição",k:"detalhe"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Keywords",k:null},{l:"Criado em",k:"createdAt"}].map(({l,k})=>(
                 <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",background:"#162130"}}
                   onClick={()=>k&&toggleSort(k)}>
                   {l}{k&&sortCol===k?(sortDir==="asc"?" ↑":" ↓"):""}
@@ -1841,6 +2221,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                       <input style={II} placeholder="kw1, kw2" value={editingRow.keywordsText??""}
                         onChange={e=>setEditingRow(r=>({...r,keywordsText:e.target.value}))}/>
                     </td>
+                    <td style={{...s.td,fontSize:11,color:"#6B8299"}}>{editingRow.createdAt?new Date(editingRow.createdAt).toLocaleDateString("pt-BR"):<span style={{color:"#3a4a5a"}}>—</span>}</td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn(),padding:"3px 8px",fontSize:11}} onClick={saveEdit} disabled={saving}>✓</button>
@@ -1862,12 +2243,18 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.classificacao}</td>
                     <td style={{...s.td,fontSize:12,color:"#6B8299"}}>{row.subcategoria||<span style={{color:"#3a4a5a"}}>—</span>}</td>
                     <td style={{...s.td,maxWidth:220}}>{row.isCustom&&(row.keywords||[]).length>0?<div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:44,overflow:"hidden"}} title={(row.keywords||[]).join(", ")}>{(row.keywords||[]).slice(0,3).map(k=><span key={k} style={{background:"#1E2D3D",color:"#6B8299",borderRadius:20,fontSize:10,padding:"1px 6px",maxWidth:90,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k}</span>)}{(row.keywords||[]).length>3&&<span style={{fontSize:10,color:"#6B8299"}}>+{(row.keywords||[]).length-3}</span>}</div>:<span style={{color:"#3a4a5a"}}>—</span>}</td>
+                    <td style={{...s.td,fontSize:11,color:"#6B8299",whiteSpace:"nowrap"}}>{row.createdAt?new Date(row.createdAt).toLocaleDateString("pt-BR"):<span style={{color:"#3a4a5a"}}>—</span>}</td>
                     <td style={{...s.td,textAlign:"center"}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                         <button style={{...s.btn("ghost"),padding:"3px 8px",fontSize:11}} onClick={()=>setEditingRow({...row,keywordsText:(row.keywords||[]).join(", ")})}>✏</button>
                         <button style={{...s.btn("danger"),padding:"3px 8px",fontSize:11}} onClick={async()=>{
-                          const affected = await findAffected([row.detalhe, ...(row.keywords||[])]);
-                          setConfirmDelete({row, count:affected.length});
+                          // quantos a importação decide HOJE por esta regra (mesma lógica, não texto solto)
+                          const h = construirHistoricoContraparte(transactions);
+                          const count = transactions.filter(t=>{
+                            const r = classificacaoLocal(t, customCats, hiddenBaseCls, historicoSem(h, t));
+                            return r && !r.decidir && (row.isCustom ? r.catId===row.id : (!r.catId && r.matchedKw===row.detalhe));
+                          }).length;
+                          setConfirmDelete({row, count});
                         }}>✕</button>
                       </div>
                     </td>
@@ -1903,6 +2290,12 @@ const LinhaLancamento = React.memo(function LinhaLancamento({t,s,nDetalhes,onDet
           <span title="Item de detalhamento de cartão"
             style={{marginRight:4,fontSize:10,background:"rgba(142,124,195,0.15)",color:"#8E7CC3",borderRadius:10,padding:"1px 6px",fontWeight:700}}>
             💳 CARTÃO
+          </span>
+        )}
+        {t.classificacao_manual&&(
+          <span title="Classificação definida manualmente — reclassificações em massa não sobrescrevem"
+            style={{marginRight:4,fontSize:10,background:"rgba(0,201,167,0.15)",color:"#00C9A7",borderRadius:10,padding:"1px 6px",fontWeight:700}}>
+            ✋
           </span>
         )}
         {t.description}
@@ -1975,6 +2368,13 @@ export default function App() {
   const [dragOver,setDragOver] = useState(false);
   const [pendingImport,setPendingImport] = useState(null);
   const [reviewItems,setReviewItems] = useState(null);
+  const [savingReview,setSavingReview] = useState(false); // v8.6.1 — spinner ao confirmar revisão (achado real: sem isso parece travado)
+  const [confirmDiscardReview,setConfirmDiscardReview] = useState(false); // v8.7.0 — confirmação própria de "Cancelar importação"
+  const [reviewAutoSavedIds,setReviewAutoSavedIds] = useState([]); // v8.7.0 — ids já gravados sozinhos nesta importação, junto com a revisão pendente
+  // Regra automática (edição de lançamento / similares) que pegaria lançamentos já gravados com
+  // outra classificação: fila de cards com a lista, em vez de deixar de criar sem avisar.
+  const [regrasAutoEmConflito,setRegrasAutoEmConflito] = useState([]);
+  const [confirmRegraConflitos,setConfirmRegraConflitos] = useState(null); // v8.5.0 — {reviewed,regras,conflitos,decisoes}
   const [similarPending,setSimilarPending] = useState(null);
   const [similarSelected,setSimilarSelected] = useState([]); // v7.15.5 — ids marcados no painel de similares
   // v7.16.0 — painel de regras sugeridas para as Classificações
@@ -2208,6 +2608,7 @@ export default function App() {
       if(filter.classificacao!=="todas") list=list.filter(t=>t.classificacao===filter.classificacao);
       if(filter.status==="nao_classificados") list=list.filter(t=>t.needs_review||!t.classificacao||!t.rd);
       else if(filter.status==="cartao")        list=list.filter(t=>t.origin==="fatura");
+      else if(filter.status==="manual")        list=list.filter(t=>t.classificacao_manual);
       if(filter.dateFrom)                list=list.filter(t=>dateToSortable(t.date)>=filter.dateFrom);
       if(filter.dateTo)                  list=list.filter(t=>dateToSortable(t.date)<=filter.dateTo);
       if(filter.sinal==="saida")         list=list.filter(t=>Number(t.value)<0);
@@ -2334,14 +2735,21 @@ export default function App() {
   const classifyAndSave = async (rows, fileName="", isCreditCard=false) => {
     setAiLoading(true);
     const toSave=[], toReview=[];
+    // v8.4.0 — Fase 1: quem já pagou/recebeu decide antes da regra por operação (localClassify).
+    // historico vem do que já está na tela — mesma contraparte + mesma direção, voto da maioria.
+    const historico = construirHistoricoContraparte(transactions);
     // v8.2.0 — a conciliação por grupo já separou o que é novo; aqui ela roda de novo
     // como rede de segurança, para o caso de a lista chegar por outro caminho.
     for (const row of conciliar(transactions, rows)) {
-      const local = localClassify(row.description, customCats, hiddenBaseCls);
+      // Descrição que é só forma de pagamento (PIX, QR-code, TED, cheque) sem contraparte
+      // conhecida pela razão social → decisão: nem regra por texto nem Gemini adivinham.
+      const res = classificacaoLocal(row, customCats, hiddenBaseCls, historico);
+      const decidir = !!res?.decidir;
+      const local = decidir ? null : res;
       if (local) {
         toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:local.r, classificacao:local.c, subcategoria:local.sub||null, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:false, needs_review:false, created_by:user.id, source_file:fileName||null});
       } else {
-        const ai = await classifyWithGemini(row.description);
+        const ai = decidir ? null : await classifyWithGemini(row.description);
         if (ai) {
           toSave.push({...row, conta:isCreditCard?"CC/"+(row.conta||""):(row.conta||null), type:Number(row.value)>=0?"entrada":"saída", rd:ai.rd, classificacao:ai.classificacao, status:"confirmado", origin:isCreditCard?"fatura":"extrato", ai_classified:true, needs_review:false, created_by:user.id, source_file:fileName||null});
         } else {
@@ -2350,13 +2758,19 @@ export default function App() {
       }
     }
     // Insert in batches of 50
+    // v8.7.0 — guarda os ids dos que já entraram classificados sozinhos (toSave): se o usuário
+    // cancelar a importação inteira mais adiante, esses também têm que sair, não só a revisão
+    // (achado real: "Cancelar importação" só limpava a revisão, deixava os outros gravados).
+    const toSaveIds = [];
     for(let i=0;i<toSave.length;i+=50){
-      const {error}=await supabase.from("transactions").insert(toSave.slice(i,i+50));
+      const {data,error}=await supabase.from("transactions").insert(toSave.slice(i,i+50)).select("id");
       if(error) console.error("Insert error:",error);
+      else if(data) toSaveIds.push(...data.map(d=>d.id));
     }
     setAiLoading(false);
     if(toReview.length){
       setReviewItems(toReview);
+      setReviewAutoSavedIds(toSaveIds);
     } else {
       showToast(`${toSave.length} lançamentos importados!`);
       setPendingImport(null);
@@ -2631,32 +3045,47 @@ export default function App() {
       const orig = transactions.find(x=>x.id===editingId);
       if(orig) await syncDetailClassification(orig, form.rd, form.classificacao, form.subcategoria||null);
       // After editing, find other transactions with similar description that have different classification
-      const _allPages=[]; {let _from=0,_ps=1000; while(true){const {data:_d}=await supabase.from("transactions").select("id,date,description,value,rd,classificacao,subcategoria,conta,origin,source_file").order("id",{ascending:true}).range(_from,_from+_ps-1);if(!_d||_d.length===0)break;_allPages.push(..._d);if(_d.length<_ps)break;_from+=_ps;}}
+      const _allPages=[]; {let _from=0,_ps=1000; while(true){const {data:_d}=await supabase.from("transactions").select("id,date,description,value,rd,classificacao,subcategoria,conta,origin,source_file,razao_social").order("id",{ascending:true}).range(_from,_from+_ps-1);if(!_d||_d.length===0)break;_allPages.push(..._d);if(_d.length<_ps)break;_from+=_ps;}}
       const all=_allPages;
-      const similar = (all||[]).filter(t =>
+      // v8.4.1 — por CONTRAPARTE (partyKey), não sameMerchant: descrição genérica ("PIX ENVIADO",
+      // sem nome nela — o nome mora em razão social) fazia sameMerchant casar qualquer "PIX ENVIADO"
+      // com qualquer outro, de gente diferente (bug real: 61 lançamentos sugeridos juntos).
+      const parteEditada = partyKey(form.description, editingRazaoSocial);
+      const similar = parteEditada ? (all||[]).filter(t =>
         t.id !== editingId &&
-        sameMerchant(t.description, form.description) && // v7.15.0 — regra de sempre + alternativa concatenada
+        partyKey(t.description, t.razao_social) === parteEditada &&
         (t.rd !== form.rd || t.classificacao !== form.classificacao || (t.subcategoria||null) !== (form.subcategoria||null))
-      ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null}));
+      ).map(t=>({...t,suggestedRd:form.rd,suggestedClass:form.classificacao,suggestedSub:form.subcategoria||null})) : [];
       // Populate keyword for future auto-classification
+      // v8.4.0 — prefere a contraparte (razão social já carregada em editingRazaoSocial); cai
+      // para merchantKey só na falta dela. keywordGenerica barra "pix enviado" etc.
+      // Regra nova só nasce sozinha se não pegar lançamento já gravado com outra classificação
+      // (cobertura real, sobre `all`, já com esta edição). Havendo, mostra o card com a lista
+      // (regrasAutoEmConflito) e você decide — nada de deixar de criar em silêncio.
       try {
-        const kwEntry = merchantKey(form.description).toLowerCase();
-        if (kwEntry && form.rd && form.classificacao) {
+        const parte = partyKey(form.description, editingRazaoSocial);
+        const kwEntry = (parte || merchantKey(form.description)).toLowerCase();
+        if (kwEntry && !keywordGenerica(kwEntry) && form.rd && form.classificacao) {
           const existing = customCats.find(c => c.name?.toLowerCase()===kwEntry || (c.keywords||[]).includes(kwEntry));
-          const merged = [...new Set([...(existing?.keywords||[]),kwEntry])];
-          await supabase.from("categories").upsert({
-            name: existing?.name||kwEntry.toUpperCase(),
-            rd: form.rd, classificacao: form.classificacao,
-            subcategoria: form.subcategoria||existing?.subcategoria||null,
-            keywords: merged,
-          },{onConflict:"name"});
-          await loadCustomCats();
+          const divergentes = existing ? [] : coberturaDaRegra(kwEntry, form.rd, form.classificacao, all, null, customCats, [kwEntry], hiddenBaseCls).divergentes;
+          if (divergentes.length) {
+            setRegrasAutoEmConflito(q=>[...q, {nome:kwEntry.toUpperCase(), rd:form.rd, classificacao:form.classificacao, subcategoria:form.subcategoria||null, keywords:[kwEntry], divergentes, marcados:[]}]);
+          } else {
+            const merged = [...new Set([...(existing?.keywords||[]),kwEntry])];
+            await supabase.from("categories").upsert({
+              name: existing?.name||kwEntry.toUpperCase(),
+              rd: form.rd, classificacao: form.classificacao,
+              subcategoria: form.subcategoria||existing?.subcategoria||null,
+              keywords: merged,
+            },{onConflict:"name"});
+            await loadCustomCats();
+          }
         }
       } catch(e){ console.error("KW populate:",e); }
       setForm({date:"",description:"",value:"",rd:"RECEITA",classificacao:"RECEITA DE VENDAS",conta:""});
       setEditingId(null); setShowModal(false); setSaving(false);
       if(similar.length>0){
-        setSimilarSelected(similar.map(t=>t.id));setSimilarPending({items:similar,count:1,subcategoria:form.subcategoria||null});
+        setSimilarSelected(similar.map(t=>t.id));setSimilarPending({items:similar,count:1,subcategoria:form.subcategoria||null,origem:{id:editingId,rd:form.rd,classificacao:form.classificacao}});
       } else {
         showToast("Lançamento atualizado!");
       }
@@ -2868,14 +3297,66 @@ export default function App() {
     openColumnMapper(file, "extrato");
   },[transactions]); // v8.2.0 — a conciliação lê os lançamentos já carregados
 
-  const confirmReview = async (reviewed, regras=[]) => {
+  // Cobertura real de uma regra da revisão: nome digitado + contraparte que vira keyword.
+  const divergenciaDaRegraRevisada = (nome, r) => {
+    const parte = partyKey(r.description, r.razao_social);
+    return coberturaDaRegra(nome, r.rd, r.classificacao, transactions, null, customCats,
+      [nome.toLowerCase(), ...(parte?[parte.toLowerCase()]:[])], hiddenBaseCls).divergentes;
+  };
+  // Pré-checagem (sem gravar nada) das regras novas da revisão: conflito = a regra pegaria
+  // lançamentos já gravados com outra classificação. Mesma condição de "já existe match" do
+  // confirmReview, senão flagaria linha que nem vai gerar regra nova.
+  const detectaConflitosDeRegra = (reviewed, regras=[]) => {
+    const conflitos = [];
+    for (let i=0;i<reviewed.length;i++) {
+      const r = reviewed[i];
+      if (!r.rd || !r.classificacao) continue;
+      const desc = String(r.description).toUpperCase().trim();
+      const match = customCats.find(c => c.rd===r.rd && c.classificacao===r.classificacao &&
+        (desc.includes((c.name||"").toUpperCase()) || (c.keywords||[]).some(k=>k&&desc.includes(k.toUpperCase()))));
+      if (match) continue;
+      const regra = regras[i];
+      if (!regra?.criar) continue;
+      const nome = String(regra.nome||"").trim().toUpperCase();
+      if (!nome || regraSoOperacao(nome)) continue;
+      const div = divergenciaDaRegraRevisada(nome, r);
+      if (div.length) conflitos.push({i, nome, r, resumo:resumoDivergencia(div), divergentes:div});
+    }
+    return conflitos;
+  };
+  // v8.5.0 — chamada pelo ReviewModal no lugar de confirmReview direto: se achar conflito de
+  // nome, para ANTES de gravar qualquer coisa e pergunta linha a linha (confirmRegraConflitos);
+  // sem conflito, segue direto — mesmo comportamento de sempre.
+  const iniciarConfirmReview = (reviewed, regras=[]) => {
+    const conflitos = detectaConflitosDeRegra(reviewed, regras);
+    if (conflitos.length) setConfirmRegraConflitos({reviewed, regras, conflitos, decisoes:{}, marcados:{}});
+    else { setSavingReview(true); confirmReview(reviewed, regras); }
+  };
+  // Lançamentos já gravados que o usuário marcou num card de conflito ("ver lançamentos"):
+  // alteração manual para a classificação nova. Mesmo cuidado do aplicarReclass com o par
+  // pai/anulação de fatura e com o transaction_details.
+  const reclassificarMarcados = async (itens=[]) => {
+    for (const {t, rd, classificacao, subcategoria} of itens) {
+      await supabase.from("transactions").update({rd, classificacao, subcategoria, needs_review:false, status:"confirmado"}).eq("id",t.id);
+      await supabase.from("transactions").update({rd, classificacao, subcategoria})
+        .ilike("source_file",`%(detalhe:${t.id})`).eq("origin","anulacao_cartao");
+      await syncDetailClassification(t, rd, classificacao, subcategoria);
+    }
+    if (itens.length) await loadTransactions();
+  };
+
+  const confirmReview = async (reviewed, regras=[], decisoes={}, reclassificar=[]) => {
     const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado"}));
     for(let i=0;i<rows.length;i+=50){
       await supabase.from("transactions").insert(rows.slice(i,i+50));
     }
+    await reclassificarMarcados(reclassificar);
     // v7.16.0 — descrição que já casa com regra existente vira keyword dela (não engorda a
     // lista). v7.21.0 — o que NÃO casa vira regra aqui mesmo, conforme a caixa marcada no
     // ReviewModal; não existe mais um segundo modal repetindo a classificação já escolhida.
+    // v8.4.0 — a keyword gravada é a CONTRAPARTE (partyKey), nunca a descrição crua: era daí
+    // que vinha a regra "pix enviado" (bug real, capturou 64 lançamentos de gente diferente).
+    // Sem contraparte identificável, não sobra nada específico para gravar — pula a keyword.
     let regrasCriadas = 0;
     for (let i=0;i<reviewed.length;i++) {
       const r = reviewed[i];
@@ -2883,35 +3364,46 @@ export default function App() {
       const desc = String(r.description).toUpperCase().trim();
       const match = customCats.find(c => c.rd===r.rd && c.classificacao===r.classificacao &&
         (desc.includes((c.name||"").toUpperCase()) || (c.keywords||[]).some(k=>k&&desc.includes(k.toUpperCase()))));
-      const kwEntry = r.description.toLowerCase().trim();
+      const parte = partyKey(r.description, r.razao_social);
+      const kwEntry = parte ? parte.toLowerCase() : null;
       if (match) {
-        const existing = (match.keywords||[]).map(k=>k.toLowerCase());
-        if (!existing.includes(kwEntry) && match.name.toLowerCase()!==kwEntry)
-          await supabase.from("categories").update({keywords:[...(match.keywords||[]),kwEntry]}).eq("id",match.id);
+        if (kwEntry) {
+          const existing = (match.keywords||[]).map(k=>k.toLowerCase());
+          if (!existing.includes(kwEntry) && match.name.toLowerCase()!==kwEntry)
+            await supabase.from("categories").update({keywords:[...(match.keywords||[]),kwEntry]}).eq("id",match.id);
+        }
         continue;
       }
       const regra = regras[i];
       if (!regra?.criar) continue;
-      const nome = String(regra.nome||"").trim().toUpperCase();
-      if (!nome) continue;
+      let nome = String(regra.nome||"").trim().toUpperCase();
+      if (!nome || regraSoOperacao(nome)) continue; // nome só de operação nunca vira regra
+      // Conflito (a regra pegaria lançamentos já gravados com outra classificação) já foi
+      // decidido antes de gravar (iniciarConfirmReview/confirmRegraConflitos): decisoes[i]=true
+      // cria mesmo assim; senão fica de fora, em silêncio (o lançamento já foi salvo acima).
+      // Sem fusão por nome parecido — só o nome exato é a mesma regra.
+      if (!decisoes[i] && divergenciaDaRegraRevisada(nome, r).length) continue;
+      const existente = customCats.find(c=>c.name===nome);
       const {error} = await supabase.from("categories").upsert({
-        name: nome, rd: r.rd, classificacao: r.classificacao, subcategoria: r.subcategoria||null,
-        keywords: [...new Set([nome.toLowerCase(), kwEntry])],
+        name: nome, rd: r.rd, classificacao: r.classificacao, subcategoria: r.subcategoria||existente?.subcategoria||null,
+        keywords: [...new Set([...(existente?.keywords||[]), nome.toLowerCase(), ...(kwEntry?[kwEntry]:[])])],
       },{onConflict:"name"});
       if (!error) regrasCriadas++;
     }
-    // Find other unclassified transactions similar to the ones just reviewed
-    const {data:similar} = await supabase.from("transactions").select("id,date,description,value,rd,classificacao,conta,origin").eq("needs_review",true);
+    // v8.4.0 — sugestão de similares por CONTRAPARTE, não por palavra solta. Era aqui que
+    // "PIX ENVIADO" → sobra "ENVIADO" e batia em qualquer PIX enviado, de qualquer pessoa
+    // (bug real: 63 lançamentos de gente diferente sugeridos como um único padrão).
+    const {data:similar} = await supabase.from("transactions").select("id,date,description,value,rd,classificacao,subcategoria,conta,origin,razao_social").eq("needs_review",true);
     const hits = (similar||[]).filter(t=>!isCCTransaction(t)).map(t=>{
-      const td = String(t.description).toUpperCase();
-      const match = reviewed.find(r=>{
-        const words = String(r.description).toUpperCase().split(/\s+/).filter(w=>w.length>3);
-        return words.some(w=>td.includes(w));
-      });
-      return match ? {...t,suggestedRd:match.rd,suggestedClass:match.classificacao} : null;
+      const parteAlvo = partyKey(t.description, t.razao_social);
+      if (!parteAlvo) return null;
+      const match = reviewed.find(r => partyKey(r.description, r.razao_social) === parteAlvo);
+      return match ? {...t,suggestedRd:match.rd,suggestedClass:match.classificacao,suggestedSub:match.subcategoria||null} : null;
     }).filter(Boolean);
     await loadCustomCats();
     setReviewItems(null);
+    setReviewAutoSavedIds([]);
+    setSavingReview(false);
     setPendingImport(null);
     // v7.21.0 — sem tela intermediária: do review vai direto para o painel de similares.
     const resumo = `${rows.length} lançamentos revisados e salvos!` +
@@ -2942,7 +3434,29 @@ export default function App() {
       showToast(`${rows.length} lançamento(s) importado(s) sem classificação — revisar em Lançamentos.`);
     }
     setReviewItems(null);
+    setReviewAutoSavedIds([]);
     setPendingImport(null);
+  };
+
+  // v8.7.0 — cancelar de verdade: nada é gravado, nem os já classificados sozinhos ANTES da
+  // revisão (toSaveIds) — achado real: cancelar só limpava a revisão, os outros ficavam gravados.
+  // Tela própria em vez de window.confirm: no diálogo nativo, o botão "Cancelar" significa
+  // "não cancela a importação" — invertido do que parece (achado real, confundiu na hora).
+  const discardReview = () => {
+    if ((reviewItems||[]).length) setConfirmDiscardReview(true);
+    else { setReviewItems(null); setPendingImport(null); }
+  };
+  const confirmDiscardReviewAll = async () => {
+    setConfirmDiscardReview(false);
+    if (reviewAutoSavedIds.length) {
+      for (let i=0;i<reviewAutoSavedIds.length;i+=50)
+        await supabase.from("transactions").delete().in("id", reviewAutoSavedIds.slice(i,i+50));
+      await loadTransactions();
+    }
+    setReviewItems(null);
+    setReviewAutoSavedIds([]);
+    setPendingImport(null);
+    showToast("Importação cancelada — nada foi salvo.");
   };
 
   const confirmSimilarPending = async (apply) => {
@@ -2966,11 +3480,27 @@ export default function App() {
       for (const t of selecionados)
         await syncDetailClassification(t, t.suggestedRd, t.suggestedClass, t.suggestedSub||similarPending.subcategoria||null);
       // Populate keywords so future imports classify automatically
+      // v8.4.0 — prefere a contraparte (partyKey); cai para merchantKey só quando não há uma
+      // (ex: lote vindo do sameMerchant de saveManual). keywordGenerica barra "pix enviado" etc.
+      // Regra nova só nasce se não pegar lançamento já gravado com outra classificação (cobertura
+      // real, já contando os que acabaram de ser acertados aqui e o editado que abriu o painel).
+      // Havendo conflito, mostra o card com a lista (regrasAutoEmConflito) — os selecionados já foram classificados.
       try {
         if (rd && cls) {
-          const newKws = [...new Set(selecionados.map(t=>merchantKey(t.description).toLowerCase()).filter(Boolean))];
+          const newKws = [...new Set(selecionados.map(t=>{
+            const parte = partyKey(t.description, t.razao_social);
+            const kw = (parte || merchantKey(t.description)).toLowerCase();
+            return keywordGenerica(kw) ? null : kw;
+          }).filter(Boolean))];
+          const ajustes = new Map(selecionados.map(t=>[t.id,{rd:t.suggestedRd, classificacao:t.suggestedClass}]));
+          if (similarPending.origem) ajustes.set(similarPending.origem.id, {rd:similarPending.origem.rd, classificacao:similarPending.origem.classificacao});
           for (const kw of newKws) {
             const existing = customCats.find(c => c.name?.toLowerCase()===kw || (c.keywords||[]).includes(kw));
+            const divergentes = existing ? [] : coberturaDaRegra(kw, rd, cls, transactions, ajustes, customCats, [kw], hiddenBaseCls).divergentes;
+            if (divergentes.length) {
+              setRegrasAutoEmConflito(q=>[...q, {nome:kw.toUpperCase(), rd, classificacao:cls, subcategoria:similarPending.subcategoria||null, keywords:[kw], divergentes, marcados:[]}]);
+              continue;
+            }
             const merged = [...new Set([...(existing?.keywords||[]),kw])];
             await supabase.from("categories").upsert({
               name: existing?.name||kw.toUpperCase(),
@@ -3004,7 +3534,10 @@ export default function App() {
   // v7.16.1 — reavalia UM lançamento contra as regras atuais. Mesma rotina do Reclassificar
   // geral (localClassify), mas com alcance de uma linha — evita retroagir a base inteira.
   const reclassificarItem = (t) => {
-    const local = localClassify(t.description, customCats, hiddenBaseCls);
+    // Mesma decisão da importação. Classificação manual não é reavaliada: mude editando.
+    if (t.classificacao_manual) { showToast("Classificação feita à mão — para mudar, edite o lançamento.","error"); return; }
+    const local = classificacaoLocal(t, customCats, hiddenBaseCls, historicoSem(construirHistoricoContraparte(transactions), t));
+    if (local?.decidir) { showToast(`"${t.description}" não diz quem recebeu — sem regra do recebedor, a decisão é sua.`,"error"); return; }
     if (!local) { showToast(`Nenhuma regra cadastrada casa com "${t.description}".`,"error"); return; }
     const igual = local.r===t.rd && local.c===t.classificacao && (local.sub||null)===(t.subcategoria||null);
     if (igual) { showToast("Já está conforme as regras atuais."); return; }
@@ -3214,7 +3747,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-100726 V.8.2.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.8.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -3322,7 +3855,7 @@ export default function App() {
                 <option value="todas">Todas Classificações</option>{allClassificacoes.map(c=><option key={c}>{c}</option>)}
               </select>
               <select style={{...s.sel,width:150,flexShrink:0}} value={filter.status} onChange={e=>setFilter(f=>({...f,status:e.target.value}))}>
-                <option value="todos">Status: Todos</option><option value="nao_classificados">Não classificados</option><option value="cartao">💳 Cartão</option>
+                <option value="todos">Status: Todos</option><option value="nao_classificados">Não classificados</option><option value="cartao">💳 Cartão</option><option value="manual">✋ Manuais</option>
               </select>
               <select style={{...s.sel,width:140,flexShrink:0}} value={filter.sinal} onChange={e=>setFilter(f=>({...f,sinal:e.target.value}))}>
                 <option value="todos">Todos valores</option><option value="saida">Só saídas</option><option value="entrada">Só entradas</option>
@@ -4042,7 +4575,7 @@ export default function App() {
 
         {/* CLASSIFICAÇÕES */}
         {tab==="classificacoes"&&(
-          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s} loadTransactions={loadTransactions} hiddenBaseCls={hiddenBaseCls} hideBaseClassification={hideBaseClassification}/>
+          <ClassificacoesTab customCats={customCats} loadCustomCats={loadCustomCats} showToast={showToast} s={s} loadTransactions={loadTransactions} hiddenBaseCls={hiddenBaseCls} hideBaseClassification={hideBaseClassification} transactions={transactions} onReclassificar={reclassificarMarcados}/>
         )}
 
         {/* OPERACIONAL */}
@@ -4054,7 +4587,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-100726 V.8.2.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.8.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4246,7 +4779,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-100726 V.8.2.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.8.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -4668,7 +5201,97 @@ export default function App() {
 
       {/* Review modal */}
       {reviewItems&&(
-        <ReviewModal items={reviewItems} onConfirm={confirmReview} onCancel={cancelReview} allClassificacoes={allClassificacoes} allSubcategorias={allSubcategorias}/>
+        <ReviewModal items={reviewItems} onConfirm={iniciarConfirmReview} onCancel={cancelReview} onDiscard={discardReview} allClassificacoes={allClassificacoes} allSubcategorias={allSubcategorias} saving={savingReview}/>
+      )}
+
+      {/* v8.7.0 — confirmação própria de "Cancelar importação", sem depender do confirm() nativo */}
+      {confirmDiscardReview&&(
+        <div style={{...s.modal,zIndex:320}} onClick={()=>setConfirmDiscardReview(false)}>
+          <div style={{...s.mbox,maxWidth:440}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ Cancelar a importação?</div>
+            <div style={{background:"#1a1a2e",border:"1px solid #E8445A44",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#E8445A",marginBottom:20}}>
+              <strong>{(reviewItems||[]).length + reviewAutoSavedIds.length} lançamento(s)</strong> deste arquivo NÃO serão salvos — inclusive os {reviewAutoSavedIds.length} que este import já tinha classificado sozinho. O saldo desse período fica fora até você reimportar o arquivo.
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmDiscardReview(false)}>Manter revisão</button>
+              <button style={{...s.btn("danger"),flex:1}} onClick={confirmDiscardReviewAll}>Sim, cancelar importação</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v8.5.0 — nome(s) de regra nova, vindos da revisão em lote, que se parecem com regra já
+          cadastrada de OUTRA classificação. Para antes de gravar qualquer coisa e pergunta,
+          linha a linha — nada é criado sem decisão explícita. */}
+      {regrasAutoEmConflito.length>0&&(()=>{const c=regrasAutoEmConflito[0];const proxima=()=>setRegrasAutoEmConflito(q=>q.slice(1));return(
+        <div style={{...s.modal,zIndex:320}}>
+          <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ Conflita com lançamentos já gravados</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:14}}>
+              A regra <strong style={{color:"#E8EDF2"}}>"{c.nome}"</strong> pegaria lançamentos que hoje estão com outra classificação:
+            </div>
+            <div style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20}}>
+              <ListaAfetados lista={c.divergentes} marcados={c.marcados}
+                onChange={ids=>setRegrasAutoEmConflito(q=>[{...q[0],marcados:ids},...q.slice(1)])}
+                nova={`${c.rd}/${c.classificacao}`}
+                resumoTexto={(r=>`${r.total} lançamento(s) — ${r.qtd} como ${r.principal}${r.outras>0?` (+${r.outras} outra(s))`:""}`)(resumoDivergencia(c.divergentes))}/>
+              <div style={{color:"#6B8299",marginTop:4}}>Nova: <strong style={{color:"#00C9A7"}}>{c.rd} / {c.classificacao}</strong></div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={proxima}>Não criar regra</button>
+              <button style={{...s.btn("warn"),flex:1}} onClick={async()=>{
+                proxima();
+                const {error} = await supabase.from("categories").upsert({name:c.nome, rd:c.rd, classificacao:c.classificacao, subcategoria:c.subcategoria, keywords:c.keywords},{onConflict:"name"});
+                if (error) { showToast("Erro ao criar regra: "+error.message,"error"); return; }
+                const ids = new Set(c.marcados);
+                await reclassificarMarcados(c.divergentes.filter(t=>ids.has(t.id)).map(t=>({t, rd:c.rd, classificacao:c.classificacao, subcategoria:c.subcategoria})));
+                await loadCustomCats();
+                showToast(`Regra "${c.nome}" criada.`);
+              }}>Criar mesmo assim</button>
+            </div>
+          </div>
+        </div>
+      );})()}
+
+      {confirmRegraConflitos&&(
+        <div style={{...s.modal,zIndex:310}} onClick={()=>setConfirmRegraConflitos(null)}>
+          <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:10}}>⚠ {confirmRegraConflitos.conflitos.length} regra(s) em conflito com lançamentos já gravados</div>
+            <div style={{fontSize:13,color:"#6B8299",marginBottom:14}}>Marque as que quer criar mesmo assim. As demais não viram regra — o lançamento é salvo igual.</div>
+            <div style={{maxHeight:320,overflowY:"auto",marginBottom:16,display:"flex",flexDirection:"column",gap:10}}>
+              {confirmRegraConflitos.conflitos.map(cf=>(
+                <div key={cf.i} style={{background:"#1a1a2e",border:"1px solid #F5A62344",borderRadius:8,padding:"10px 14px",fontSize:12}}>
+                  <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+                    <input type="checkbox" style={{marginTop:3}} checked={!!confirmRegraConflitos.decisoes[cf.i]}
+                      onChange={e=>setConfirmRegraConflitos(prev=>({...prev,decisoes:{...prev.decisoes,[cf.i]:e.target.checked}}))}/>
+                    <div style={{color:"#E8EDF2",fontWeight:600}}>"{cf.nome}"</div>
+                  </label>
+                  <div style={{marginLeft:23}}>
+                    <ListaAfetados lista={cf.divergentes} marcados={confirmRegraConflitos.marcados[cf.i]||[]}
+                      onChange={ids=>setConfirmRegraConflitos(prev=>({...prev,marcados:{...prev.marcados,[cf.i]:ids}}))}
+                      nova={`${cf.r.rd}/${cf.r.classificacao}`}
+                      resumoTexto={`${cf.resumo.total} lançamento(s) — ${cf.resumo.qtd} como ${cf.resumo.principal}${cf.resumo.outras>0?` (+${cf.resumo.outras} outra(s))`:""}`}/>
+                    <div style={{color:"#6B8299"}}>Nova, se marcar: <strong style={{color:"#00C9A7"}}>{cf.r.rd}/{cf.r.classificacao}</strong></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={()=>setConfirmRegraConflitos(null)}>Voltar</button>
+              <button style={{...s.btn("warn"),flex:1}} onClick={()=>{
+                const {reviewed,regras,decisoes,conflitos,marcados}=confirmRegraConflitos;
+                // marcados na lista: alteração manual, passam pra classificação da linha revisada
+                const reclassificar = conflitos.flatMap(cf=>{
+                  const ids = new Set(marcados[cf.i]||[]);
+                  return cf.divergentes.filter(t=>ids.has(t.id)).map(t=>({t, rd:cf.r.rd, classificacao:cf.r.classificacao, subcategoria:cf.r.subcategoria||null}));
+                });
+                setConfirmRegraConflitos(null);
+                setSavingReview(true);
+                confirmReview(reviewed,regras,decisoes,reclassificar);
+              }}>Continuar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* v7.16.1 — confirmação da reclassificação de um lançamento */}
@@ -4723,7 +5346,8 @@ export default function App() {
                   background:on?"rgba(245,166,35,0.05)":"transparent",border:`1px solid ${on?"rgba(245,166,35,0.15)":"#1E2D3D"}`,opacity:on?1:0.5}}>
                   <input type="checkbox" checked={on} style={{cursor:"pointer",flexShrink:0}}
                     onChange={e=>setSimilarSelected(prev=>e.target.checked?[...prev,t.id]:prev.filter(id=>id!==t.id))}/>
-                  <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.date} — {t.description}</span>
+                  {/* v8.6.1 — razão social visível: sem isso não dá pra confirmar visualmente que é a mesma contraparte */}
+                  <span style={{color:"#E8EDF2",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.date} — {t.description}{t.razao_social?<span style={{color:"#6B8299"}}> · {t.razao_social}</span>:null}</span>
                   {/* v7.15.4 — valor à vista, para conferir antes de aplicar em lote */}
                   <span style={{marginLeft:12,flexShrink:0,fontWeight:700,fontSize:11,color:Number(t.value)>=0?"#2ECC71":"#E8445A"}}>{fmt(Number(t.value))}</span>
                   <span style={{marginLeft:12,flexShrink:0,color:"#00C9A7",fontWeight:600,fontSize:11}}>{t.suggestedRd} / {t.suggestedClass}</span>
@@ -4733,7 +5357,7 @@ export default function App() {
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:applyingSimilar?"default":"pointer",fontWeight:700,background:"#00C9A7",color:"#0F1923",opacity:(applyingSimilar||similarSelected.length===0)?0.5:1}} disabled={applyingSimilar||similarSelected.length===0} onClick={()=>confirmSimilarPending(true)}>{applyingSimilar?"Aplicando...":`✓ Aplicar nos selecionados (${similarSelected.length})`}</button>
-              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(false)}>Pular</button>
+              <button style={{flex:1,padding:"10px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,background:"#1E2D3D",color:"#6B8299"}} disabled={applyingSimilar} onClick={()=>confirmSimilarPending(false)}>Cancelar</button>
             </div>
           </div>
         </div>
