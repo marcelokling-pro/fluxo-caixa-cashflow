@@ -2990,7 +2990,7 @@ export default function App() {
 
   const applyReclassify = async () => {
     const {error} = await supabase.from("transactions").update({
-      rd:reclassifyList.rd, classificacao:reclassifyList.classificacao,
+      rd:reclassifyList.rd, classificacao:reclassifyList.classificacao, classificacao_manual:true,
     }).in("id",reclassifySelected);
     if(error){ showToast("Erro: "+error.message,"error"); return; }
     showToast(reclassifySelected.length+" lançamento(s) reclassificado(s)!");
@@ -3031,7 +3031,14 @@ export default function App() {
     const val = parseValue(form.value);
     if(isNaN(val)){ showToast("Valor inválido — use vírgula para decimais (ex: 1.234,56).","error"); return; }
     setSaving(true);
-    const payload={date:form.date,description:form.description,value:val,type:val>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id};
+    const payload={date:form.date,description:form.description,value:val,type:val>=0?"entrada":"saída",rd:form.rd,classificacao:form.classificacao,conta:form.conta,subcategoria:form.subcategoria||null,status:"confirmado",origin:"manual",ai_classified:false,needs_review:false,created_by:user.id,classificacao_manual:true};
+    // v8.9.0 — classificação feita por você fica marcada (o Reclassificar e a importação respeitam).
+    // Na edição, só marca se a classificação mudou; mudar data/conta não transforma em manual.
+    if (editingId) {
+      const antes = transactions.find(x=>x.id===editingId);
+      const mudou = !antes || antes.rd!==form.rd || antes.classificacao!==form.classificacao || (antes.subcategoria||null)!==(form.subcategoria||null);
+      if (!mudou) delete payload.classificacao_manual;
+    }
     try{
     if(editingId){
       // v7.11.10 — editar classificação não deve sobrescrever origin (preserva selo 💳 de itens de fatura)
@@ -3337,7 +3344,7 @@ export default function App() {
   // pai/anulação de fatura e com o transaction_details.
   const reclassificarMarcados = async (itens=[]) => {
     for (const {t, rd, classificacao, subcategoria} of itens) {
-      await supabase.from("transactions").update({rd, classificacao, subcategoria, needs_review:false, status:"confirmado"}).eq("id",t.id);
+      await supabase.from("transactions").update({rd, classificacao, subcategoria, needs_review:false, status:"confirmado", classificacao_manual:true}).eq("id",t.id);
       await supabase.from("transactions").update({rd, classificacao, subcategoria})
         .ilike("source_file",`%(detalhe:${t.id})`).eq("origin","anulacao_cartao");
       await syncDetailClassification(t, rd, classificacao, subcategoria);
@@ -3346,7 +3353,7 @@ export default function App() {
   };
 
   const confirmReview = async (reviewed, regras=[], decisoes={}, reclassificar=[]) => {
-    const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado"}));
+    const rows = reviewed.map(r=>({...r,type:Number(r.value)>=0?"entrada":"saída",needs_review:false,status:"confirmado",classificacao_manual:true}));
     for(let i=0;i<rows.length;i+=50){
       await supabase.from("transactions").insert(rows.slice(i,i+50));
     }
@@ -3475,7 +3482,7 @@ export default function App() {
         (groups[key] ||= {rd:t.suggestedRd, classificacao:t.suggestedClass, subcategoria:sub, ids:[]}).ids.push(t.id);
       }
       for (const g of Object.values(groups))
-        await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:false,status:"confirmado"}).in("id",g.ids);
+        await supabase.from("transactions").update({rd:g.rd,classificacao:g.classificacao,subcategoria:g.subcategoria,needs_review:false,status:"confirmado",classificacao_manual:true}).in("id",g.ids);
       // v7.11.11 — itens de fatura do lote também refletem no transaction_details do pai
       for (const t of selecionados)
         await syncDetailClassification(t, t.suggestedRd, t.suggestedClass, t.suggestedSub||similarPending.subcategoria||null);
@@ -3747,7 +3754,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.8.0 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.0 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4587,7 +4594,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.8.0</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.0</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4779,7 +4786,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.8.0 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.0 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
