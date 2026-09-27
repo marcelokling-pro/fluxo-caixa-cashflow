@@ -582,6 +582,14 @@ export const classificarPorContraparte = (row, customCats=[], historico=null) =>
   return null;
 };
 
+// v8.9.2 — salvar lançamento com outra classificação mudaria a regra já cadastrada? Subcategoria
+// só conta quando você escolheu uma (vazia mantém a da regra).
+export const rotuloCls = (x) => [x?.rd, x?.classificacao, x?.subcategoria].filter(Boolean).join(" / ");
+// Nos botões: só a classificação; se ela for igual à do outro lado, o rótulo inteiro (a diferença está no R/D ou na subcategoria)
+export const rotuloCurto = (x, outro) => x?.classificacao!==outro?.classificacao ? x?.classificacao : rotuloCls(x);
+export const regraMudaria =(regra, rd, classificacao, subcategoria) =>
+  !!regra && (regra.rd!==rd || regra.classificacao!==classificacao || (!!subcategoria && (regra.subcategoria||null)!==subcategoria));
+
 // Cobertura real de uma regra candidata: quais lançamentos JÁ GRAVADOS ela pegaria, pelo mesmo
 // casamento da importação (texto na descrição, ou contraparte da razão social), e quais deles
 // hoje estão com outra classificação. Substitui a antiga checagem por "nome parecido", que
@@ -2374,6 +2382,8 @@ export default function App() {
   // Regra automática (edição de lançamento / similares) que pegaria lançamentos já gravados com
   // outra classificação: fila de cards com a lista, em vez de deixar de criar sem avisar.
   const [regrasAutoEmConflito,setRegrasAutoEmConflito] = useState([]);
+  // v8.9.2 — mesma regra não entra duas vezes na fila (edição + similares logo em seguida)
+  const filaRegraConflito = (item) => setRegrasAutoEmConflito(q => q.some(x=>x.nome===item.nome) ? q : [...q, item]);
   const [confirmRegraConflitos,setConfirmRegraConflitos] = useState(null); // v8.5.0 — {reviewed,regras,conflitos,decisoes}
   const [similarPending,setSimilarPending] = useState(null);
   const [similarSelected,setSimilarSelected] = useState([]); // v7.15.5 — ids marcados no painel de similares
@@ -3074,9 +3084,11 @@ export default function App() {
         const kwEntry = (parte || merchantKey(form.description)).toLowerCase();
         if (kwEntry && !keywordGenerica(kwEntry) && form.rd && form.classificacao) {
           const existing = customCats.find(c => c.name?.toLowerCase()===kwEntry || (c.keywords||[]).includes(kwEntry));
-          const divergentes = existing ? [] : coberturaDaRegra(kwEntry, form.rd, form.classificacao, all, null, customCats, [kwEntry], hiddenBaseCls).divergentes;
-          if (divergentes.length) {
-            setRegrasAutoEmConflito(q=>[...q, {nome:kwEntry.toUpperCase(), rd:form.rd, classificacao:form.classificacao, subcategoria:form.subcategoria||null, keywords:[kwEntry], divergentes, marcados:[]}]);
+          // v8.9.2 — regra existente com outra classificação: pergunta antes de mudar (antes gravava por cima)
+          const mudaRegra = regraMudaria(existing, form.rd, form.classificacao, form.subcategoria);
+          const divergentes = existing && !mudaRegra ? [] : coberturaDaRegra(existing?.name||kwEntry, form.rd, form.classificacao, all, null, customCats, [kwEntry], hiddenBaseCls).divergentes;
+          if (mudaRegra || divergentes.length) {
+            filaRegraConflito({nome:existing?.name||kwEntry.toUpperCase(), rd:form.rd, classificacao:form.classificacao, subcategoria:form.subcategoria||existing?.subcategoria||null, keywords:[...new Set([...(existing?.keywords||[]),kwEntry])], divergentes, marcados:[], existente:mudaRegra?existing:null});
           } else {
             const merged = [...new Set([...(existing?.keywords||[]),kwEntry])];
             await supabase.from("categories").upsert({
@@ -3503,9 +3515,10 @@ export default function App() {
           if (similarPending.origem) ajustes.set(similarPending.origem.id, {rd:similarPending.origem.rd, classificacao:similarPending.origem.classificacao});
           for (const kw of newKws) {
             const existing = customCats.find(c => c.name?.toLowerCase()===kw || (c.keywords||[]).includes(kw));
-            const divergentes = existing ? [] : coberturaDaRegra(kw, rd, cls, transactions, ajustes, customCats, [kw], hiddenBaseCls).divergentes;
-            if (divergentes.length) {
-              setRegrasAutoEmConflito(q=>[...q, {nome:kw.toUpperCase(), rd, classificacao:cls, subcategoria:similarPending.subcategoria||null, keywords:[kw], divergentes, marcados:[]}]);
+            const mudaRegra = regraMudaria(existing, rd, cls, similarPending.subcategoria);
+            const divergentes = existing && !mudaRegra ? [] : coberturaDaRegra(existing?.name||kw, rd, cls, transactions, ajustes, customCats, [kw], hiddenBaseCls).divergentes;
+            if (mudaRegra || divergentes.length) {
+              filaRegraConflito({nome:existing?.name||kw.toUpperCase(), rd, classificacao:cls, subcategoria:similarPending.subcategoria||existing?.subcategoria||null, keywords:[...new Set([...(existing?.keywords||[]),kw])], divergentes, marcados:[], existente:mudaRegra?existing:null});
               continue;
             }
             const merged = [...new Set([...(existing?.keywords||[]),kw])];
@@ -3754,7 +3767,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.1 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.2 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4594,7 +4607,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.1</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.2</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4786,7 +4799,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.1 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.2 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -5234,22 +5247,30 @@ export default function App() {
         <div style={{...s.modal,zIndex:320}}>
           <div style={{...s.mbox,maxWidth:680}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:17,fontWeight:700,marginBottom:12}}>⚠ Regra "{c.nome}"</div>
+            {c.existente&&(
+              <div style={{color:"#B8C7D6",fontSize:13,lineHeight:1.5,marginBottom:c.divergentes.length?14:20}}>
+                Este lançamento foi salvo como <strong style={{color:"#00C9A7"}}>{rotuloCls(c)}</strong>.
+                {" "}A regra está como <strong style={{color:"#F5A623"}}>{rotuloCls(c.existente)}</strong>.
+              </div>
+            )}
+            {c.divergentes.length>0&&(
             <div style={{marginBottom:20}}>
               <ListaAfetados lista={c.divergentes} marcados={c.marcados}
                 onChange={ids=>setRegrasAutoEmConflito(q=>[{...q[0],marcados:ids},...q.slice(1)])}
                 nova={`${c.rd} / ${c.classificacao}`}/>
             </div>
+            )}
             <div style={{display:"flex",gap:10}}>
-              <button style={{...s.btn("ghost"),flex:1}} onClick={proxima}>Não criar regra</button>
+              <button style={{...s.btn("ghost"),flex:1}} onClick={proxima}>{c.existente?`Manter regra como ${rotuloCurto(c.existente,c)}`:"Não criar regra"}</button>
               <button style={{...s.btn("warn"),flex:1}} onClick={async()=>{
                 proxima();
                 const {error} = await supabase.from("categories").upsert({name:c.nome, rd:c.rd, classificacao:c.classificacao, subcategoria:c.subcategoria, keywords:c.keywords},{onConflict:"name"});
-                if (error) { showToast("Erro ao criar regra: "+error.message,"error"); return; }
+                if (error) { showToast("Erro ao gravar regra: "+error.message,"error"); return; }
                 const ids = new Set(c.marcados);
                 await reclassificarMarcados(c.divergentes.filter(t=>ids.has(t.id)).map(t=>({t, rd:c.rd, classificacao:c.classificacao, subcategoria:c.subcategoria})));
                 await loadCustomCats();
-                showToast(`Regra "${c.nome}" criada.`);
-              }}>{c.marcados.length?`Criar regra e mudar ${c.marcados.length}`:"Criar regra"}</button>
+                showToast(`Regra "${c.nome}" ${c.existente?"alterada":"criada"}.`);
+              }}>{`${c.existente?`Mudar regra para ${rotuloCurto(c,c.existente)}`:"Criar regra"}${c.marcados.length?` e mudar ${c.marcados.length}`:""}`}</button>
             </div>
           </div>
         </div>

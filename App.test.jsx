@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo, partyKey, keywordGenerica, classificarPorContraparte, construirHistoricoContraparte, coberturaDaRegra, resumoDivergencia, soFormaDePagamento, nomeRegraSugerido, regraSoOperacao } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo, partyKey, keywordGenerica, classificarPorContraparte, construirHistoricoContraparte, coberturaDaRegra, resumoDivergencia, soFormaDePagamento, nomeRegraSugerido, regraSoOperacao, regraMudaria, rotuloCls, rotuloCurto } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -635,4 +635,17 @@ describe("nomeRegraSugerido / regraSoOperacao", () => {
     expect(regraSoOperacao("FERNANDA ALVES COSTA")).toBe(false);
     expect(regraSoOperacao("SISPAG SALARIOS")).toBe(false);
   });
+});
+
+describe("regraMudaria (v8.9.2 — editar lançamento não troca regra existente em silêncio)", () => {
+  const regra = { name:"TAR PIXQR", rd:"DESPESA FINANCEIRA", classificacao:"TARIFAS BANCÁRIAS", subcategoria:null };
+  it("sem regra existente → false", () => expect(regraMudaria(null, "RECEITA", "X")).toBe(false));
+  it("mesma classificação → false", () => expect(regraMudaria(regra, "DESPESA FINANCEIRA", "TARIFAS BANCÁRIAS")).toBe(false));
+  it("classificação diferente → true", () => expect(regraMudaria(regra, "DESPESA FINANCEIRA", "JUROS")).toBe(true));
+  it("R/D diferente → true", () => expect(regraMudaria(regra, "DESPESAS VARIÁVEIS", "TARIFAS BANCÁRIAS")).toBe(true));
+  it("subcategoria vazia mantém a da regra → false", () => expect(regraMudaria({...regra, subcategoria:"PIX"}, "DESPESA FINANCEIRA", "TARIFAS BANCÁRIAS", null)).toBe(false));
+  it("subcategoria escolhida diferente → true", () => expect(regraMudaria(regra, "DESPESA FINANCEIRA", "TARIFAS BANCÁRIAS", "PIX")).toBe(true));
+  it("rotuloCurto: só a classificação quando ela difere", () => expect(rotuloCurto({rd:"A",classificacao:"B"},{rd:"A",classificacao:"C"})).toBe("B"));
+  it("rotuloCurto: rótulo inteiro quando a classificação é igual", () => expect(rotuloCurto({rd:"A",classificacao:"B",subcategoria:"S"},{rd:"A",classificacao:"B"})).toBe("A / B / S"));
+  it("rotuloCls junta só o que existe", () => expect(rotuloCls({rd:"A", classificacao:"B", subcategoria:null})).toBe("A / B"));
 });
