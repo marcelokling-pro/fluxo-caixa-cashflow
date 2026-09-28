@@ -649,3 +649,9 @@ describe("regraMudaria (v8.9.2 — editar lançamento não troca regra existente
   it("rotuloCurto: rótulo inteiro quando a classificação é igual", () => expect(rotuloCurto({rd:"A",classificacao:"B",subcategoria:"S"},{rd:"A",classificacao:"B"})).toBe("A / B / S"));
   it("rotuloCls junta só o que existe", () => expect(rotuloCls({rd:"A", classificacao:"B", subcategoria:null})).toBe("A / B"));
 });
+
+describe("flexMatch com asterisco de adquirente de cartão (v8.9.5)", () => {
+  it("99Food *PIZZARIA NONNA bate com a keyword sem asterisco", () => expect(flexMatch("99Food *PIZZARIA NONNA (compra: 20/06/2026)", "99food pizzaria nonna")).toBe(true));
+  it("VINDI *MelhorEnvio bate com a keyword sem asterisco", () => expect(flexMatch("VINDI *MelhorEnvio", "vindi melhorenvio")).toBe(true));
+  it("continua não confundindo textos realmente diferentes", () => expect(flexMatch("99Food *PIZZARIA NONNA", "99food outra loja")).toBe(false));
+});

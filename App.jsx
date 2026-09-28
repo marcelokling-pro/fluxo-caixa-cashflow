@@ -409,7 +409,10 @@ export const flexMatch = (desc, kw) => {
     return new RegExp(`(^|[^A-ZÀ-Ú0-9])${escaped}([^A-ZÀ-Ú0-9]|$)`).test(d);
   }
   if (d.includes(k)) return true;
-  if (d.replace(/\s+/g,"").includes(k.replace(/\s+/g,""))) return true;
+  // v8.9.5 — "*" é separador de adquirente de cartão ("99FOOD *PIZZARIA", "VINDI *MelhorEnvio"),
+  // não pode pesar mais que espaço: ambos ficam de fora da comparação, dos dois lados.
+  const norm = x => x.replace(/[\s*]+/g,"");
+  if (norm(d).includes(norm(k))) return true;
   return false;
 };
 
@@ -2025,11 +2028,14 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             if (selecionadas.size>0) {
               // v8.9.3 — só nas regras marcadas, e por conta própria: inclui lançamento manual
               // (a escolha de qual regra é sua, a dedo — diferente da geral, que não mexe em manual).
+              // v8.9.5 — inclui cartão (a geral exclui) e os ainda em branco (pendentes), não só
+              // quem já está classificado diferente: achado real, regra existente não pegava os
+              // itens de Detalhamento de fatura, que nunca passam pela importação normal.
               const alvo = allRows.filter(r=>selecionadas.has(r.id));
               const vistos = new Set(); const diffs = [];
               for (const r of alvo) {
-                const {divergentes} = coberturaDaRegra(r.detalhe, r.rd, r.classificacao, transactions.filter(t=>!isCCTransaction(t)), null, customCats, null, hiddenBaseCls);
-                for (const t of divergentes) if (!vistos.has(t.id)) { vistos.add(t.id); diffs.push({...t, suggestedRd:r.rd, suggestedClass:r.classificacao, suggestedSub:r.subcategoria||null}); }
+                const {divergentes, pendentes} = coberturaDaRegra(r.detalhe, r.rd, r.classificacao, transactions, null, customCats, null, hiddenBaseCls);
+                for (const t of [...divergentes, ...pendentes]) if (!vistos.has(t.id)) { vistos.add(t.id); diffs.push({...t, suggestedRd:r.rd, suggestedClass:r.classificacao, suggestedSub:r.subcategoria||null}); }
               }
               setSelecionadas(new Set());
               if(diffs.length===0){ showToast("Nada para reclassificar nessa(s) regra(s)."); return; }
@@ -3307,8 +3313,13 @@ export default function App() {
       if(!parsed.length){showToast("Nenhum item encontrado.","error");return;}
       setDetailFileName(file.name);
       setDetailLoading(true);
+      // v8.9.5 — mesma decisão da importação normal (classificacaoLocal: contraparte, regra,
+      // histórico), não mais o localClassify (só texto puro), que deixava passar linha com
+      // regra pronta pro Detalhamento sem preencher (achado real: 70 itens ficaram em branco).
+      const historico = construirHistoricoContraparte(transactions);
       const items = parsed.map(row=>{
-        const local = localClassify(row.description, customCats, hiddenBaseCls);
+        const res = classificacaoLocal(row, customCats, hiddenBaseCls, historico);
+        const local = res && !res.decidir ? res : null;
         return {transaction_id:transaction.id,date:row.date,description:row.description,value:row.value,rd:local?.r||"",classificacao:local?.c||"",subcategoria:local?.sub||null,ai_classified:false,needs_review:!local};
       });
       setDetailItems(items);
@@ -3787,7 +3798,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.3 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.5 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4627,7 +4638,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.3</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.5</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4823,7 +4834,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.3 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.5 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
