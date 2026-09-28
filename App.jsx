@@ -1827,6 +1827,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmOverlap, setConfirmOverlap] = useState(null); // v8.5.0 — nome novo parece com regra já cadastrada
   const [filterPeriodo, setFilterPeriodo] = useState("todos"); // v8.6.0 — gestão de classificações novas criadas pelo sistema
+  const [selecionadas, setSelecionadas] = useState(new Set()); // v8.9.3 — regras marcadas: Reclassificar busca só nelas (inclui manuais)
 
   const allRows = useMemo(() => {
     const custom = customCats.map(c=>({
@@ -2021,12 +2022,26 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
             } catch(err){ showToast("Erro: "+err.message,"error"); }
           }}/>
           <button style={{...s.btn("warn"),padding:"9px 14px",fontSize:12}} onClick={async()=>{
+            if (selecionadas.size>0) {
+              // v8.9.3 — só nas regras marcadas, e por conta própria: inclui lançamento manual
+              // (a escolha de qual regra é sua, a dedo — diferente da geral, que não mexe em manual).
+              const alvo = allRows.filter(r=>selecionadas.has(r.id));
+              const vistos = new Set(); const diffs = [];
+              for (const r of alvo) {
+                const {divergentes} = coberturaDaRegra(r.detalhe, r.rd, r.classificacao, transactions.filter(t=>!isCCTransaction(t)), null, customCats, null, hiddenBaseCls);
+                for (const t of divergentes) if (!vistos.has(t.id)) { vistos.add(t.id); diffs.push({...t, suggestedRd:r.rd, suggestedClass:r.classificacao, suggestedSub:r.subcategoria||null}); }
+              }
+              setSelecionadas(new Set());
+              if(diffs.length===0){ showToast("Nada para reclassificar nessa(s) regra(s)."); return; }
+              setPendingApply({ruleName:`Reclassificação de ${alvo.length} regra(s) marcada(s)`, reeval:true, trans:diffs});
+              return;
+            }
             // Mesma decisão da importação; classificação manual fica de fora (reavaliarGravados).
             const {data:freshCats} = await supabase.from("categories").select("*").order("name");
             const diffs = reavaliarGravados(transactions.filter(t=>!isCCTransaction(t)), transactions, freshCats||[], hiddenBaseCls);
             if(diffs.length===0){ showToast("Tudo já está conforme as regras."); return; }
             setPendingApply({ruleName:"Reclassificação geral", reeval:true, trans:diffs});
-          }}>🔄 Reclassificar</button>
+          }}>{selecionadas.size>0?`🔄 Reclassificar (${selecionadas.size})`:"🔄 Reclassificar"}</button>
           <button style={s.btn()} onClick={()=>setShowAdd(a=>!a)}>{showAdd?"✕ Cancelar":"+ Nova Classificação"}</button>
         </div>
       </div>
@@ -2207,6 +2222,7 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
         <table style={s.table}>
           <thead style={{position:"sticky",top:0,zIndex:2,background:"#162130"}}>
             <tr>
+              <th style={{...s.th,width:26,background:"#162130"}}></th>
               {[{l:"Descrição",k:"detalhe"},{l:"R/D",k:"rd"},{l:"Classificação",k:"classificacao"},{l:"Subcategoria",k:"subcategoria"},{l:"Keywords",k:null},{l:"Criado em",k:"createdAt"}].map(({l,k})=>(
                 <th key={l} style={{...s.th,cursor:k?"pointer":"default",userSelect:"none",background:"#162130"}}
                   onClick={()=>k&&toggleSort(k)}>
@@ -2219,6 +2235,10 @@ const ClassificacoesTab = ({customCats, loadCustomCats, showToast, s, loadTransa
           <tbody>
             {filtered.map(row=>(
               <tr key={row.id} style={row.isCustom?{background:"rgba(0,201,167,0.03)"}:{}}>
+                <td style={{...s.td,textAlign:"center"}}>
+                  <input type="checkbox" checked={selecionadas.has(row.id)} style={{cursor:"pointer"}}
+                    onChange={()=>setSelecionadas(prev=>{const n=new Set(prev); n.has(row.id)?n.delete(row.id):n.add(row.id); return n;})}/>
+                </td>
                 {editingRow?.id===row.id?(
                   <>
                     <td style={s.td}><input style={II} value={editingRow.detalhe} onChange={e=>setEditingRow(r=>({...r,detalhe:e.target.value}))}/></td>
@@ -3767,7 +3787,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.2 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.3 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4607,7 +4627,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.2</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.3</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4691,10 +4711,14 @@ export default function App() {
               {(()=>{
                 const extratos = {};
                 const fileLabel = t => (t.source_file||"").replace(/ \(detalhe:[^)]+\)$/,"");
+                // v8.9.4 — agrupa por arquivo+conta, não mais por minuto do created_at: uma importação
+                // só grava em dois momentos (o que classifica sozinho, na hora; o que vai pra revisão,
+                // só quando você confirma) e isso virava duas linhas aqui sem ter sido dois imports.
                 transactions.filter(t=>t.source_file&&t.origin!=="anulacao_cartao").forEach(t=>{
                   const batchKey = t.created_at ? t.created_at.slice(0,16) : "unknown";
-                  const key = (t.conta||"sem conta") + "__" + batchKey;
+                  const key = (t.conta||"sem conta") + "__" + fileLabel(t);
                   if(!extratos[key]) extratos[key]={conta:t.conta||"sem conta",importedAt:batchKey,fileName:fileLabel(t),count:0,min:"",max:"",ids:[]};
+                  if(batchKey<extratos[key].importedAt||extratos[key].importedAt==="unknown") extratos[key].importedAt=batchKey;
                   extratos[key].count++;
                   extratos[key].ids.push(t.id);
                   if(!extratos[key].min||dateToSortable(t.date)<dateToSortable(extratos[key].min)) extratos[key].min=t.date;
@@ -4799,7 +4823,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.2 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.3 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
