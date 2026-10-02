@@ -146,6 +146,18 @@ Ao investigar "funciona em PROD mas não em DEV" (ou vice-versa), checklist de p
 
 **Toda migration de schema precisa rodar em DEV e PROD antes/junto do `git push`.** O push já dispara deploy automático do código em PROD via Vercel — não existe um passo manual de "publicar" separado. Se uma migration (`alter table ... add column ...`) só for aplicada em DEV e o código correspondente for commitado, o app em PROD passa a referenciar uma coluna inexistente — pode não gerar erro visível se o código tiver fallback (`campo||"—"`), mascarando o problema até a migration ser aplicada lá também.
 
+### Automação de app desktop do usuário — FortiClient VPN (02/10/2026)
+
+Pedido: `.bat` que preenche usuário/senha e conecta a VPN. Levou ~10 rodadas por tentativa e erro; o que deveria ter sido feito de início:
+
+- **Antes de escrever script, perguntar o que o usuário já tem aberto e como abre o app.** Abrir o `.exe` direto com o app já rodando criou uma 2ª instância que travou (`TraceLog of null`, Electron). Abrir pelo atalho do Menu Iniciar (`Get-StartApps` + `explorer shell:AppsFolder\<AppID>`) funcionou, e só abrir se não houver janela.
+- **Não apostar que o Windows enxerga os campos de um app Electron (UI Automation).** Para app fechado a esse acesso, o caminho que funcionou foi clique por coordenadas (medidas num print do usuário, janela redimensionada para tamanho fixo, `SetProcessDPIAware`) + `SendKeys` com escape de `+^%~(){}[]`.
+- **FortiClient VPN gratuito 7.2.1**: "sempre para cima" (Always up) e conexão automática **não existem** — a tela mostra "This feature is unavailable in free versions". Não sugerir esses recursos; automação por script é o caminho.
+- **Todo script entregue ao usuário deve imprimir cada passo** (`Write-Host`), senão uma falha não diz onde parou.
+- `Get-Credential` falhou no PC do usuário (pediu o parâmetro no console); usar `Read-Host` + `Read-Host -AsSecureString` e `Export-Clixml` (criptografado por usuário do Windows).
+- Arquivo gerado em sessão na nuvem não chega ao PC do usuário: enviar por `SendUserFile` e conferir que o antigo foi substituído (a versão velha continuou rodando e repetiu o erro).
+- Cenário sem Windows no ambiente do Claude: dizer de saída que o script não foi executado e que o primeiro clique do usuário é o teste.
+
 ### Classificações (jun/2026)
 
 **Keywords devem ser texto manual exato, sem fuzzy match.** Já existiu "Popular Keywords" (auto-geração a partir de transações) e um match parcial no `flexMatch` (batia só pelas 4 primeiras letras). Ambos foram removidos por causarem contaminação cruzada entre categorias (ex: "transporte" classificando como "transferência"). Não reintroduzir fuzzy matching — `flexMatch` faz só substring exata (com ou sem espaços).
