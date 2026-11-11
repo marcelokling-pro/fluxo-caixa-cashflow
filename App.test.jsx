@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo, partyKey, keywordGenerica, classificarPorContraparte, construirHistoricoContraparte, coberturaDaRegra, resumoDivergencia, soFormaDePagamento, nomeRegraSugerido, regraSoOperacao, regraMudaria, rotuloCls, rotuloCurto } from "./App.jsx";
+import { parseValue, merchantKey, flexMatch, localClassify, sameMerchant, applyDetailItemEdit, findDetailMatches, applyDetailPropagation, commonPrefix, groupByPrefix, parseOFX, fitKey, resolveSign, conciliar, contaKey, grupoKey, ehLinhaDeSaldo, partyKey, keywordGenerica, classificarPorContraparte, construirHistoricoContraparte, coberturaDaRegra, resumoDivergencia, soFormaDePagamento, nomeRegraSugerido, regraSoOperacao, regraMudaria, rotuloCls, rotuloCurto, keywordsEfetivas, candidatosAssociacao } from "./App.jsx";
 
 describe("parseValue", () => {
   it("converte formato BR com milhar e decimal", () => {
@@ -654,4 +654,68 @@ describe("flexMatch com asterisco de adquirente de cartão (v8.9.5)", () => {
   it("99Food *PIZZARIA NONNA bate com a keyword sem asterisco", () => expect(flexMatch("99Food *PIZZARIA NONNA (compra: 20/06/2026)", "99food pizzaria nonna")).toBe(true));
   it("VINDI *MelhorEnvio bate com a keyword sem asterisco", () => expect(flexMatch("VINDI *MelhorEnvio", "vindi melhorenvio")).toBe(true));
   it("continua não confundindo textos realmente diferentes", () => expect(flexMatch("99Food *PIZZARIA NONNA", "99food outra loja")).toBe(false));
+});
+
+describe("keywordsEfetivas (v8.9.6 — keyword solta dentro de outra mais longa não conta)", () => {
+  it("BEM e MAIS saem quando existe BEM MAIS", () => expect(keywordsEfetivas(["SINDICATO","BEM MAIS","BEM","MAIS"])).toEqual(["SINDICATO","BEM MAIS"]));
+  it("pedaço de palavra não é palavra solta: MAIS fica mesmo com DEMAIS", () => expect(keywordsEfetivas(["DEMAIS LTDA","MAIS"])).toEqual(["DEMAIS LTDA","MAIS"]));
+  it("ignora vazio, espaço e repetida", () => expect(keywordsEfetivas(["inss"," INSS ","",null])).toEqual(["INSS"]));
+});
+
+describe("candidatosAssociacao (v8.9.6 — modal Associar Lançamento)", () => {
+  const item = {id:"a1", keywords:["SINDICATO","BEM MAIS","BEM","MAIS"], dia_vencimento:5, classificacao:"BENEFÍCIOS"};
+  const tx = (id,date,description,value,extra={}) => ({id,date,description,value,...extra});
+  const nov = [
+    tx(1,"09/11/2026","JUROS LIMITE DA CONTA",-946.77),
+    tx(2,"04/11/2026","IOF",-92.08),
+    tx(3,"05/11/2026","BOLETO PAGO",-62,{razao_social:"BEM MAIS GESTORA DE PLANOS DE BENEFICIOS"}),
+    tx(4,"06/11/2026","PIX BEM ESTAR ACADEMIA",-120),
+    tx(5,"05/11/2026","PIX RECEBIDO BEM MAIS",500),
+    tx(6,"05/10/2026","BOLETO PAGO",-62,{razao_social:"BEM MAIS GESTORA DE PLANOS DE BENEFICIOS"}),
+  ];
+  it("com keyword casando, sugere só quem casa (pela razão social) e ignora a keyword solta BEM", () => {
+    const r = candidatosAssociacao({transactions:nov, item, ocorrencias:[], mes:11, ano:2026});
+    expect(r.modo).toBe("keyword");
+    expect(r.sugestoes.map(l=>l.t.id)).toEqual([3]);
+    expect(r.sugestoes[0].kwHit).toBe("BEM MAIS");
+  });
+  it("todas = só saídas do mês, com quem casa no topo", () => {
+    const r = candidatosAssociacao({transactions:nov, item, ocorrencias:[], mes:11, ano:2026});
+    expect(r.todas.map(l=>l.t.id)).toEqual([3,1,2,4]);
+  });
+  it("vários casando: mais perto do vencimento primeiro", () => {
+    const t = [tx(1,"20/11/2026","SINDICATO X",-10), tx(2,"06/11/2026","SINDICATO Y",-10), tx(3,"05/11/2026","SINDICATO Z",-10)];
+    expect(candidatosAssociacao({transactions:t, item, ocorrencias:[], mes:11, ano:2026}).sugestoes.map(l=>l.t.id)).toEqual([3,2,1]);
+  });
+  const semKw = [
+    tx(10,"05/10/2026","BOLETO PAGO",-62,{razao_social:"GESTORA XPTO"}),
+    tx(11,"07/11/2026","BOLETO PAGO",-300,{razao_social:"GESTORA XPTO"}),
+    tx(12,"20/11/2026","PAGTO TITULO",-60),
+    tx(13,"04/11/2026","VALE REFEICAO",-900,{classificacao:"BENEFÍCIOS"}),
+    tx(14,"25/11/2026","VALE TRANSPORTE",-900,{classificacao:"BENEFÍCIOS"}),
+    tx(15,"05/11/2026","ALUGUEL",-4000),
+  ];
+  const hist = [{agenda_id:"a1", mes:10, ano:2026, transaction_id:10}];
+  it("sem keyword casando: prováveis por razão social e valor ±10% do histórico; classificação igual não basta", () => {
+    const r = candidatosAssociacao({transactions:semKw, item, ocorrencias:hist, mes:11, ano:2026});
+    expect(r.modo).toBe("provavel");
+    expect(r.sugestoes.map(l=>[l.t.id,l.motivo])).toEqual([
+      [11,"mesma razão social de out/2026"],
+      [12,"valor próximo ao de out/2026"],
+    ]);
+  });
+  it("provável já associado a outro compromisso não é sugerido", () => {
+    const oc = [...hist, {agenda_id:"outro", mes:11, ano:2026, transaction_id:11}];
+    expect(candidatosAssociacao({transactions:semKw, item, ocorrencias:oc, mes:11, ano:2026}).sugestoes.map(l=>l.t.id)).toEqual([12]);
+  });
+  it("histórico só vale de mês anterior ao que está sendo associado", () => {
+    const futuro = [{agenda_id:"a1", mes:12, ano:2026, transaction_id:10}];
+    expect(candidatosAssociacao({transactions:semKw, item, ocorrencias:futuro, mes:11, ano:2026}).modo).toBe("vazio");
+  });
+  it("sem keyword e sem histórico: vazio, mas todas continua com as saídas", () => {
+    const r = candidatosAssociacao({transactions:semKw, item:{id:"a9", keywords:["NADA A VER"], dia_vencimento:5}, ocorrencias:[], mes:11, ano:2026});
+    expect(r.modo).toBe("vazio");
+    expect(r.sugestoes).toEqual([]);
+    expect(r.todas.length).toBe(5);
+  });
 });

@@ -427,6 +427,55 @@ export const hlKw = (txt, kws=[]) => {
   return (<>{str.slice(0,i)}<span style={{background:"rgba(0,201,167,0.16)",color:"#00C9A7",borderRadius:3,padding:"0 3px",fontWeight:600}}>{str.slice(i,i+n)}</span>{str.slice(i+n)}</>);
 };
 
+// v8.9.6 — modal Associar: keyword que é palavra solta de outra mais longa do mesmo compromisso
+// ("BEM" e "MAIS" dentro de "BEM MAIS") não conta — sozinha ela casa com lançamento sem relação.
+export const keywordsEfetivas = (kws=[]) => {
+  const ks = [...new Set((kws||[]).map(k=>String(k||"").trim().toUpperCase()).filter(Boolean))];
+  const dentro = (k,o) => new RegExp(`(^|[^A-ZÀ-Ú0-9])${k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^A-ZÀ-Ú0-9]|$)`).test(o);
+  return ks.filter(k=>!ks.some(o=>o.length>k.length&&dentro(k,o)));
+};
+
+// v8.9.6 — modal Associar: quem casa com keyword vem primeiro; sem nenhum, os prováveis pelo
+// histórico do compromisso (mesma razão social ou valor ±10% de mês já quitado). Classificação
+// não entra: é larga demais (trazia toda a folha como provável de um boleto de benefício).
+// `todas` = todas as saídas do mês, sugestões no topo.
+export const candidatosAssociacao = ({transactions=[], item=null, ocorrencias=[], mes, ano}) => {
+  const kws = keywordsEfetivas(item?.keywords);
+  const venc = parseInt(item?.dia_vencimento)||null;
+  const norm = x => String(x||"").toUpperCase().trim();
+  const partes = t => String(t.date||"").split("/");
+  const saidas = transactions.filter(t=>{const p=partes(t);return p.length===3&&parseInt(p[1])===mes&&parseInt(p[2])===ano&&Number(t.value)<0;});
+  const hist = (ocorrencias||[])
+    .filter(o=>o.agenda_id===item?.id&&o.transaction_id&&(o.ano<ano||(o.ano===ano&&o.mes<mes)))
+    .sort((a,b)=>(b.ano-a.ano)||(b.mes-a.mes))
+    .map(o=>({o,t:transactions.find(t=>t.id===o.transaction_id)})).filter(h=>h.t);
+  const rotMes = o => `${MONTHS[o.mes-1].slice(0,3)}/${o.ano}`;
+  const linhas = saidas.map(t=>{
+    const kwHit = kws.find(k=>flexMatch(t.description||"",k)||flexMatch(t.razao_social||"",k))||null;
+    const dia = parseInt(partes(t)[0]);
+    const dVenc = (venc&&dia)?dia-venc:null;
+    let motivo=null, grupo=9;
+    if (kwHit) grupo=0;
+    else if (!(ocorrencias||[]).some(o=>o.transaction_id===t.id&&o.agenda_id!==item?.id)) {
+      const v = Math.abs(Number(t.value));
+      const hRs = norm(t.razao_social) ? hist.find(h=>norm(h.t.razao_social)===norm(t.razao_social)) : null;
+      const hV = hist.find(h=>{const a=Math.abs(Number(h.t.value));return a>0&&Math.abs(a-v)<=a*0.1;});
+      if (hRs) { grupo=1; motivo=`mesma razão social de ${rotMes(hRs.o)}`; }
+      else if (hV) { grupo=1; motivo=`valor próximo ao de ${rotMes(hV.o)}`; }
+    }
+    return {t,kwHit,dVenc,motivo,grupo};
+  });
+  const prox = l => l.dVenc===null?99:Math.abs(l.dVenc);
+  const ord = (a,b) => (a.grupo-b.grupo)||(a.grupo===9?0:prox(a)-prox(b));
+  const casam = linhas.filter(l=>l.grupo===0);
+  const provaveis = linhas.filter(l=>l.grupo===1);
+  return {
+    modo: casam.length?"keyword":provaveis.length?"provavel":"vazio",
+    sugestoes: (casam.length?casam:provaveis).slice().sort(ord),
+    todas: linhas.slice().sort(ord),
+  };
+};
+
 // ── v8.4.0 — Fase 1: classificação por contraparte (quem pagou/recebeu), antes da regra
 // por operação (localClassify). Motivo: "PIX ENVIADO" sozinho não diz nada — o que decide é
 // para quem foi. Ver CLASSIFICACAO-diagnostico-e-proposta.md para a auditoria completa.
@@ -2627,8 +2676,9 @@ export default function App() {
 
   // v7.25.0 — compromisso da associacao: keywords e dia de vencimento alimentam o modal
   const assocAgenda = associating ? agenda.find(a=>a.id===associating.agendaId) : null;
-  const assocKws = assocAgenda?.keywords || [];
+  const assocKws = keywordsEfetivas(assocAgenda?.keywords);
   const assocDiaVenc = assocAgenda?.dia_vencimento || null;
+  const assocCand = useMemo(()=>candidatosAssociacao({transactions,item:assocAgenda,ocorrencias:agendaOcorrencias,mes:assocFiltroMes,ano:assocFiltroAno}),[transactions,assocAgenda,agendaOcorrencias,assocFiltroMes,assocFiltroAno]);
 
   const filtered = useMemo(()=>{
     let list=[...transactions]; // v7.0.6 — itens de cartao aparecem na lista, com badge identificando
@@ -3798,7 +3848,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.5 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.6 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4638,7 +4688,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.5</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.6</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4834,7 +4884,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.5 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.6 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
@@ -5103,26 +5153,30 @@ export default function App() {
                 else{setAssocSortCol("valor");setAssocSortDir("asc");}
               }}>Valor{assocSortCol==="valor"?(assocSortDir==="asc"?" ↑":" ↓"):""}</span>
             </div>
+            {/* v8.9.6 — abre só com as sugestões (keyword; sem nenhuma, prováveis); busca e "ver todas" olham todas as saídas */}
+            {!assocSearchDefer.trim()&&(
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 0",fontSize:11,color:"#6B8299"}}>
+                <span data-assoc-aviso>{associating.todas?`Todas as saídas de ${MONTHS[assocFiltroMes-1]}/${assocFiltroAno}`
+                  :assocCand.modo==="keyword"?`${assocCand.sugestoes.length} lançamento${assocCand.sugestoes.length>1?"s":""} casa${assocCand.sugestoes.length>1?"m":""} com as keywords`
+                  :assocCand.modo==="provavel"?"Nenhum lançamento casa com as keywords — mostrando os prováveis"
+                  :"Nenhum lançamento casa com as keywords nem se parece com pagamentos anteriores"}</span>
+                <span data-assoc-toggle style={{color:"#00C9A7",cursor:"pointer",whiteSpace:"nowrap"}} onClick={()=>setAssociating(a=>({...a,todas:!a.todas}))}>
+                  {associating.todas?"ver só sugestões":`ver todas as saídas (${assocCand.todas.length})`}</span>
+              </div>
+            )}
             <div style={{maxHeight:350,overflowY:"auto"}}>
-              {transactions.filter(t=>{
-                const p=t.date?.split("/");
-                return p?.length===3&&parseInt(p[1])===assocFiltroMes&&parseInt(p[2])===assocFiltroAno&&Number(t.value)<0;
-              }).filter(t=>{
+              {((assocSearchDefer.trim()||associating.todas)?assocCand.todas:assocCand.sugestoes).filter(({t})=>{
                 if(!assocSearchDefer.trim()) return true;
                 const q=assocSearchDefer.trim().toLowerCase();
                 return (t.description||"").toLowerCase().includes(q)||(t.razao_social||"").toLowerCase().includes(q)||(t.subcategoria||"").toLowerCase().includes(q);
               }).sort((a,b)=>{
                 if(!assocSortCol) return 0;
                 const dir=assocSortDir==="asc"?1:-1;
-                if(assocSortCol==="nome") return (a.description||"").localeCompare(b.description||"")*dir;
-                return (Number(a.value)-Number(b.value))*dir;
-              }).map(t=>{
+                if(assocSortCol==="nome") return (a.t.description||"").localeCompare(b.t.description||"")*dir;
+                return (Number(a.t.value)-Number(b.t.value))*dir;
+              }).map(({t,kwHit,dVenc,motivo})=>{
                 const usedOc=agendaOcorrencias.find(o=>o.transaction_id===t.id);
                 const usedNome=usedOc?agenda.find(a=>a.id===usedOc.agenda_id)?.nome:null;
-                // v7.25.0 — identificacao: keyword do compromisso e distancia do vencimento
-                const kwHit=assocKws.find(k=>k&&(flexMatch(t.description||"",k)||flexMatch(t.razao_social||"",k)))||null;
-                const diaLanc=parseInt(t.date?.split("/")?.[0]);
-                const dVenc=(assocDiaVenc&&diaLanc)?diaLanc-assocDiaVenc:null;
                 const txtVenc=dVenc===null?null:dVenc===0?"no vencimento":dVenc<0?`${-dVenc} dia${-dVenc>1?"s":""} antes do vencimento`:`${dVenc} dia${dVenc>1?"s":""} depois do vencimento`;
                 return (
                 <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid #1E2D3D",cursor:usedNome?"not-allowed":"pointer",opacity:usedNome?0.4:1}}
@@ -5135,6 +5189,7 @@ export default function App() {
                       {(t.razao_social||t.conta)?<span style={{color:"#2D3F50"}}>·</span>:null}{t.rd}
                       {t.subcategoria?<span style={s.chipAssoc("#8E7CC3")}>{t.subcategoria}</span>:null}
                       {kwHit?<span style={s.chipAssoc("#00C9A7")}>casa com keyword {kwHit}</span>:null}
+                      {motivo?<span style={s.chipAssoc("#4A9EFF")}>{motivo}</span>:null}
                     </div>
                     <div style={{fontSize:11,color:"#6B8299",display:"flex",flexWrap:"wrap",gap:"3px 6px",alignItems:"center",marginTop:3}}>
                       {t.date}
