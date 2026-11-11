@@ -136,6 +136,7 @@ const SORTED_CLASSIFICATIONS = [...BASE_CLASSIFICATIONS].sort((a,b) => b.d.lengt
 
 const RD_TYPES = ["RECEITA","DESPESAS FIXAS","DESPESAS VARIÁVEIS","MOVIMENTAÇÃO","INVESTIMENTOS","DESPESA FINANCEIRA","SALDO INICIAL"];
 const CLASSIFICACOES = [...new Set(BASE_CLASSIFICATIONS.map(c=>c.c))].sort();
+const APP_VERSION = "8.9.7"; // v8.9.7 — 4º local do bump (os outros 3: buscar "Fluxo de Caixa-")
 const MONTHS = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -3832,6 +3833,7 @@ export default function App() {
         <div style={{padding:sidebarOpen?"20px 24px 16px":"20px 0 16px",borderBottom:"1px solid #1E2D3D",display:"flex",alignItems:"center",justifyContent:sidebarOpen?"space-between":"center"}}>
           {sidebarOpen&&<div>
             <div style={{fontSize:17,fontWeight:700,color:"#00C9A7"}}>CashFlow</div>
+            <div data-app-versao style={{fontSize:10,color:"#6B8299",opacity:0.7,fontFamily:"monospace",letterSpacing:"0.3px"}}>v{APP_VERSION}</div>
             {import.meta.env.DEV&&<div style={{fontSize:9,background:"#F5A623",color:"#0F1923",borderRadius:4,padding:"1px 6px",fontWeight:700,display:"inline-block",marginTop:2}}>DEV</div>}
           </div>}
           <button style={{background:"none",border:"none",color:"#6B8299",cursor:"pointer",fontSize:18,padding:4}} onClick={()=>setSidebarOpen(o=>!o)}>{sidebarOpen?"◀":"▶"}</button>
@@ -3848,7 +3850,7 @@ export default function App() {
           <div style={{padding:"16px 24px",borderTop:"1px solid #1E2D3D"}}>
             <div style={{fontSize:11,color:"#6B8299",marginBottom:8}}>{user.email}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.6 · by MKK</span>
+              <span style={{fontSize:10,color:"#6B8299",opacity:0.5,fontFamily:"monospace",letterSpacing:"0.3px"}}>Fluxo de Caixa-240926 V.8.9.7 · by MKK</span>
               <span style={{color:"#00C9A7",fontSize:11,cursor:"pointer",fontWeight:600}} onClick={()=>supabase.auth.signOut()}>Sair</span>
             </div>
           </div>
@@ -4688,7 +4690,7 @@ export default function App() {
             <div style={{...s.card,marginBottom:16}}>
               <div style={{fontSize:13,fontWeight:600,color:"#00C9A7",marginBottom:14}}>Sistema</div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
-                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.6</span></div>
+                <div style={{fontSize:12,color:"#6B8299"}}>Versão: <span style={{color:"#00C9A7",fontWeight:600}}>Fluxo de Caixa-240926 V.8.9.7</span></div>
                 <div style={{fontSize:12,color:"#6B8299"}}>by MKK</div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:14}}>
@@ -4884,7 +4886,7 @@ export default function App() {
         )}
 
       </div>{/* end main */}
-      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.6 · by MKK</div>
+      <div style={{position:"fixed",bottom:6,right:12,fontSize:10,color:"#6B8299",opacity:0.5,zIndex:50,fontFamily:"monospace"}}>Fluxo de Caixa-240926 V.8.9.7 · by MKK</div>
 
       {/* Modal lançamento / saldo */}
       {showModal&&(
